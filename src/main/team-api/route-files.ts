@@ -27,7 +27,7 @@ import { sourceText } from "@openbot/i18n/source";
 import { Deferred, Effect } from "effect";
 import type { AttachmentUploadSessions } from "../../backend/attachment-upload-sessions";
 import { runCauseEffect } from "../../backend/effect-boundary";
-import { remoteCall } from "../remote-service-effects";
+import { remoteCall, remoteDecode } from "../remote-service-effects";
 import type { TeamApiAgents, TeamApiMailbox } from "./dependencies";
 import { HttpError } from "./http-error";
 import type { RouteOutcome, TeamApiRequestContext } from "./request-context";
@@ -103,10 +103,6 @@ export async function routeFiles(
     if (!name || basename(name) !== name || name.length > INPUT_LIMITS.attachmentName) {
       throw new HttpError(400, sourceText("error.team.attachmentNameRequired"));
     }
-    if (!isKnownAttachmentName(name))
-      throw new Error(
-        `${name} is not supported. Attach ${SUPPORTED_ATTACHMENT_DESCRIPTION}. For other audio or video formats, export as MP3, MOV, or MP4, or attach a text transcript.`,
-      );
     if (mimeType.length > INPUT_LIMITS.mimeType) {
       throw new HttpError(400, "The attachment MIME type is too long.");
     }
@@ -114,6 +110,13 @@ export async function routeFiles(
       attachmentUploads.use(
         Effect.gen(function* () {
           const bytes = yield* remoteCall(() => readBinary(request, ATTACHMENT_LIMITS.fileBytes));
+          // Released uploads reject an oversized body before checking its file type.
+          yield* remoteDecode(() => {
+            if (!isKnownAttachmentName(name))
+              throw new Error(
+                `${name} is not supported. Attach ${SUPPORTED_ATTACHMENT_DESCRIPTION}. For other audio or video formats, export as MP3, MOV, or MP4, or attach a text transcript.`,
+              );
+          });
           return yield* agents.prepareImportedAttachments([], [{ name, mimeType, bytes }]);
         }),
       ),

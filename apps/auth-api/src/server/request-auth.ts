@@ -339,13 +339,11 @@ export function publicMarketplaceJson(value: unknown): Response {
 }
 
 export {
-  accountAnalytics,
   apiError,
   authErrorResponse,
   bearerToken,
   json,
   remoteControlPlaneErrorResponse,
-  requestAdoptUnlinkedHostedSites,
   requestAvatarBucket,
   requestRemoteControlPlane,
   requestTeamInviteEmailDelivery,

@@ -28,6 +28,8 @@ const config: KnipConfig = {
     // Rewrite and inspect macOS dylib load paths.
     "otool",
     "install_name_tool",
+    // Reads macOS bundle metadata and signed entitlements.
+    "plutil",
     // Finds the Linux libraries that the remote desktop runtime bundles.
     "ldd",
     // Stops a stuck packaged app during Windows package verification.
@@ -87,7 +89,7 @@ const config: KnipConfig = {
     "apps/auth-api": {
       // The wrangler plugin of knip reads `main` (src/worker-entry.ts) from wrangler.jsonc only. The
       // email relay Worker's `main` is in wrangler.email-relay.jsonc.
-      entry: ["*.ts", "src/email-relay-entry.ts"],
+      entry: ["*.ts", "src/email-relay-entry.ts", "src/independent-worker-entry.ts"],
       project: ["src/**/*.{ts,tsx,css}", "test/**/*.ts", "*.ts"],
       // `cloudflare:workers` is a runtime module of the Workers platform, not an npm package.
       ignoreDependencies: ["cloudflare"],

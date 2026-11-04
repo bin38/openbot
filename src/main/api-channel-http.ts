@@ -104,7 +104,7 @@ async function jsonFileValues(
   }
   return result;
 }
-export function apiOperationUrl(definition: ApiChannelDefinition, operation: ApiChannelOperation, values: Values): URL {
+function apiOperationUrl(definition: ApiChannelDefinition, operation: ApiChannelOperation, values: Values): URL {
   const base = apiChannelUrl(definition.baseUrl);
   if (!base.pathname.endsWith("/")) base.pathname += "/";
   const path = operation.path.replace(/\{\{([A-Za-z][A-Za-z0-9_-]*)\}\}/gu, (_match, name: string) => {

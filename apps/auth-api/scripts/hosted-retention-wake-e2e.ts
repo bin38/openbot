@@ -12,6 +12,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { Effect } from "effect";
 import { createAccountAnalytics } from "../src/server/account-analytics";
 import { HostedServerService } from "../src/server/hosted-server-service";
@@ -107,6 +108,7 @@ async function run() {
   };
   const events: { name: string; properties: { action?: string; reason?: string } }[] = [];
   const work: Promise<void>[] = [];
+  let analyticsScheduled = 0;
   const analytics = createAccountAnalytics({
     clientId: "client",
     clientSecret: "secret",
@@ -115,7 +117,10 @@ async function run() {
       events.push({ name: body.payload.name, properties: body.payload.properties });
       return new Response(null, { status: 200 });
     },
-    schedule: (send) => work.push(Effect.runPromise(send)),
+    schedule: (send) => {
+      analyticsScheduled += 1;
+      work.push(Effect.runPromise(send));
+    },
     database: sqliteD1(database),
   });
   const service = new HostedServerService(
@@ -175,14 +180,18 @@ async function run() {
     woken,
   );
   check(
-    "analytics gets the wake with the reason retention",
-    events.some(
-      (event) =>
-        event.name === "hosted_server_action" &&
-        event.properties.action === "woken" &&
-        event.properties.reason === "retention",
-    ),
-    events,
+    INDEPENDENT_EDITION
+      ? "the independent retention wake sends and schedules no analytics"
+      : "analytics gets the wake with the reason retention",
+    INDEPENDENT_EDITION
+      ? events.length === 0 && analyticsScheduled === 0
+      : events.some(
+          (event) =>
+            event.name === "hosted_server_action" &&
+            event.properties.action === "woken" &&
+            event.properties.reason === "retention",
+        ),
+    INDEPENDENT_EDITION ? { events: events.length, analyticsScheduled } : events,
   );
   check("a server with 9 days of sleep does not start", resumes("recent") === 0, calls);
 
@@ -200,9 +209,11 @@ async function run() {
     { calls, row: row("due") },
   );
   check(
-    "analytics gets the idle stop",
-    events.some((event) => event.properties.action === "idle_stopped"),
-    events,
+    INDEPENDENT_EDITION ? "the independent idle stop sends and schedules no analytics" : "analytics gets the idle stop",
+    INDEPENDENT_EDITION
+      ? events.length === 0 && analyticsScheduled === 0
+      : events.some((event) => event.properties.action === "idle_stopped"),
+    INDEPENDENT_EDITION ? { events: events.length, analyticsScheduled } : events,
   );
 
   await tick(t0 + 45 * MINUTE);

@@ -57,7 +57,7 @@ export interface CustomProviderChanges {
   ): Effect.Effect<CustomProviderModelsSynchronized | null, ProviderRuntimeFailure>;
 }
 
-export interface CustomProviderModelsSynchronized {
+interface CustomProviderModelsSynchronized {
   upstreamCount: number;
   missingModelIds: string[];
   omittedModelCount: number;

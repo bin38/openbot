@@ -20,7 +20,7 @@ const CACHE_AGE_MS = 24 * 60 * 60 * 1000;
 const NPM_NAME = /^(?:@[a-z0-9._-]+\/)?[a-z0-9][a-z0-9._-]*$/u;
 const PINNED_VERSION = /^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?$/u;
 
-export class McpRegistryFailure extends Schema.TaggedError<McpRegistryFailure>()("McpRegistryFailure", {
+class McpRegistryFailure extends Schema.TaggedError<McpRegistryFailure>()("McpRegistryFailure", {
   message: Schema.String,
 }) {}
 export type McpRegistryFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;

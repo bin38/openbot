@@ -3,6 +3,8 @@
 // normalized account email on the profile (OpenPanel `identify`) and send the event with no email. An
 // event that is not a payment must not identify. A failed identify or a failed email read must not
 // stop the event. The ledger identifies an account once in each drain.
+// The independent edition instead checks that its account analytics factory reads no identity,
+// schedules no background work and sends no request, even with analytics credentials configured.
 //
 // Run: bun apps/auth-api/scripts/paid-account-identity-e2e.ts
 // It writes .openbot-build/paid-account-identity-e2e/report.json and exits non-zero on a failure.
@@ -10,6 +12,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { Effect } from "effect";
 import { type AccountAnalyticsEvent, createAccountAnalytics } from "../src/server/account-analytics";
 import { SalesAnalyticsDelivery } from "../src/server/sales-analytics-delivery";
@@ -59,6 +62,100 @@ const isIdentity = (request: Request | undefined) =>
   JSON.stringify(request.payload) === JSON.stringify({ profileId: PAYER.id, email: NORMALIZED_EMAIL });
 const hasNoEmail = (requests: readonly Request[]) =>
   requests.filter((request) => request.type === "track").every((request) => !JSON.stringify(request).includes("@"));
+
+async function independentAccountAnalytics() {
+  const database = migratedDatabase();
+  const binding = sqliteD1(database);
+  const api = openPanel();
+  const work: Promise<void>[] = [];
+  let scheduled = 0;
+  let identityReads = 0;
+  const analytics = createAccountAnalytics({
+    clientId: "fixture-configured-client",
+    clientSecret: "fixture-configured-secret",
+    fetch: api.fetch,
+    schedule: (send) => {
+      scheduled += 1;
+      work.push(Effect.runPromise(send));
+    },
+    database: {
+      prepare: (query) => {
+        identityReads += 1;
+        return binding.prepare(query);
+      },
+      batch: <T>(statements: D1PreparedStatement[]) => {
+        identityReads += 1;
+        return binding.batch<T>(statements);
+      },
+      exec: (query) => {
+        identityReads += 1;
+        return binding.exec(query);
+      },
+      withSession: (constraintOrBookmark) => {
+        identityReads += 1;
+        return binding.withSession(constraintOrBookmark);
+      },
+      dump: () => {
+        identityReads += 1;
+        return binding.dump();
+      },
+    },
+  });
+  try {
+    for (const action of [
+      "checkout_started",
+      "checkout_expired",
+      "plan_started",
+      "payment_succeeded",
+      "payment_failed",
+      "plan_changed",
+      "cancel_scheduled",
+      "cancel_withdrawn",
+      "plan_ended",
+      "portal_opened",
+    ] as const) {
+      for (const product of ["license", "server"] as const) {
+        analytics.track(PAYER.id, { name: "billing_action", action, product });
+        await Promise.all(work.splice(0));
+        check(
+          `independent ${product} ${action} sends and schedules nothing`,
+          api.requests.length === 0 && scheduled === 0,
+          { requests: api.requests.length, scheduled },
+        );
+      }
+    }
+    for (const event of [
+      { name: "account_created", surface: "desktop", firstTouch: null },
+      {
+        name: "account_attributed",
+        via: "sign_in",
+        firstTouch: {
+          acquisitionSource: "direct",
+          sourcePlatform: "unknown",
+          landingPage: "/",
+          firstVisitOn: "2026-10-31",
+        },
+      },
+      { name: "hosted_server_action", action: "provisioned" },
+      { name: "email_sent", kind: "sign_in_code", result: "accepted" },
+    ] satisfies AccountAnalyticsEvent[]) {
+      analytics.track(PAYER.id, event);
+      analytics.track(null, event);
+      await Promise.all(work.splice(0));
+      check(`independent ${event.name} sends and schedules nothing`, api.requests.length === 0 && scheduled === 0, {
+        requests: api.requests.length,
+        scheduled,
+      });
+    }
+    check("independent analytics never reads account identity", identityReads === 0, { identityReads });
+    check(
+      "independent analytics leaves the stored account unchanged",
+      database.prepare("SELECT email FROM users WHERE id = ?").get(PAYER.id)?.email === PAYER.email,
+    );
+  } finally {
+    database.close();
+  }
+}
 
 async function accountAnalytics() {
   const database = migratedDatabase();
@@ -201,7 +298,10 @@ async function salesLedger() {
 
 let passed = false;
 try {
-  await accountAnalytics();
+  if (INDEPENDENT_EDITION) await independentAccountAnalytics();
+  else await accountAnalytics();
+  // The independent Worker does not construct this retained ledger. Keep its identity checks
+  // against the injected recording transport; this fixture makes no real network request.
   await salesLedger();
   passed = checks.every((item) => item.passed);
 } finally {

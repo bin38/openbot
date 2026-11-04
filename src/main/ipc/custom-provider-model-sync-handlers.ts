@@ -8,13 +8,13 @@ import { Effect, Result } from "effect";
 import type { CustomProviderModelSync, CustomProviderModelSyncFailure } from "../custom-provider-model-sync";
 import { handler, type IpcGroupHandlers, payloadHandler } from "./define-ipc-group";
 
-export function decodeRefreshCustomProviderModelsInput(value: unknown): RefreshCustomProviderModelsInput {
+function decodeRefreshCustomProviderModelsInput(value: unknown): RefreshCustomProviderModelsInput {
   if (!isDynamicRecord(value) || Object.keys(value).some((key) => key !== "id") || !isCustomProviderId(value.id))
     throw new Error("Invalid custom provider model refresh.");
   return { id: value.id };
 }
 
-export function decodeSetCustomProviderModelSyncInput(value: unknown): SetCustomProviderModelSyncInput {
+function decodeSetCustomProviderModelSyncInput(value: unknown): SetCustomProviderModelSyncInput {
   if (
     !isDynamicRecord(value) ||
     Object.keys(value).some((key) => key !== "id" && key !== "enabled") ||

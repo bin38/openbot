@@ -1,4 +1,3 @@
-import { EmailMessage } from "cloudflare:email";
 import { isDynamicRecord } from "@openbot/contracts/runtime-values";
 import { normalizeEmailAddress } from "@openbot/contracts/validation";
 import { Effect } from "effect";
@@ -76,7 +75,12 @@ const sendMessage = Effect.fn("CloudflareEmail.send")(function* (
     "",
   ].join("\r\n");
   yield* Effect.tryPromise({
-    try: () => config.binding.send(new EmailMessage(config.from, to, raw)),
+    try: async () => {
+      // Shared account services also run under Node/Bun. Load the Worker binding's message
+      // constructor only when this configured native transport actually sends an email.
+      const { EmailMessage } = await import("cloudflare:email");
+      return config.binding.send(new EmailMessage(config.from, to, raw));
+    },
     catch: (error) =>
       new EmailDeliveryError({
         message:

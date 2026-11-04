@@ -27,7 +27,7 @@ interface AgentEntry {
   detail: MarketplaceAgentDetail;
   avatar: StoredAvatar | null;
 }
-export interface LocalTemplateEntry {
+interface LocalTemplateEntry {
   sourceAgentId: string;
   detail: AgentTemplateDetail;
   avatar: StoredAvatar | null;

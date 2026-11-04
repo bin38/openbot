@@ -10,6 +10,7 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { Effect, Fiber } from "effect";
 import { deliverPendingRemoteAuthEvents, verifyRemoteServiceSignature } from "../src/server/remote-control-plane";
 import { createWorkerHandler } from "../src/server/worker-handler";
@@ -252,6 +253,7 @@ async function cronSendsTheEventsOfItsDeletesOnceAfterThem() {
   }
   // Events of earlier requests, which the cron's own drain reads beside the hosted server check.
   seedProfileEvents(database, 5, now);
+  const hostedBefore = database.prepare("SELECT * FROM hosted_servers ORDER BY server_id").all();
 
   const order: string[] = [];
   const signal = fakeSignal(now);
@@ -296,29 +298,55 @@ async function cronSendsTheEventsOfItsDeletesOnceAfterThem() {
 
   const lastBoatDelete = order.findLastIndex((entry) => entry.startsWith("boat DELETE"));
   const firstHostEvent = order.findIndex((entry) => entry.startsWith("signal") && !entry.endsWith("profile-changed"));
-  check("the cron deletes both sandboxes", order.filter((entry) => entry.startsWith("boat DELETE")).length === 2, {
-    order,
-  });
-  check(
-    "the cron sends the events of its deletes only after the last delete",
-    firstHostEvent > lastBoatDelete && lastBoatDelete >= 0,
-    { order },
-  );
+  if (INDEPENDENT_EDITION) {
+    check(
+      "the independent cron makes no hosted-provider request",
+      order.every((entry) => !entry.startsWith("boat ")),
+      { order },
+    );
+    check("the independent cron creates no hosted deletion event", firstHostEvent === -1, { order });
+    check(
+      "the independent cron preserves the queued hosted server records",
+      JSON.stringify(database.prepare("SELECT * FROM hosted_servers ORDER BY server_id").all()) ===
+        JSON.stringify(hostedBefore),
+    );
+    check(
+      "the independent cron preserves hosted ownership and memberships",
+      database.prepare("SELECT COUNT(*) AS count FROM remote_hosts WHERE owner_user_id = 'owner'").get()?.count === 2 &&
+        database.prepare("SELECT COUNT(*) AS count FROM remote_memberships WHERE status = 'active'").get()?.count === 2,
+    );
+  } else {
+    check("the cron deletes both sandboxes", order.filter((entry) => entry.startsWith("boat DELETE")).length === 2, {
+      order,
+    });
+    check(
+      "the cron sends the events of its deletes only after the last delete",
+      firstHostEvent > lastBoatDelete && lastBoatDelete >= 0,
+      { order },
+    );
+  }
   check("the cron sends each event once", duplicates(signal.state.bodies).length === 0, {
     duplicates: duplicates(signal.state.bodies),
   });
-  // Per server: one auth epoch event and one servers event for its member.
-  check("the cron sends the 5 earlier events and the 4 events of its deletes", signal.state.bodies.length === 9, {
-    sends: signal.state.bodies.length,
+  check("each cron send has a valid Signal signature", signal.state.badSignatures === 0, {
+    badSignatures: signal.state.badSignatures,
   });
+  // Original mode adds one auth epoch event and one servers event per deleted server.
+  check(
+    INDEPENDENT_EDITION
+      ? "the independent cron sends all 5 pending auth events"
+      : "the cron sends the 5 earlier events and the 4 events of its deletes",
+    signal.state.bodies.length === (INDEPENDENT_EDITION ? 5 : 9),
+    { sends: signal.state.bodies.length },
+  );
   check("the cron leaves no event in the outbox", remaining(database).length === 0, { remaining: remaining(database) });
   const states = database
     .prepare("SELECT observed_state FROM hosted_servers")
     .all()
     .map((row) => row.observed_state);
   check(
-    "the cron finishes both deletes",
-    states.every((state) => state === "deleted"),
+    INDEPENDENT_EDITION ? "the independent cron leaves hosted state unchanged" : "the cron finishes both deletes",
+    states.every((state) => state === (INDEPENDENT_EDITION ? "running" : "deleted")),
     { states },
   );
 }

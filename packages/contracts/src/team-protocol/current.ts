@@ -569,7 +569,8 @@ export const TEAM_BOOTSTRAP_CAPABILITIES = TEAM_CURRENT_CAPABILITIES.filter(
     capability !== CONTEXT_COMPACT_CAPABILITY &&
     capability !== AGENT_INSTRUCTIONS_CAPABILITY &&
     capability !== TEAM_UI_BLOCK_VAULT_CAPABILITY &&
-    capability !== LOCAL_SERVERS_CAPABILITY,
+    capability !== LOCAL_SERVERS_CAPABILITY &&
+    capability !== STREAMING_ATTACHMENTS_CAPABILITY,
 );
 /**
  * The capabilities that only a protocol 9 peer sends and gets. Protocols 7 and 8 read at most 128
@@ -714,6 +715,7 @@ export function legacyTeamCapabilities(capabilities: readonly string[]): string[
       capability !== CONTEXT_COMPACT_CAPABILITY &&
       capability !== AGENT_INSTRUCTIONS_CAPABILITY &&
       capability !== TEAM_UI_BLOCK_VAULT_CAPABILITY &&
-      capability !== LOCAL_SERVERS_CAPABILITY,
+      capability !== LOCAL_SERVERS_CAPABILITY &&
+      capability !== STREAMING_ATTACHMENTS_CAPABILITY,
   );
 }

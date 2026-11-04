@@ -40,6 +40,8 @@ All notable changes to OpenBot will be documented here. The project follows
 - Gemini 按账号保存已发现的模型，桌面选择器显示所选账号的目录与思考档位；修复默认账号旧目录遮住付费账号新模型的问题。移除账号前校验全部助手及待切换模型，失败时不产生部分更改。
 - Allow the first custom endpoint to be added before its runtime is installed. Saving prepares the selected runtime and preserves the current default provider and model.
 - Bundle streaming-upload dependencies into the sandboxed preload and fix a loading-screen callback that could stop the interface during startup.
+- 保持旧客户端的能力数量与上传错误顺序，分块大文件能力仅在协议协商支持后启用。
+- 自建账号服务可由 Node 或 Bun 导入验证，Cloudflare 邮件组件只在实际发送邮件时加载。
 
 ### Security
 

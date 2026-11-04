@@ -17,6 +17,12 @@ import {
   TEAM_MP4_ATTACHMENTS_CAPABILITY,
   teamCapabilitiesForProtocol,
 } from "@openbot/contracts/team-protocol/current";
+import { STREAMING_ATTACHMENTS_CAPABILITY } from "@openbot/contracts/team-protocol/streaming-attachments-v1";
+import { TEAM_PI_MUSE_CAPABILITY } from "@openbot/contracts/team-protocol/v7";
+import {
+  TEAM_LONG_CAPABILITY_LISTS_CAPABILITY,
+  TEAM_PROTOCOL_V9_CAPABILITY_LIMIT,
+} from "@openbot/contracts/team-protocol/v9";
 import { Effect } from "effect";
 import { AttachmentFiles } from "../src/backend/attachment-files";
 
@@ -106,6 +112,26 @@ async function run() {
     assert.ok(legacy.length <= 64);
     assert.equal(legacy.includes(TEAM_MP4_ATTACHMENTS_CAPABILITY), false);
     assert.equal(teamCapabilitiesForProtocol(7).includes(TEAM_MP4_ATTACHMENTS_CAPABILITY), true);
+    // Bootstrap keeps the released negotiation markers. Its v9 marker permits the larger
+    // request limit; the legacy response still has at most 64 entries.
+    const bootstrap = teamCapabilitiesForProtocol(null);
+    assert.ok(bootstrap.length <= TEAM_PROTOCOL_V9_CAPABILITY_LIMIT);
+    assert.equal(bootstrap.includes(TEAM_PI_MUSE_CAPABILITY), true);
+    assert.equal(bootstrap.includes(TEAM_LONG_CAPABILITY_LISTS_CAPABILITY), true);
+    assert.deepEqual(
+      bootstrap.filter(
+        (capability) => capability !== TEAM_PI_MUSE_CAPABILITY && capability !== TEAM_LONG_CAPABILITY_LISTS_CAPABILITY,
+      ),
+      legacy,
+    );
+    assert.equal(bootstrap.includes(STREAMING_ATTACHMENTS_CAPABILITY), false);
+    assert.equal(legacy.includes(STREAMING_ATTACHMENTS_CAPABILITY), false);
+    for (const protocol of [7, 8]) {
+      const capabilities = teamCapabilitiesForProtocol(protocol);
+      assert.ok(capabilities.length <= 128);
+      assert.equal(capabilities.includes(STREAMING_ATTACHMENTS_CAPABILITY), false);
+    }
+    assert.equal(teamCapabilitiesForProtocol(9).includes(STREAMING_ATTACHMENTS_CAPABILITY), true);
 
     return {
       status: "pass",

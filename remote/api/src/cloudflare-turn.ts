@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { CloudflareTurnConfig } from "./config";
 import type { IceServer } from "./protocol";
 
-export class CloudflareTurnError extends Schema.TaggedError<CloudflareTurnError>()("CloudflareTurnError", {
+class CloudflareTurnError extends Schema.TaggedError<CloudflareTurnError>()("CloudflareTurnError", {
   message: Schema.String,
 }) {}
 

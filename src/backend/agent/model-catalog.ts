@@ -165,7 +165,7 @@ export class ModelCatalog {
 }
 
 /** The same ID, name, effort and stored-key policy for each discovered account. */
-export function modelOptionsFromSnapshot(
+function modelOptionsFromSnapshot(
   provider: AgentProvider,
   data: ModelListResponse["data"],
   hasStoredKey = false,

@@ -20,7 +20,7 @@ type MobileConnectAction = DesktopAnalyticsProperties<"mobile_connect_action">["
 const AUTH_SUCCESS_HOLD_MS = 600;
 
 /** Display and local author identity only. It is never a remote sign-in or authorization grant. */
-export interface WorkspaceAccount extends CentralAuthUser {
+interface WorkspaceAccount extends CentralAuthUser {
   local: boolean;
 }
 

@@ -4,7 +4,7 @@ import { Effect, Result } from "effect";
 import type { McpRegistryService } from "../mcp-registry-service";
 import { type IpcGroupHandlers, payloadHandler } from "./define-ipc-group";
 
-export function decodeMcpRegistryQuery(value: unknown): McpRegistryQuery {
+function decodeMcpRegistryQuery(value: unknown): McpRegistryQuery {
   if (!isDynamicRecord(value) || Object.keys(value).some((key) => !["query", "cursor", "refresh"].includes(key)))
     throw new Error("Invalid registry search.");
   const { query, cursor, refresh } = value;
