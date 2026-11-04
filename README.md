@@ -65,17 +65,22 @@ multipart / 文件上传接口。当前预置覆盖普通 HTTP 和任务轮询�
 
 ## Install
 
-This checkout is a development edition. No signed independent release was built or published for
-these changes. Start from [Development](#development). The package instructions below apply to
-artifacts from your own build or verified release source, not the upstream distribution.
+The first independent preview is [OpenBot 独立版 1.0.0](https://github.com/bin38/openbot/releases/tag/independent-v1.0.0)
+for macOS on Apple silicon. It uses an ad-hoc signature and is not Apple-notarized. The release
+includes DMG and ZIP files, SHA-256 checksums, and corresponding remote-desktop component source.
+Other platforms require your own build; see [Development](#development).
 
 The retained desktop targets support macOS 13 or newer on Apple silicon or Intel, Windows 10 or
 newer on x64 systems, and x64 or arm64 Linux as an AppImage.
 
 ### macOS
 
-1. Download the latest `OpenBot-*-arm64.dmg` (or `OpenBot-*-x64.dmg` on an Intel Mac) from your own verified release source.
-2. Drag OpenBot to Applications and open it.
+1. Download `OpenBot-Independent-1.0.0-arm64.dmg` from the independent release above.
+2. Drag `OpenBot 独立版.app` to Applications and open it. macOS may require you to allow it in Privacy & Security.
+
+The app uses `~/Library/Application Support/OpenBot Independent` and keeps the original OpenBot
+application separate. A new install contains no saved accounts or personal data. See
+[independent releases](docs/independent-release.md) before moving a development profile.
 
 ### Windows
 
@@ -710,10 +715,11 @@ described above.
 
 ## Releases
 
-No signed independent release, tag, or deployment is included in these changes. The desktop has
-no automatic upstream update feed, and `electron-builder.yml` has no publish target. Provider CLI
-updates still come from each provider's own distribution sources; they are separate from OpenBot
-application updates.
+Independent builds use the `independent-v<version>` tag and the
+[bin38/openbot releases](https://github.com/bin38/openbot/releases) page. Version 1.0.0 is an
+ad-hoc signed macOS Apple silicon preview. It is not Apple-notarized and has no automatic app
+update feed. Provider CLI updates still come from each provider's own distribution sources;
+they are separate from OpenBot application updates.
 
 The optional host installer/updater needs `OPENBOT_RELEASE_REPOSITORY` naming your own GitHub
 release repository. The macOS host manager also needs your signing team ID. Manual host release

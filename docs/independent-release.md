@@ -19,6 +19,14 @@ creates DMG and ZIP files, and runs the independent package verifier. Output is 
 without building. The public service resource contains only a version and the two service URLs.
 Private account credentials, API keys, operator signing keys and databases are not packaged.
 
+Gemini 1.4.5 uses a local WebSocket harness. On macOS with a system SOCKS proxy, its bundled
+Python can fail to match the proxy exception `localhost` against `localhost:<port>`. The result
+is an `Internal error` during model discovery. If this occurs, keep all existing proxy exceptions
+and add `localhost:*` in the active network service's proxy settings. This keeps local harness
+traffic direct and preserves the system's other bypass rules. A proxy manager may restore its own
+list when it restarts; add the same exception to that manager's settings if needed. OpenBot does
+not change system proxy settings or replace native proxy rules with environment variables.
+
 This local build is ad-hoc signed, not Apple-notarized. It does not claim the original publisher's
 Apple team or Universal Links domain. Fuses, renderer isolation, native component checks and the
 Cua vendor signature remain in force. Keep the GPL licenses and exact corresponding source
