@@ -486,7 +486,10 @@ try {
     "Discovered browser guidance reports only a sign-in that needs the user",
     results
       .filter((entry) => entry.tool === "tool_describe")
-      .every((entry) => JSON.stringify(entry.result).includes("report a sign-in that needs the user, not a takeover")),
+      .every((entry) => {
+        const guidance = JSON.stringify(entry.result);
+        return guidance.includes("report a sign-in needing the user") && guidance.includes("do not request takeover");
+      }),
   );
   pass(
     "Routine guidance reports steps that need a person",
