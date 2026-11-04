@@ -21,7 +21,8 @@ const viewerBoundsSchema = agentSchema.extend({ bounds: boundsSchema.nullable() 
 export function decodeE2bTakeoverInput(value: unknown): E2bTakeoverInput {
   const parsed = takeoverSchema.safeParse(value);
   if (!parsed.success) throw new Error("Invalid cloud computer viewer request.");
-  return parsed.data;
+  const { agentId, bounds } = parsed.data;
+  return { agentId, ...(bounds === undefined ? {} : { bounds }) };
 }
 
 export function decodeE2bViewerBoundsInput(value: unknown): E2bViewerBoundsInput {
@@ -54,5 +55,12 @@ export function decodeE2bSettingsInput(value: unknown): SaveE2bSettingsInput {
   const parsed = settingsSchema.safeParse(value);
   // Zod diagnostics can contain the submitted key. Never export them across IPC.
   if (!parsed.success) throw new Error("Invalid cloud computer settings.");
-  return parsed.data;
+  const { template, timeoutMinutes, apiKey, clearApiKey, confirmKeyReplacement } = parsed.data;
+  return {
+    template,
+    timeoutMinutes,
+    ...(apiKey === undefined ? {} : { apiKey }),
+    ...(clearApiKey === undefined ? {} : { clearApiKey }),
+    ...(confirmKeyReplacement === undefined ? {} : { confirmKeyReplacement }),
+  };
 }

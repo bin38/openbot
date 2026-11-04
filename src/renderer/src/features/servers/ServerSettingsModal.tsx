@@ -83,9 +83,9 @@ export interface ServerSettingsModalProps {
   /** False where no remote desktop can start, such as the browser client. The section is then absent. */
   remoteDesktopSupported?: boolean;
   /** Local E2B credentials and machines. Remote hosts do not expose this settings surface. */
-  cloudComputer?: ServerCloudComputerOptions;
+  cloudComputer?: ServerCloudComputerOptions | undefined;
   /** Arbitrary HTTP endpoint credentials are local-only; they never use a released Team API route. */
-  apiChannels?: ServerApiChannelsOptions;
+  apiChannels?: ServerApiChannelsOptions | undefined;
   server: ServerSummary;
   hostStatus?: HostStatus | null;
   members: TeamPresenceMember[];
@@ -110,7 +110,7 @@ export interface ServerSettingsModalProps {
    */
   license?: Pick<LicenseCalls, "getState" | "setUsers" | "changePlan"> | undefined;
   /** Opens the contact page when a full license already has the most users that the app sells. */
-  onContactUs?: () => void;
+  onContactUs?: (() => void) | undefined;
   onUpdateMember: (input: UpdateTeamMemberInput) => Promise<void>;
   onRemoveMember: (memberId: string) => Promise<void>;
   onRevokeInvite: (inviteId: string) => Promise<void>;

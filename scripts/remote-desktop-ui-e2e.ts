@@ -327,13 +327,18 @@ interface Report {
   video?: { width: number; height: number; readyState: number; time: number };
   videoBox?: { x: number; y: number; width: number; height: number };
   input?: {
-    activeTag?: string;
-    activeId?: string;
+    activeTag?: string | undefined;
+    activeId?: string | undefined;
     buttons: (string | null)[];
     overlays: { text: string | null; display: string }[];
   };
   inputResult?: { active: boolean; mouse: boolean; keyboard: boolean };
-  viewer?: { mouseMode?: string; connected?: boolean; keyboard?: string; mouse?: string };
+  viewer?: {
+    mouseMode?: string | undefined;
+    connected?: boolean | undefined;
+    keyboard?: string | undefined;
+    mouse?: string | undefined;
+  };
   mouseEvent?: { x: number; y: number; target: string | null; prevented: boolean } | null;
   hit?: { parent: string | null; viewer: string | null };
   errors: string[];
@@ -430,7 +435,7 @@ try {
   };
   const receivedMouse = frame.locator("body").evaluate(
     () =>
-      new Promise<Report["mouseEvent"]>((accept) => {
+      new Promise<NonNullable<Report["mouseEvent"]> | null>((accept) => {
         const timeout = window.setTimeout(() => accept(null), 5_000);
         document.addEventListener(
           "mousedown",

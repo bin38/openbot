@@ -348,7 +348,7 @@ export const requestApiOperation = Effect.fn("ApiChannels.request")(function* (
       let response = await fetch(url.href, {
         method: operation.method,
         headers,
-        body,
+        ...(body === undefined ? {} : { body }),
         ...(operation.bodyType === "multipart" ? { duplex: "half" } : {}),
         signal,
         redirect: "manual",

@@ -1185,7 +1185,7 @@ export class TeamApiServer {
     return routeFiles(context, {
       agents: this.#options.agents,
       mailbox: this.#options.mailbox,
-      uploads: this.#options.attachmentUploads,
+      ...(this.#options.attachmentUploads === undefined ? {} : { uploads: this.#options.attachmentUploads }),
     });
   }
 

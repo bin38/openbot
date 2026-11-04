@@ -171,7 +171,7 @@ export function MobileConnectAddPhoneDialog(props: {
   open: boolean;
   store: Store;
   canCancelTicket: boolean;
-  showStoreLinks?: boolean;
+  showStoreLinks?: boolean | undefined;
   onClose: () => void;
 }) {
   const { t } = useText();

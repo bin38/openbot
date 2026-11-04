@@ -37,14 +37,14 @@ const jsonText = z.string().min(2).max(1_048_576);
 const listSchema = z.strictObject({ templateId: identifier.optional() });
 const draftSchema = z.strictObject({
   definitionJson: jsonText.describe(
-    "A JSON channel definition based on a template returned by list_api_channels. Never include keys, tokens, passwords, cookies, or secret header values.",
+    "JSON definition from a list_api_channels template. No keys, tokens, passwords, cookies or secret headers.",
   ),
 });
 const callSchema = z.strictObject({
   channelId: identifier,
   operationId: identifier,
   valuesJson: jsonText.describe(
-    "A JSON object with the advertised operation parameters. File parameters name regular files in this agent's workspace, Shared, or its approved additional folders. Do not add a target URL or credentials outside the advertised parameters.",
+    "JSON object of advertised parameters only. Files must be regular files in your workspace, Shared or approved folders. No extra target URL or credentials.",
   ),
 });
 const runSchema = z.strictObject({ runId: identifier });
@@ -54,31 +54,31 @@ export const API_CHANNEL_TOOL_DEFINITIONS = [
   {
     name: "list_api_channels",
     description:
-      "List configured HTTP API channels, their ASR, OCR, speech, image, video, search and other operations, parameter definitions and credential readiness. Lists safe template summaries too; pass a templateId to read one complete definition for creating a new channel. Never returns credentials.",
+      "List HTTP API channels, operations (ASR, OCR, speech, image, video, search, custom), parameters and credential readiness, never credentials. Includes template summaries; templateId returns a full draft definition.",
     shape: listSchema.shape,
   },
   {
     name: "create_api_channel_draft",
     description:
-      "Create a new disabled API channel draft when the user asks to connect a service. Read a suitable template with list_api_channels first. The user reviews the endpoint, enters credentials and enables the channel in Server settings, API endpoints. This cannot change an existing channel, borrow its key, enable a channel, or execute a request.",
+      "On a user request, create a disabled channel from a list_api_channels template. The user reviews it, enters credentials and enables it in Server settings, API endpoints. Cannot change existing channels, borrow keys, enable or execute.",
     shape: draftSchema.shape,
   },
   {
     name: "call_api_channel",
     description:
-      "Call one enabled API channel's configured operation, such as MiniMax ASR, text-to-speech, visual text extraction, image/video generation or a custom API. List channels first and use only the advertised channelId, operationId and parameters. This may send input/files to that service and consume its quota. Mutation or deletion requires the user's request. Results return local run/artifact IDs; do not repeat a generation request to poll or download its result.",
+      "Call an enabled channel operation: MiniMax ASR, speech, visual text extraction, image/video or custom API. List channels first; use advertised IDs/parameters only. Inputs/files go to the service and may use quota. Mutations/deletes require a user request. Poll/download via returned local IDs, never by repeating generation.",
     shape: callSchema.shape,
   },
   {
     name: "get_api_channel_run",
     description:
-      "Read or poll a previous API run using its local runId. The run belongs to this agent; OpenBot uses its saved polling operation rather than a model-supplied URL or third-party task ID. A pending result does not authorize repeating the original generation request.",
+      "Read/poll this agent's local runId using its saved polling operation, never a supplied URL or vendor task ID. Pending status does not authorize repeating generation.",
     shape: runSchema.shape,
   },
   {
     name: "download_api_channel_artifact",
     description:
-      "Deliver one generated API artifact from this agent's previous run into the current chat as a managed downloadable attachment. Pass its local artifactId, never a URL, file ID from another service, or local output path. This does not repeat a generation request.",
+      "Deliver this agent's generated artifact to the current chat as a managed download. Use its local artifactId, never a URL, vendor file ID or output path. Does not regenerate.",
     shape: downloadSchema.shape,
   },
 ];

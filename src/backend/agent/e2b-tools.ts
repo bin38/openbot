@@ -56,7 +56,7 @@ const scrollSchema = z.strictObject({
     .min(1)
     .max(10_000)
     .default(600)
-    .describe("Approximate scroll distance. One wheel step is about 100 pixels; each call uses at most 20 steps."),
+    .describe("Approximate pixels; about 100 per wheel step, at most 20 steps per call."),
 });
 const path = z
   .string()
@@ -77,53 +77,52 @@ export const E2B_TOOL_DEFINITIONS = [
   {
     name: "cloud_computer_status",
     description:
-      "Read this agent's E2B cloud computer status without starting or resuming it. A cloud computer is separate from the user's local desktop.",
+      "Read this agent's E2B status without starting/resuming it. Its cloud desktop is separate from the local computer.",
     shape: empty.shape,
   },
   {
     name: "cloud_computer_start",
     description:
-      "Create or resume this agent's persistent E2B desktop. Requires the user's E2B key in Cloud computer settings and may incur E2B charges. Files survive pause/resume. Never replaces an expired or inaccessible computer automatically.",
+      "Create/resume this agent's persistent E2B desktop with the key in Cloud computer settings; charges may apply. Pause/resume retains files. Never auto-replace expired or inaccessible computers.",
     shape: empty.shape,
   },
   {
     name: "cloud_computer_pause",
     description:
-      "Pause this agent's E2B cloud computer, retaining its files and memory for later resume. Unavailable during human control.",
+      "Pause this agent's E2B desktop; retain files and memory for resume. Unavailable during human control.",
     shape: empty.shape,
   },
   {
     name: "cloud_computer_delete",
-    description:
-      "Permanently delete this agent's E2B cloud computer and its files. Use only when the user explicitly requested deletion.",
+    description: "Permanently delete this agent's E2B computer and files, only on the user's explicit request.",
     shape: empty.shape,
   },
   {
     name: "cloud_computer_screenshot",
     description:
-      "Take a screenshot of this agent's running E2B desktop. Use this before coordinates. Unavailable while the user has taken control.",
+      "Capture this agent's running E2B desktop before coordinate actions. Unavailable during human control.",
     shape: empty.shape,
   },
   {
     name: "cloud_computer_execute",
     description:
-      "Run one bounded foreground shell command on this agent's running E2B computer. Commands run in the cloud, not on the local computer. Output is bounded and marked when truncated; save large outputs to a file and download it. Do not start detached jobs that continue after the command deadline.",
+      "Run one bounded foreground command on this agent's running E2B computer, never locally. Output marks truncation; save/download large output as a file. No detached jobs past the deadline.",
     shape: commandSchema.shape,
   },
   {
     name: "cloud_computer_click",
-    description: "Click a position from the latest screenshot on this agent's running E2B desktop.",
+    description: "Click this agent's running E2B desktop at coordinates from its latest screenshot.",
     shape: clickSchema.shape,
   },
   {
     name: "cloud_computer_type",
     description:
-      "Type text into the focused control on this agent's E2B desktop. Ask the user to take control for passwords or sensitive sign-in steps.",
+      "Type into this agent's focused E2B control. Ask the user to take over for passwords or sensitive sign-in steps.",
     shape: typeSchema.shape,
   },
   {
     name: "cloud_computer_key",
-    description: "Press a key or key combination on this agent's E2B desktop, such as Return, Tab, or ctrl+l.",
+    description: "Press a key/shortcut on this agent's E2B desktop, such as Return, Tab or ctrl+l.",
     shape: keySchema.shape,
   },
   {
@@ -134,13 +133,13 @@ export const E2B_TOOL_DEFINITIONS = [
   {
     name: "cloud_computer_upload",
     description:
-      "Stream a regular file from this agent's local workspace to its E2B computer. Supports all file types without a product size cap. This sends the selected file to E2B; it does not extract archives.",
+      "Stream a regular workspace file to this agent's E2B computer: all types, no product size cap. Sends the selected file to E2B; never extracts archives.",
     shape: fileSchema.shape,
   },
   {
     name: "cloud_computer_download",
     description:
-      "Stream a file from this agent's E2B computer and deliver it to the current chat as a downloadable attachment. Choose a file name, not a host directory. Supports all file types and does not execute or extract the file.",
+      "Stream a file of any type from this agent's E2B computer to a downloadable chat attachment. Supply a file name, not a host directory. Never executes or extracts it.",
     shape: downloadSchema.shape,
   },
 ];

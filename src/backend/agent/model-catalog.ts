@@ -173,8 +173,9 @@ function modelOptionsFromSnapshot(
   const catalog = BUILT_IN_PROVIDER_DRIVERS.find((driver) => driver.id === provider)?.catalog ?? {};
   const models: AgentModelOption[] = [];
   for (const reported of data) {
-    const server = { ...reported, model: reported.model?.trim() };
-    if (!server.model || !isAgentModel(server.model)) continue;
+    const model = reported.model?.trim();
+    if (!model || !isAgentModel(model)) continue;
+    const server = { ...reported, model };
     const fallback = MODEL_METADATA_FALLBACKS.find(
       (candidate) => candidate.provider === provider && candidate.id === server.model,
     );

@@ -31,8 +31,8 @@ export interface StoredApiArtifact {
   id: string;
   fileName: string;
   mimeType: string;
-  url?: string;
-  path?: string;
+  url?: string | undefined;
+  path?: string | undefined;
 }
 export interface StoredApiRun {
   owner: string;

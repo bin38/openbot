@@ -82,8 +82,8 @@ export function ModelPill(props: {
   provider: WfProvider;
   value: AgentModelId;
   /** An agent step keeps its account only while the override uses that agent's provider. */
-  accountProvider?: AgentProviderRef;
-  providerAccountId?: string;
+  accountProvider?: AgentProviderRef | undefined;
+  providerAccountId?: string | undefined;
   disabled?: boolean;
   onChange: (model: AgentModelId, provider: WfProvider) => void;
 }) {
@@ -103,7 +103,10 @@ export function ModelPill(props: {
       board.catalogs(),
       props.provider,
       props.accountProvider
-        ? { provider: props.accountProvider, providerAccountId: props.providerAccountId }
+        ? {
+            provider: props.accountProvider,
+            ...(props.providerAccountId === undefined ? {} : { providerAccountId: props.providerAccountId }),
+          }
         : undefined,
     );
   const name = (provider: AgentProviderRef) => providerName(board.catalogs(), provider);

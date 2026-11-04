@@ -719,9 +719,9 @@ function registerIpcHandlers({
     ...appIpcHandlers({
       service,
       localWorkspace,
-      getMobileConnectAvailability: INDEPENDENT_EDITION
-        ? () => mobileConnectAvailability(centralAuth, host)
-        : undefined,
+      ...(INDEPENDENT_EDITION
+        ? { getMobileConnectAvailability: () => mobileConnectAvailability(centralAuth, host) }
+        : {}),
       mailbox,
       browser,
       updater,

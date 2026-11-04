@@ -471,7 +471,11 @@ async function waitForRevocation(delivered: Promise<void>): Promise<void> {
 }
 
 /** The legacy binding captures MIME; structured sends can also expose the decoded text directly. */
-function capturedEmailText(email: { text?: string; raw?: string; rawBase64?: string }): string {
+function capturedEmailText(email: {
+  text?: string | undefined;
+  raw?: string | undefined;
+  rawBase64?: string | undefined;
+}): string {
   if (email.text) return email.text;
   const raw = email.raw ?? (email.rawBase64 ? Buffer.from(email.rawBase64, "base64").toString("utf8") : "");
   const boundary = /^Content-Type:[^\r\n]*boundary="([^"]+)"/imu.exec(raw)?.[1];

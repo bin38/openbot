@@ -1941,7 +1941,7 @@ function CustomEndpointsPage(props: ProviderSettingsPageProps) {
 function CustomEndpointModelSync(props: {
   endpoint: CustomProviderSummary;
   sync: CustomProviderModelSyncSettings;
-  disabled?: boolean;
+  disabled?: boolean | undefined;
 }) {
   const { t, format } = useText();
   const state = () => props.sync.states.find((entry) => entry.id === props.endpoint.id);

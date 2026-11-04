@@ -57,7 +57,7 @@ export interface ServerConnectionNoticeProps {
   /** Removes Details, for a notice that is not about the server connection. */
   hideDetails?: boolean;
   onRetry: () => void;
-  onManage?: () => void;
+  onManage?: (() => void) | undefined;
   /** The offer of a hosted server, for the user's own computer that is offline. */
   upsell?: { onSeePlans: () => void } | null | undefined;
 }

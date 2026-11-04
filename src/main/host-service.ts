@@ -441,7 +441,7 @@ export class HostService extends EventEmitter<HostEvents> {
       delete localAdmin.update;
     }
     this.#api = new TeamApiServer({
-      attachmentUploads: options.attachmentUploads,
+      ...(options.attachmentUploads === undefined ? {} : { attachmentUploads: options.attachmentUploads }),
       appVersion: options.appVersion,
       store: options.store,
       agents: options.agents,
