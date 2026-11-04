@@ -1,5 +1,5 @@
 /** The native account handlers need only the request and decoded path parameters. */
-export interface NativeApiContext<Params> {
+interface NativeApiContext<Params> {
   request: Request;
   params: Params;
 }
