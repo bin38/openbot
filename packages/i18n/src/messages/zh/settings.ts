@@ -2,6 +2,12 @@ import type { PartialTranslation } from "../../message";
 import type { messages as source } from "../en/settings";
 
 export const messages = {
+  "settings.panelError.title": "面板暂时出错",
+  "settings.panelError.description": "此面板暂时出错，其他功能仍可使用。",
+  "settings.panelError.retry": "重新加载面板",
+  "settings.panelError.close": "关闭面板",
+  "settings.localWorkspace.title": "本地工作区",
+  "settings.localWorkspace.description": "此工作区使用本机身份。模型账号和 API 密钥在“服务器设置 → 服务商”中管理。",
   // The language setting itself.
   "settings.language.title": "语言",
   "settings.language.description": "OpenBot 的菜单、按钮和消息将使用该语言显示。",
@@ -172,7 +178,7 @@ export const messages = {
   "settings.tab.notifications.description": "选择 OpenBot 提醒你的方式。",
   "settings.tab.voice.title": "语音",
   "settings.tab.voice.description": "消息框中的听写。本地模型在本机运行，ElevenLabs 在云端运行。",
-  "settings.tab.computerUse.title": "Computer Use",
+  "settings.tab.computerUse.title": "电脑操作",
   "settings.tab.computerUse.description":
     "允许这台电脑上 OpenBot 的助手查看并操作这台电脑上的应用。其他服务器上的助手使用那台服务器的电脑。",
   "settings.tab.profile.title": "个人资料",
@@ -199,6 +205,36 @@ export const messages = {
   // A device or an account session that the user disconnects.
   "settings.disconnect.action": "断开连接",
   "settings.disconnect.pending": "正在断开…",
+  "settings.mobileConnect.selfHosted.title": "自建手机连接",
+  "settings.mobileConnect.selfHosted.description":
+    "通过你自己的服务连接原版 OpenBot 手机 App。在此登录，再添加手机，即可发布这台电脑。",
+  "settings.mobileConnect.selfHosted.unconfigured": "请先配置你自己的连接服务",
+  "settings.mobileConnect.selfHosted.localOnly": "此工作区仍使用本地主人身份",
+  "settings.mobileConnect.selfHosted.signedOut": "请先登录你自己的账号服务",
+  "settings.mobileConnect.selfHosted.unpublished": "已登录，添加手机即可发布这台电脑",
+  "settings.mobileConnect.selfHosted.ready": "你的账号主机已具备手机配对条件",
+  "settings.mobileConnect.selfHosted.checking": "正在检查手机连接配置",
+  "settings.mobileConnect.selfHosted.requirements": "请使用你自己的连接服务账号。AI 对话仍使用本机 Codex 账号。",
+  "settings.mobileConnect.selfHosted.origin": "账号服务：{origin}",
+  "settings.mobileConnect.selfHosted.signedInAs": "已登录：{email}",
+  "settings.mobileConnect.selfHosted.publishHelp":
+    "点击“添加手机”会把这台电脑发布给当前账号，连接就绪后才显示配对码。手机使用期间，请保持这台 Mac 唤醒。",
+  "settings.mobileConnect.selfHosted.signOutTitle": "断开这台电脑与账号的连接？",
+  "settings.mobileConnect.selfHosted.signOutDescription":
+    "手机与这台电脑的连接将断开。本地对话、文件和 Codex 仍可使用。重新登录并添加手机即可再次连接。",
+  "settings.mobileConnect.selfHosted.refresh": "重新检查配置",
+  "settings.mobileConnect.selfHosted.guide": "部署与手机接入说明",
+  "settings.mobileConnect.selfHosted.stepServices":
+    "1. 部署你自己的账号服务、Signal 和 TURN 中继，并使用受信任的 HTTPS 地址，让手机在外网也能找到这台电脑。",
+  "settings.mobileConnect.selfHosted.stepHost":
+    "2. 在此页面登录，再点“添加手机”。应用会将本机发布给当前账号，连接就绪后生成短时有效的配对码。",
+  "settings.mobileConnect.selfHosted.stepPhone":
+    "3. 在原版 OpenBot 手机 App 中退出之前的账号，再使用扫码入口扫描这台电脑的配对码。手机端的邮箱登录会连接原站账号服务，请使用扫码入口。",
+  "settings.mobileConnect.selfHosted.localIdentity":
+    "本地主人、助手、对话和文件继续保留在本机。登录本身不会发布这台电脑；点击“添加手机”后，才会通过你自己的连接服务开放访问。",
+  "settings.mobileConnect.selfHosted.openAccount": "打开我的账号服务",
+  "settings.mobileConnect.selfHosted.checkFailed": "无法读取手机连接配置，请重试。",
+  "settings.mobileConnect.selfHosted.openFailed": "无法打开账号服务。",
   "settings.mobileConnect.phones.title": "你的手机",
   "settings.mobileConnect.phones.description": "使用该账号登录 OpenBot 的手机。",
   "settings.mobileConnect.phones.add": "添加手机",
@@ -542,6 +578,31 @@ export const messages = {
   "settings.voice.speech.listenFailed": "无法播放示例。",
   // No value may end with the word "import": the CommonJS shim of electron-vite reads `import"` in the
   // main bundle as an import statement and inserts its code inside the string.
+  "settings.voice.server.section": "语音服务器",
+  "settings.voice.server.title": "兼容 OpenAI 的服务器",
+  "settings.voice.server.notSetUp": "未设置",
+  "settings.voice.server.notInUse": "未使用",
+  "settings.voice.server.setUp": "设置",
+  "settings.voice.server.dictationSummary": "听写 · {model}",
+  "settings.voice.server.speechSummary": "语音回复 · {model} · {voice}",
+  "settings.voice.server.dialog.setUpTitle": "设置语音服务器",
+  "settings.voice.server.dialog.editTitle": "编辑语音服务器",
+  "settings.voice.server.dialog.subtitle": "兼容 OpenAI 的 /v1/audio 接口",
+  "settings.voice.server.address": "地址",
+  "settings.voice.server.apiKey": "API 密钥（可选）",
+  "settings.voice.server.apiKeySaved": "已保存",
+  "settings.voice.server.useFor": "用途",
+  "settings.voice.server.route.dictation": "听写",
+  "settings.voice.server.route.speech": "语音回复",
+  "settings.voice.server.route.dictationModel": "听写模型",
+  "settings.voice.server.route.speechModel": "语音回复模型",
+  "settings.voice.server.route.voice": "音色",
+  "settings.voice.server.route.missing": "此服务器不提供",
+  "settings.voice.server.connect": "连接",
+  "settings.voice.server.connecting": "正在连接…",
+  "settings.voice.server.probeFailed": "无法连接语音服务器。",
+  "settings.voice.server.saveFailed": "无法保存语音服务器。",
+  "settings.voice.server.removeFailed": "无法移除语音服务器。",
   "settings.transfer.title": "把这台服务器迁移到另一台电脑",
   "settings.transfer.lede": "你的助手、它们的技能、自动化任务、记忆和文件都会打包进一个文件。",
   "settings.transfer.flow.label": "迁移流程",

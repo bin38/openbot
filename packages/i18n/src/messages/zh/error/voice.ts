@@ -26,4 +26,9 @@ export const messages = {
   "error.voice.speech.timedOut": "朗读回复超时。",
   "error.voice.speech.failed": "OpenBot 无法朗读该回复。",
   "error.voice.recordingNotKept": "OpenBot 无法保留该录音。",
+  "error.voice.server.routeOff": "语音服务器尚未配置此用途，请检查“设置 → 语音”。",
+  "error.voice.server.keyRefused": "{host} 拒绝了此 API 密钥。",
+  "error.voice.server.invalidAnswer": "{host} 未返回兼容 OpenAI 的响应。",
+  "error.voice.server.invalidAudio": "{host} 返回的音频无法播放，请使用返回 WAV 音频的服务器。",
+  "error.voice.server.tooLarge": "{host} 返回的响应过大。",
 } as const satisfies PartialTranslation<typeof source>;

@@ -6,6 +6,7 @@ import type {
   ServerSummary,
 } from "@openbot/contracts/ipc";
 import { decodeRegistryEntries, decodeRegistryInstallResult, decodeRegistryOperations } from "@openbot/contracts/ipc";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { ACP_REGISTRY_ROUTES } from "@openbot/contracts/team-protocol/acp-registry-v1";
 import { CLAUDE_API_KEY_CAPABILITY } from "@openbot/contracts/team-protocol/claude-api-key-v1";
 import {
@@ -100,7 +101,19 @@ const WEB_EXTERNAL_DESTINATIONS: Partial<Record<ExternalDestination, string>> = 
   x: "https://x.com/OpenBot_",
 };
 
+const UPSTREAM_PRODUCT_DESTINATIONS: ReadonlySet<ExternalDestination> = new Set([
+  "feedback",
+  "message",
+  "changelog",
+  "guides",
+  "discord",
+  "x",
+]);
+
 export function openWebDestination(destination: ExternalDestination): Promise<void> {
+  // Hidden product shortcuts also stay inert if an older mounted view still invokes one.
+  // Provider sign-in destinations and the browser's ordinary user URL path are unchanged.
+  if (INDEPENDENT_EDITION && UPSTREAM_PRODUCT_DESTINATIONS.has(destination)) return Promise.resolve();
   const url = WEB_EXTERNAL_DESTINATIONS[destination];
   if (!url) return Promise.reject(new Error(currentText().t("webClient.error.linkDesktopOnly")));
   window.open(url, "_blank", "noopener");

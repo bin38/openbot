@@ -1,4 +1,5 @@
 import { ProviderLogo } from "@openbot/brand";
+import { modelSupportsProviderAccount } from "@openbot/contracts/account-scoped-models";
 import type {
   AgentModelId,
   AgentProviderId,
@@ -215,7 +216,12 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
   };
   const customIds = createMemo(() => customProviderIds(props.customProviders ?? []));
   const selectedModel = createMemo(() =>
-    props.modelOptions.find((option) => option.provider === props.provider && option.id === props.value),
+    props.modelOptions.find(
+      (option) =>
+        option.provider === props.provider &&
+        option.id === props.value &&
+        modelSupportsProviderAccount(option, props.providerAccountId),
+    ),
   );
   const selectedFixed = createMemo(() => fixedModelSettings(selectedModel()));
   /** The tab the current selection lives on: the Custom one for the user's endpoints and agents. */
@@ -233,9 +239,10 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
   let shownProvider = untrack(activeProvider);
 
   /** The OpenCode, Pi and Custom tabs split one wire provider so each model appears once. */
-  function railModelOptions(rail: RailId): ClientAgentModelOption[] {
-    if (rail === CUSTOM_RAIL) return props.modelOptions.filter((option) => isCustomModel(option, customIds()));
-    return props.modelOptions.filter((option) => option.provider === rail && !isCustomModel(option, customIds()));
+  function railModelOptions(rail: RailId, accountId: string | null = null): ClientAgentModelOption[] {
+    const options = props.modelOptions.filter((option) => modelSupportsProviderAccount(option, accountId));
+    if (rail === CUSTOM_RAIL) return options.filter((option) => isCustomModel(option, customIds()));
+    return options.filter((option) => option.provider === rail && !isCustomModel(option, customIds()));
   }
 
   /**
@@ -421,7 +428,7 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
   const selectedHasVariants = createMemo(
     () =>
       props.provider === "opencode" &&
-      pickerModels(railModelOptions(activeProvider())).some(
+      pickerModels(railModelOptions(activeProvider(), currentAccount())).some(
         (model) =>
           model.variants.length > 0 &&
           (model.id === props.value || model.variants.some((variant) => variant.id === props.value)),
@@ -656,10 +663,10 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
                   return id && id !== DEFAULT_PROVIDER_ACCOUNT_ID ? id : null;
                 };
                 const status = () => entryStatus(key);
-                const models = createMemo(() => pickerModels(railModelOptions(provider)));
+                const models = createMemo(() => pickerModels(railModelOptions(provider, accountId())));
                 const groups = createMemo(() => groupPickerModels(models(), search()));
                 // An endpoint and a custom agent can both list `goose/default`: match the provider too.
-                // Another account of the same provider lists the same models, but not this agent's.
+                // Each account can have a different model catalog and effort settings.
                 const selected = createMemo(() =>
                   accountId() !== currentAccount()
                     ? undefined
@@ -880,7 +887,10 @@ export function ProviderModelPicker(props: ProviderModelPickerProps) {
                               fixedModelSettingsText(
                                 fixedModelSettings(
                                   props.modelOptions.find(
-                                    (option) => option.provider === model.provider && option.id === model.id,
+                                    (option) =>
+                                      option.provider === model.provider &&
+                                      option.id === model.id &&
+                                      modelSupportsProviderAccount(option, accountId()),
                                   ),
                                 ),
                                 t,

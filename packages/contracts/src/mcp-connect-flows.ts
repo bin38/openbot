@@ -64,9 +64,9 @@ export interface McpKeyFlow extends McpConnectFlowBase {
 }
 
 /**
- * A server that another app on this computer runs, such as a desktop app's own MCP server. Nothing
- * is typed and nothing is signed in to: the user turns the server on in that app, and the dialog
- * connects to the listing's loopback address to see that it answers.
+ * A server prepared on this computer: a desktop app's loopback MCP server, or a local CLI whose
+ * own account sign-in is already configured. No credential is collected by this flow. The user
+ * follows the setup steps, and the dialog tests the declared local transport.
  */
 export interface McpLocalFlow extends McpConnectFlowBase {
   kind: "local";

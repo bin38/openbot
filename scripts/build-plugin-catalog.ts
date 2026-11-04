@@ -395,7 +395,8 @@ function parseLocalFlow(
   base: { id: string; label: string },
   transport: unknown,
 ): PluginLocalFlow {
-  if (transport !== "http") throw new Error(`Plugin ${slug} local server needs an http server.`);
+  if (transport !== "http" && transport !== "stdio")
+    throw new Error(`Plugin ${slug} local server needs a known transport.`);
   const steps = value.steps;
   if (
     !Array.isArray(steps) ||

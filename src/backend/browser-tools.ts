@@ -1,5 +1,6 @@
 import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import { BROWSER_TAKEOVER_REASONS, VAULT_TEXT_LIMIT, type VaultContactFields } from "@openbot/contracts/ipc";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { UI_BLOCK_LIMITS, UI_VAULT_REQUEST_KINDS } from "@openbot/contracts/ui-blocks";
 import { z } from "zod";
 import { advertisedJsonSchema } from "./agent/advertised-json-schema";
@@ -541,7 +542,9 @@ export const BROWSER_DYNAMIC_TOOLS = [
     type: "namespace" as const,
     name: OPENBOT_BROWSER_NAMESPACE,
     description: "Operate OpenBot's private, persistent native Electron/CDP browser.",
-    tools: BROWSER_TOOL_DEFINITIONS.map((definition) => ({
+    tools: BROWSER_TOOL_DEFINITIONS.filter(
+      (definition) => !INDEPENDENT_EDITION || definition.name !== "request_link_payment",
+    ).map((definition) => ({
       type: "function" as const,
       name: definition.name,
       description: definition.description,

@@ -1,4 +1,5 @@
-import { createFileRoute, notFound } from "@tanstack/solid-router";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
+import { createFileRoute, notFound, redirect } from "@tanstack/solid-router";
 import { DownloadPlatformPage } from "../../components/download/DownloadPlatformPage";
 import type { DownloadPageContent } from "../../lib/download-pages";
 
@@ -13,6 +14,9 @@ async function loadDownloadPage(platform: string): Promise<DownloadPageContent> 
 }
 
 export const Route = createFileRoute("/download/$platform")({
+  beforeLoad: () => {
+    if (INDEPENDENT_EDITION) throw redirect({ to: "/", statusCode: 307 });
+  },
   loader: ({ params }) => loadDownloadPage(params.platform),
   head: async ({ loaderData, match }) => {
     if (!loaderData) return {};

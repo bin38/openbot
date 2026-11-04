@@ -1,3 +1,4 @@
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { createServerFn } from "@tanstack/solid-start";
 import { isEuCountry, LIST_PRICE_PLANS, type PricingOffer } from "./pricing-page";
 
@@ -9,6 +10,7 @@ import { isEuCountry, LIST_PRICE_PLANS, type PricingOffer } from "./pricing-page
  * When the Stripe prices do not load, this logs the failure and gives the list prices.
  */
 export const readPricingOffer = createServerFn({ method: "GET" }).handler(async (): Promise<PricingOffer> => {
+  if (INDEPENDENT_EDITION) return { plans: [], inEu: false };
   const [{ getRequestHeader }, { requestBillingService }, { runApiEffect }, { BillingError }] = await Promise.all([
     import("@tanstack/solid-start/server"),
     import("../server/request-auth"),

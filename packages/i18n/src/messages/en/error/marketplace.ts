@@ -1,6 +1,10 @@
 import { defineMessages } from "../../../message";
 
 export const messages = defineMessages("error.marketplace", {
+  "error.marketplace.localCatalogUnavailable":
+    "The local catalog could not be read or saved. Its existing file has been kept.",
+  "error.marketplace.localListingMissing":
+    "This item is not in the local library. Import a copy you own instead of downloading it from the upstream store.",
   // Agent marketplace and agent link errors.
   "error.marketplace.timezoneInvalid": "The local timezone is invalid.",
   "error.marketplace.installedAgentMissing": "The installed agent no longer exists.",

@@ -50,6 +50,7 @@ import {
   type ProviderKeyApi,
 } from "@openbot/ui/features/settings/OpenCodeKeyDialog";
 import {
+  type CustomProviderModelSyncSettings,
   type ProviderDefaultChoice,
   type ProviderPromptCache,
   type ProviderSettingsDetail,
@@ -57,7 +58,7 @@ import {
 } from "@openbot/ui/features/settings/ProviderSettingsPage";
 import { useText } from "@openbot/ui/text";
 import type { JSX } from "@solidjs/web";
-import { createEffect, createMemo, createSignal, createStore, Show, untrack } from "solid-js";
+import { createEffect, createSignal, createStore, Show, untrack } from "solid-js";
 import { ProviderSignInDialogs } from "../../components/ProviderSignInDialogs";
 import type { ProviderConnectionApi } from "../../components/provider-connection-api";
 import { createCustomProviderHostState } from "../custom-providers/custom-provider-host-state";
@@ -91,6 +92,7 @@ interface ProviderSettingsSectionProps {
   onAddCustomProvider?: ((value: SaveCustomProviderInput) => Promise<CustomProviderRestart>) | undefined;
   /** The endpoints already saved, without their keys. Empty until the first list arrives. */
   customProviders?: readonly CustomProviderSummary[] | undefined;
+  customProviderModelSync?: CustomProviderModelSyncSettings | undefined;
   /** Without it the rows are listed but not removable, which is what a story without the callback shows. */
   onDeleteCustomProvider?: ((id: string) => Promise<CustomProviderRestart>) | undefined;
   /** Without it the rows have no Edit. This computer only: the Team API has no edit route. */
@@ -186,24 +188,9 @@ function ProviderSettingsSection(props: ProviderSettingsSectionProps) {
       );
     }
   }
-  async function selectSavedEndpoint(value: SaveCustomProviderInput): Promise<void> {
-    const firstModel = value.models[0];
-    if (props.defaultProvider && firstModel) {
-      await selectProvider(value.harness ?? DEFAULT_CUSTOM_PROVIDER_HARNESS, true, `${value.id}/${firstModel.id}`);
-    }
-  }
-  const detectedApi = createMemo((): DetectedProviderApi | undefined => {
-    const api = props.detectedProviderApi;
-    if (!api || !props.defaultProvider) return api;
-    return {
-      ...api,
-      save: async (provider, value) => {
-        const restart = await api.save(provider, value);
-        if (value.kind === "models") await selectSavedEndpoint(value.value);
-        return restart;
-      },
-    };
-  });
+  // Adding an endpoint keeps the user's current default (including local Codex). Selecting
+  // a custom model is a separate action in the default-provider control.
+  const detectedApi = () => props.detectedProviderApi;
   /**
    * With a detection API, Add first asks what to add: a local server, any compatible endpoint, or
    * an ACP agent. Without one, as on a joined server's host, Add opens the endpoint form at once.
@@ -214,7 +201,6 @@ function ProviderSettingsSection(props: ProviderSettingsSectionProps) {
     onAdd: (value) => props.onAddCustomProvider?.(value),
     onDelete: (id) => props.onDeleteCustomProvider?.(id),
     onUpdate: (input) => props.onUpdateCustomProvider?.(input),
-    onSaved: (value) => void selectSavedEndpoint(value),
     onRemoved: (id) => {
       const provider = props.defaultProvider?.preferredProvider ?? null;
       if (isCustomProviderHarness(provider) && props.defaultProvider?.preferredModel?.startsWith(`${id}/`)) {
@@ -263,6 +249,7 @@ function ProviderSettingsSection(props: ProviderSettingsSectionProps) {
         disabled={Boolean(saving.pending)}
         usage={props.usage}
         customProviders={customProviders()}
+        customProviderModelSync={props.customProviderModelSync}
         customProviderHarnesses={Boolean(harnesses())}
         onDownloadProvider={props.onDownloadProvider ? downloadProvider : undefined}
         onCancelProviderDownload={props.onCancelProviderDownload}
@@ -495,6 +482,7 @@ export interface HostProviderSettings {
   onMeasureProviderDownload?: ((provider: AgentProviderId) => Promise<ProviderRuntimeDownload>) | undefined;
   onRemoveProviderDownload?: ((provider: AgentProviderId) => Promise<void>) | undefined;
   customProviders?: readonly CustomProviderSummary[] | undefined;
+  customProviderModelSync?: CustomProviderModelSyncSettings | undefined;
   onAddCustomProvider?: ((value: SaveCustomProviderInput) => Promise<CustomProviderRestart>) | undefined;
   onDeleteCustomProvider?: ((id: string) => Promise<CustomProviderRestart>) | undefined;
   /** This computer only: the Team API has no edit route, so a joined server's section has no Edit. */
@@ -584,6 +572,7 @@ export function HostProviderSettingsPanel(
         onInstallProvider={props.onInstallProvider}
         onAddCustomProvider={props.onAddCustomProvider}
         customProviders={props.customProviders}
+        customProviderModelSync={props.customProviderModelSync}
         onDeleteCustomProvider={props.onDeleteCustomProvider}
         onUpdateCustomProvider={props.onUpdateCustomProvider}
         accountActions={props.accountActions}

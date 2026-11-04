@@ -7,6 +7,7 @@ import {
   type ManagedProviderId,
 } from "@openbot/contracts/agent-providers";
 import {
+  CUSTOM_PROVIDER_LIMITS,
   type CustomProviderModel,
   type CustomProviderResult,
   type CustomProviderSummary,
@@ -252,7 +253,9 @@ export async function routeProviders(
       case PROVIDERS_ADMIN_ROUTES.customSave:
       case CUSTOM_PROVIDER_HARNESS_ROUTES.customSave: {
         const result = await runCauseEffect(
-          customProviders.save(parsed(parseSaveCustomProvider, releasedSaveBody(body))),
+          customProviders.save(
+            parsed((value) => parseSaveCustomProvider(value, CUSTOM_PROVIDER_LIMITS.models), releasedSaveBody(body)),
+          ),
         );
         return json(200, wireResult(url.pathname, result));
       }
@@ -303,7 +306,8 @@ function wireCustomProvider({
   harness: _harness,
   ...provider
 }: CustomProviderSummary): CustomProviderSummary {
-  return { ...provider, models: provider.models.map(wireCustomModel) };
+  // Native catalogs may be larger. Keep every released response within its original 64-model bound.
+  return { ...provider, models: provider.models.slice(0, CUSTOM_PROVIDER_LIMITS.models).map(wireCustomModel) };
 }
 
 /**

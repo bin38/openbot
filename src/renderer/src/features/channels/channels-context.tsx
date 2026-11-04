@@ -32,9 +32,11 @@ export function ChannelsProvider(props: ParentProps) {
   const { agentList, setAgentSetupOpen } = useAgents();
   const { clearDirectSelection, setDirectTyping } = useDirectMessages();
   const windowPage = useWindowPage();
-  const { centralAuth } = useAuth();
+  const { centralAuth, currentWorkspaceUserId } = useAuth();
   const selectionServerId = untrack(activeServerId);
   const accountKey = () => {
+    const reader = currentWorkspaceUserId(activeServer());
+    if (reader) return reader;
     const auth = centralAuth();
     return auth.status === "signed_in" ? auth.user.id : auth.status;
   };

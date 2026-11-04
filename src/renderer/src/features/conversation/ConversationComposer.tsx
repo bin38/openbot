@@ -16,6 +16,7 @@ import {
   TEAM_SVG_ATTACHMENTS_CAPABILITY,
   TEAM_ZIP_ATTACHMENTS_CAPABILITY,
 } from "@openbot/contracts/team-protocol/current";
+import { STREAMING_ATTACHMENTS_CAPABILITY } from "@openbot/contracts/team-protocol/streaming-attachments-v1";
 import { sourceText } from "@openbot/i18n/source";
 import { Button, Input } from "@openbot/ui";
 import { AwaitingReplies } from "@openbot/ui/features/conversation/AwaitingReplies";
@@ -352,6 +353,7 @@ export function ConversationComposer() {
     const server = props.server;
     const local = server?.kind !== "remote";
     const capabilities = server?.compatibility?.capabilities ?? [];
+    if (local || capabilities.includes(STREAMING_ATTACHMENTS_CAPABILITY)) return "";
     return supportedAttachmentExtensions({
       eml: local || capabilities.includes(TEAM_EML_ATTACHMENTS_CAPABILITY),
       media: local || capabilities.includes(TEAM_MEDIA_ATTACHMENTS_CAPABILITY),

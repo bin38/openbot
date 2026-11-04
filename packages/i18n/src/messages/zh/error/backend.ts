@@ -286,6 +286,9 @@ export const messages = {
   "error.backend.browserViewProtected": "验证期间浏览器视图受保护。",
   "error.backend.browserPreviewPageChanged": "预览期间浏览器页面已变更，请重试。",
   "error.backend.browserInputProtected": "验证期间浏览器输入受保护。",
+  "error.backend.browserTypingFocusMoved": "输入前，页面已将焦点移出目标位置，因此未输入任何内容。请重新获取页面快照。",
+  "error.backend.browserTypingSubmitSkipped":
+    "文字已填入输入框，但页面随后移走了焦点，因此未发送回车键。请勿再次输入相同文字，请重新获取页面快照。",
   "error.backend.mcpServerHttpCredentials": "服务器返回 {status}。请检查 API 密钥或其他凭据。",
   "error.backend.mcpServerHttpUrl": "服务器返回 {status}。请检查地址，链接可能错误、过期或已删除。",
   "error.backend.mcpSignInAppUrl": "登录应用需要有效的服务器地址。",

@@ -38,7 +38,7 @@ function agentOptions(catalogs: WorkflowCatalogs): PickerOption<string>[] {
       { text: agent.title },
       {
         icon: () => <ProviderLogo provider={wfProviderLogo(agent.provider)} class="wfn-model-logo" />,
-        text: modelOption(catalogs.models, agent.model)?.name ?? agent.model,
+        text: modelOption(catalogs.models, agent.model, agent.providerAccountId)?.name ?? agent.model,
       },
     ],
   }));
@@ -177,6 +177,8 @@ export function AgentNode(props: { id: string; agentId?: string; task?: string }
             <ModelPill
               provider={provider()}
               value={model()}
+              accountProvider={agent()?.provider}
+              providerAccountId={agent()?.providerAccountId}
               disabled={locked()}
               onChange={(next, nextProvider) => board.setFields(props.id, { model: next, provider: nextProvider })}
             />

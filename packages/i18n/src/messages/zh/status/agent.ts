@@ -2,6 +2,10 @@ import type { PartialTranslation } from "../../../message";
 import type { messages as source } from "../../en/status/agent";
 
 export const messages = {
+  "status.agent.apiChannelApproval":
+    "允许此助手执行 API 渠道操作 {tool}？这可能向已配置的服务发送数据和文件，并消耗其额度。",
+  "status.agent.cloudComputerApproval":
+    "允许在此助手的 E2B 云电脑上执行 {tool}？这可能向 E2B 传输数据并产生云端用量费用。",
   "status.agent.claudeWriteOutside": "写入 {path}，位置在助手工作区、共享文件夹和临时文件夹之外。",
   "status.agent.contextCleared": "上下文已清空，将从这里开始新对话。",
   "status.agent.instructionsChanged": "更新了它的指令",
@@ -24,6 +28,7 @@ export const messages = {
   "status.agent.vaultCardFill":
     "在 {site} 上填入已保存的银行卡 {card}。批准后，助手可以在该网站上免批准填入这张卡。可在“服务器设置 > 保险库”中移除该网站。",
   "status.agent.vaultCardFillFrames": "银行卡字段位于来自 {origins} 的框架中。",
+  "status.agent.linkCardFill": "在 {site} 填入一次性 Link 银行卡 {card}。你已在 Link 中批准向 {merchant} 付款。",
   "status.agent.screenCaptureProgress": "正在请求截屏…",
   "status.agent.screenCaptureReviewing": "正在查看截屏…",
   "status.agent.browserOpening": "正在打开网页…",

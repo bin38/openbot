@@ -9,6 +9,7 @@ export const messages = {
   "dialog.chooseSkill": "选择技能文件夹或 ZIP",
   "dialog.filter.skillPackages": "技能包",
   "dialog.filter.images": "图片",
+  "dialog.filter.allFiles": "所有文件",
   "dialog.filter.supportedFiles": "支持的文件",
   "dialog.filter.attachment": "附件",
   "dialog.filter.zipArchive": "ZIP 压缩包",

@@ -53,7 +53,7 @@ export default defineConfig(({ command }) => {
       allowedHosts: [".openbot.localhost", ".trycloudflare.com"],
     },
     plugins: [
-      developmentLanGuard(),
+      developmentLanGuard(localRuntimeVars.AUTH_EXPOSE_DEVELOPMENT_CODE === "true"),
       developmentApnsProxy(),
       cloudflare({
         viteEnvironment: { name: "ssr" },
@@ -88,11 +88,26 @@ function readApiPort(value: string | undefined): number {
   return port;
 }
 
-function developmentLanGuard(): Plugin {
+function developmentLanGuard(developmentCode: boolean): Plugin {
   return {
     name: "openbot-development-lan-guard",
+    apply: "serve",
     configureServer(server) {
       server.middlewares.use((request, response, next) => {
+        // The browser E2E must prove that login uses development codes before it sends an email address.
+        // requestAuthService sets delivery:null in this mode. No code, identity, or secret is returned here.
+        if (request.url === "/__openbot_dev_auth") {
+          const loopback = ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(request.socket.remoteAddress ?? "");
+          if (request.method !== "GET" || !loopback || !developmentCode) {
+            response.statusCode = 404;
+            response.end();
+            return;
+          }
+          response.setHeader("Content-Type", "application/json");
+          response.setHeader("Cache-Control", "no-store");
+          response.end(JSON.stringify({ developmentCode: true, emailDelivery: false }));
+          return;
+        }
         if (developmentNetworkRequestAllowed(request.socket.remoteAddress, request.url ?? "/")) {
           next();
           return;

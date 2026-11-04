@@ -23,6 +23,7 @@ import {
 } from "@openbot/contracts/ipc";
 import type { PricingOrder } from "@openbot/contracts/license";
 import type { MarketplaceListingLink } from "@openbot/contracts/marketplace-links";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { AGENT_BACKUP_MODELS_ROUTES } from "@openbot/contracts/team-protocol/agent-backup-models-v1";
 import { AGENT_FAST_MODE_ROUTES } from "@openbot/contracts/team-protocol/agent-fast-mode-v1";
 import { AGENT_HOST_SETTINGS_ROUTES } from "@openbot/contracts/team-protocol/agent-host-settings-v1";
@@ -569,10 +570,15 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
   /** A server at its site limit offers the server plans, which have more sites, to its owner. */
   function canOfferServerPlans(): boolean {
     return (
-      hostedServers.available() && hostedServers.loaded() && server()?.role === "owner" && server()?.hosted !== true
+      !INDEPENDENT_EDITION &&
+      hostedServers.available() &&
+      hostedServers.loaded() &&
+      server()?.role === "owner" &&
+      server()?.hosted !== true
     );
   }
   function openServerPlans(): void {
+    if (INDEPENDENT_EDITION) return;
     serverSettings.setOpen(false);
     hostedServers.openAddServer("upsell");
   }
@@ -1014,22 +1020,30 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
   const [billingOpen, setBillingOpen] = createSignal(false);
   /** `/app?start=license` opens Billing with the license dialog open, and with the order of the pricing page. */
   const [licenseStart, setLicenseStart] = createSignal<{ order: PricingOrder | null } | null>(null);
-  const billingCalls = createWebBillingCalls(props.accountFetch);
-  const billing = createBillingStore(() => billingCalls, billingOpen);
-  const licenseCalls = createWebLicenseCalls(props.accountFetch);
-  const license = createLicenseStore(() => licenseCalls, billingOpen, trackLicenseEvent);
+  const billingCalls = INDEPENDENT_EDITION ? undefined : createWebBillingCalls(props.accountFetch);
+  const billing = createBillingStore(
+    () => billingCalls,
+    () => !INDEPENDENT_EDITION && billingOpen(),
+  );
+  const licenseCalls = INDEPENDENT_EDITION ? undefined : createWebLicenseCalls(props.accountFetch);
+  const license = createLicenseStore(
+    () => licenseCalls,
+    () => !INDEPENDENT_EDITION && billingOpen(),
+    trackLicenseEvent,
+  );
   // The web client has no Hosted servers settings, so a server whose plan ended is renewed or deleted in Billing.
   const billingHostedServers = createSettingsHostedServersStore(
     {
       get open() {
-        return billingOpen();
+        return !INDEPENDENT_EDITION && billingOpen();
       },
-      hostedServersApi: hostedServers.calls,
+      hostedServersApi: INDEPENDENT_EDITION ? undefined : hostedServers.calls,
     },
     billingOpen,
   );
   /** Billing holds the hosted servers on the web, so the server menu deletes a server there. */
   function deleteHostedServer(serverId: string): void {
+    if (INDEPENDENT_EDITION) return;
     setBillingOpen(true);
     billingHostedServers.requestDeleteById(serverId);
   }
@@ -1065,6 +1079,7 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
     },
   );
   async function restartHost(): Promise<void> {
+    if (INDEPENDENT_EDITION) return;
     const hostId = restartRequest()?.hostId;
     if (hostId) await hostedServers.calls.restart(hostId);
   }
@@ -1072,7 +1087,7 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
     () => props.billingReturn,
     (billingReturn) => {
       if (!billingReturn) return;
-      setBillingOpen(true);
+      if (!INDEPENDENT_EDITION) setBillingOpen(true);
       props.onBillingReturnConsumed?.();
     },
   );
@@ -1082,6 +1097,10 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
     () => (props.start?.kind === "server" && !hostedServers.loaded() ? null : props.start),
     (start) => {
       if (!start) return;
+      if (INDEPENDENT_EDITION) {
+        props.onStartConsumed?.();
+        return;
+      }
       if (start.kind === "server") hostedServers.openAddServer("pricing_page", start.order);
       else {
         setLicenseStart({ order: start.order });
@@ -1108,7 +1127,8 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
       // A stored file is an attachment. The browser has no app to open it in, so it downloads.
       openFile: async (input, serverId) => {
         hostRequest(serverId);
-        saveFile(await workspace.runtime.download(input.fileId));
+        if (workspace.runtime.saveAttachment) await workspace.runtime.saveAttachment(input.fileId);
+        else saveFile(await workspace.runtime.download(input.fileId));
       },
     },
   };
@@ -1846,11 +1866,13 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
               onMarketplace={workspace.state.status === "online" ? openMarketplace : undefined}
               onSettings={openAccountSettings}
               help={
-                <RailHelpMenu
-                  version={null}
-                  onOpenWhatsNew={() => void openWebDestination("changelog")}
-                  onOpenLink={(destination) => void openWebDestination(destination)}
-                />
+                INDEPENDENT_EDITION ? undefined : (
+                  <RailHelpMenu
+                    version={null}
+                    onOpenWhatsNew={() => void openWebDestination("changelog")}
+                    onOpenLink={(destination) => void openWebDestination(destination)}
+                  />
+                )
               }
             />
             <WorkspaceFrame
@@ -1892,7 +1914,7 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
                       }
                       busy={workspace.state.status === "connecting" || !workspace.state.host}
                       onRetry={() => void workspace.run(workspace.reconnect)}
-                      onManage={() => setBillingOpen(true)}
+                      onManage={INDEPENDENT_EDITION ? undefined : () => setBillingOpen(true)}
                       upsell={offlineUpsell()}
                     />
                   </Show>
@@ -2139,7 +2161,7 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
                     onOpenSearch={() => setSearchOpen(true)}
                     onOpenMarketplace={openMarketplace}
                     footer={
-                      <Show when={!communityCard.dismissed()}>
+                      <Show when={!INDEPENDENT_EDITION && !communityCard.dismissed()}>
                         <SidebarCommunityCard
                           onJoinDiscord={() => void openWebDestination("discord")}
                           onFollowX={() => void openWebDestination("x")}
@@ -2164,44 +2186,46 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
               after={
                 <>
                   <ServerUpdateDialogHost hosts={workspace.hostViews()} />
-                  <HostedServerUpsell
-                    accountId={props.accountId}
-                    canOffer={
-                      hostedServers.available() &&
-                      hostedServers.loaded() &&
-                      !hostedServers.ownsHostedServer() &&
-                      server()?.role === "owner" &&
-                      server()?.hosted !== true
-                    }
-                    serverId={server()?.id ?? ""}
-                    host={{ name: server()?.name ?? "" }}
-                    busy={(agentId) => Boolean(workspace.state.conversations[agentId]?.page?.activeTurnId)}
-                    openPlans={() => hostedServers.openAddServer("upsell")}
-                    track={(action, entryPoint) =>
-                      desktopAnalytics.track("hosted_server_upsell", { action, entry_point: entryPoint })
-                    }
-                  />
-                  <AddServerOverlay
-                    open={hostedServers.addServer() !== null}
-                    entryPoint={hostedServers.addServer()?.entryPoint}
-                    order={hostedServers.addServer()?.order}
-                    calls={hostedServers.calls}
-                    servers={servers()}
-                    onRefreshServers={workspace.retryHosts}
-                    resume={hostedServers.addServer()?.resume}
-                    license={licenseCalls}
-                    onClose={hostedServers.closeAddServer}
-                    onOpenServer={(serverId) => {
-                      hostedServers.closeAddServer();
-                      selectServer(serverId);
-                    }}
-                    onContactUs={() => window.location.assign(HOSTED_SERVER_CONTACT_URL)}
-                    onJoinWithInvite={() => {
-                      hostedServers.closeAddServer();
-                      setJoinOpen(true);
-                    }}
-                    onManageServers={() => setBillingOpen(true)}
-                  />
+                  <Show when={!INDEPENDENT_EDITION}>
+                    <HostedServerUpsell
+                      accountId={props.accountId}
+                      canOffer={
+                        hostedServers.available() &&
+                        hostedServers.loaded() &&
+                        !hostedServers.ownsHostedServer() &&
+                        server()?.role === "owner" &&
+                        server()?.hosted !== true
+                      }
+                      serverId={server()?.id ?? ""}
+                      host={{ name: server()?.name ?? "" }}
+                      busy={(agentId) => Boolean(workspace.state.conversations[agentId]?.page?.activeTurnId)}
+                      openPlans={() => hostedServers.openAddServer("upsell")}
+                      track={(action, entryPoint) =>
+                        desktopAnalytics.track("hosted_server_upsell", { action, entry_point: entryPoint })
+                      }
+                    />
+                    <AddServerOverlay
+                      open={hostedServers.addServer() !== null}
+                      entryPoint={hostedServers.addServer()?.entryPoint}
+                      order={hostedServers.addServer()?.order}
+                      calls={hostedServers.calls}
+                      servers={servers()}
+                      onRefreshServers={workspace.retryHosts}
+                      resume={hostedServers.addServer()?.resume}
+                      license={licenseCalls}
+                      onClose={hostedServers.closeAddServer}
+                      onOpenServer={(serverId) => {
+                        hostedServers.closeAddServer();
+                        selectServer(serverId);
+                      }}
+                      onContactUs={() => window.location.assign(HOSTED_SERVER_CONTACT_URL)}
+                      onJoinWithInvite={() => {
+                        hostedServers.closeAddServer();
+                        setJoinOpen(true);
+                      }}
+                      onManageServers={() => setBillingOpen(true)}
+                    />
+                  </Show>
                   <JoinServerOverlay
                     open={joinOpen()}
                     inviteUrl={props.inviteUrl ?? ""}
@@ -2225,7 +2249,7 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
                         onChangeLanguage={props.onChangeLanguage}
                         appearance={props.appearance}
                         onChangeAppearance={props.onChangeAppearance}
-                        onOpenBilling={() => setBillingOpen(true)}
+                        onOpenBilling={INDEPENDENT_EDITION ? undefined : () => setBillingOpen(true)}
                         onSignOut={signOut}
                         notifications={notificationSettings}
                         notificationFocusRequest={notificationFocusRequest()}
@@ -2243,12 +2267,14 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
                   <Show when={serverSettingsLoaded() && server()}>
                     {(target) => (
                       <ServerSettingsOverlay
+                        onClose={showAgents}
                         open={serverSettings.state.open && settingsPlacement("server") !== undefined}
                         page={settingsPlacement("server")}
                         restoreFocusTarget={serverSettings.restoreTarget()}
                         initialSection={serverSettingsSection()}
                         platform="darwin"
                         remoteDesktopSupported={false}
+                        membersEnabled
                         server={target()}
                         hostStatus={null}
                         members={serverSettings.state.members}
@@ -2261,7 +2287,9 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
                         onSetPublished={unavailable}
                         onCreateInvite={serverSettings.createInvite}
                         license={licenseCalls}
-                        onContactUs={() => window.location.assign(HOSTED_SERVER_CONTACT_URL)}
+                        onContactUs={
+                          INDEPENDENT_EDITION ? undefined : () => window.location.assign(HOSTED_SERVER_CONTACT_URL)
+                        }
                         onUpdateMember={serverSettings.updateMember}
                         onRemoveMember={serverSettings.removeMember}
                         onRevokeInvite={serverSettings.revokeInvite}
@@ -2331,7 +2359,7 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
                         }}
                         // Every member lists; the host deletes only for an owner or admin.
                         hostedSites={
-                          workspace.state.capabilities.includes(HOSTED_SITES_CAPABILITY)
+                          !INDEPENDENT_EDITION && workspace.state.capabilities.includes(HOSTED_SITES_CAPABILITY)
                             ? {
                                 api: hostedSiteCalls,
                                 onOpenSite: (url) => void openWebLink(url),
@@ -2380,24 +2408,26 @@ function WebWorkspaceFrame(props: WebWorkspaceProps) {
                     onRestart={restartHost}
                     restoreFocusTarget={restartRequest()?.trigger}
                   />
-                  <BillingDialog
-                    open={billingOpen()}
-                    onOpenChange={(open) => {
-                      setBillingOpen(open);
-                      if (!open) setLicenseStart(null);
-                    }}
-                    store={billing}
-                    hostedServers={billingHostedServers}
-                    license={
-                      <LicenseSection
-                        store={license}
-                        onManagePayment={() => void billing.openPortal({ flow: "manage" })}
-                        onContactUs={licenseContactUs(() => window.location.assign(HOSTED_SERVER_CONTACT_URL))}
-                        startBuying={licenseStart() !== null}
-                        startOrder={licenseStart()?.order ?? undefined}
-                      />
-                    }
-                  />
+                  <Show when={!INDEPENDENT_EDITION}>
+                    <BillingDialog
+                      open={billingOpen()}
+                      onOpenChange={(open) => {
+                        setBillingOpen(open);
+                        if (!open) setLicenseStart(null);
+                      }}
+                      store={billing}
+                      hostedServers={billingHostedServers}
+                      license={
+                        <LicenseSection
+                          store={license}
+                          onManagePayment={() => void billing.openPortal({ flow: "manage" })}
+                          onContactUs={licenseContactUs(() => window.location.assign(HOSTED_SERVER_CONTACT_URL))}
+                          startBuying={licenseStart() !== null}
+                          startOrder={licenseStart()?.order ?? undefined}
+                        />
+                      }
+                    />
+                  </Show>
                   <ChannelCreateOverlay />
                   <GlobalSearchOverlay
                     open={searchOpen()}

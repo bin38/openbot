@@ -185,7 +185,9 @@ export function AppLoadingScreen(props: AppLoadingScreenProps) {
       setClock(now);
       statusTimer = setTimeout(next, (STATUS_EVERY_S - (now % STATUS_EVERY_S)) * 1000 + 16);
     };
-    if (!props.ready) next();
+    // The ready effect has settled already. Reading a compiler-generated prop getter here can
+    // create a memo inside onSettled, which halts Solid 2 and leaves the whole app unresponsive.
+    if (untrack(phase) === "loading") next();
     return () => {
       clearTimeout(statusTimer);
       clearTimeout(exitTimer);

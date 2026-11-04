@@ -144,7 +144,7 @@ export function keepsHeaderValue(header: CustomHeaderDraft): boolean {
  */
 export function validateCustomProvider(
   draft: CustomProviderDraft,
-  ids: { taken?: readonly string[] | undefined; locked?: boolean | undefined } = {},
+  ids: { taken?: readonly string[] | undefined; locked?: boolean | undefined; modelLimit?: number | undefined } = {},
   t: AppTranslate = currentText().t,
   format: AppFormat = currentText().format,
 ): CustomProviderErrors {
@@ -183,8 +183,8 @@ export function validateCustomProvider(
 
   const filled = draft.models.filter((model) => !blankModel(model));
   if (filled.length === 0) errors.models = t("customProvider.error.modelsRequired");
-  else if (filled.length > CUSTOM_PROVIDER_LIMITS.models) {
-    errors.models = t("customProvider.error.modelsLimit", { max: CUSTOM_PROVIDER_LIMITS.models });
+  else if (filled.length > (ids.modelLimit ?? CUSTOM_PROVIDER_LIMITS.models)) {
+    errors.models = t("customProvider.error.modelsLimit", { max: ids.modelLimit ?? CUSTOM_PROVIDER_LIMITS.models });
   }
 
   const seen = new Set<string>();

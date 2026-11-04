@@ -1,5 +1,6 @@
+import type { AccountScopedAgentModelOption } from "@openbot/contracts/account-scoped-models";
 import type { AgentModelOption } from "@openbot/contracts/ipc";
-import { isAgentModel, isReasoningEffort } from "@openbot/contracts/ipc";
+import { DEFAULT_PROVIDER_ACCOUNT_ID, isAgentModel, isReasoningEffort } from "@openbot/contracts/ipc";
 import { createOpenBotLogger } from "@openbot/logging";
 import { Effect } from "effect";
 import type { AgentClient, AgentProvider } from "./../agent-client";
@@ -44,6 +45,23 @@ export class ModelCatalog {
 
   list(): AgentModelOption[] {
     return structuredClone(this.#models);
+  }
+
+  /** Local account-aware choices; the released provider catalogue remains unchanged. */
+  listLocal(
+    snapshots: readonly { provider: "antigravity"; accountId: string; response: ModelListResponse }[],
+  ): AccountScopedAgentModelOption[] {
+    return [
+      ...this.list().map((model) =>
+        model.provider === "antigravity" ? { ...model, providerAccountIds: [DEFAULT_PROVIDER_ACCOUNT_ID] } : model,
+      ),
+      ...snapshots.flatMap(({ provider, accountId, response }) =>
+        modelOptionsFromSnapshot(provider, response.data).map((model) => ({
+          ...model,
+          providerAccountIds: [accountId],
+        })),
+      ),
+    ];
   }
 
   /**
@@ -107,52 +125,7 @@ export class ModelCatalog {
                 return yield* providerFailure(new Error("Model discovery repeated a pagination cursor."));
               if (cursor) cursors.add(cursor);
             } while (cursor);
-            const models: AgentModelOption[] = [];
-            for (const server of serverModels.values()) {
-              if (!server.model) continue;
-              const fallback = MODEL_METADATA_FALLBACKS.find(
-                (candidate) => candidate.provider === client.provider && candidate.id === server.model,
-              );
-              const efforts = (server?.supportedReasoningEfforts ?? [])
-                .map((item) => item.reasoningEffort)
-                .filter(isReasoningEffort);
-              // The name the provider CLI gives, whole: a model is easier to recognise as
-              // `GPT-5.6 Sol` than as `Sol`, and its own CLI names it that way.
-              // A provider can name its models itself, such as Claude Code.
-              // Clamped, because a name over the limit is not a long name downstream: it fails
-              // `isAgentModelOption`, and the IPC and Team API list decoders fail closed on the
-              // whole array, so one over-long name empties the picker. OpenCode is the CLI that
-              // reaches it - it names a custom model `"<provider name>/<model name>"`, and 80 plus
-              // 160 characters passes 160 - but the clamp protects every CLI.
-              const name = modelDisplayName(
-                catalog.modelName?.(server.model) || server.displayName?.trim() || fallback?.name || server.model,
-              );
-              // Decided here, on the resolved name, so the catalog and the picker's Free badge cannot
-              // disagree about what costs money. With no key stored the same models can only come
-              // from the user's own sign-in, which does buy them.
-              if (hasStoredKey && catalog.usableWithStoredKey?.(server.model, name) === false) continue;
-              models.push({
-                provider: client.provider,
-                id: server.model,
-                name,
-                description:
-                  fallback?.description ?? `${providerLabel(client.provider)} model discovered from the local CLI.`,
-                defaultReasoningEffort: isReasoningEffort(server?.defaultReasoningEffort)
-                  ? server.defaultReasoningEffort
-                  : (fallback?.defaultReasoningEffort ?? "medium"),
-                supportedReasoningEfforts: efforts.length
-                  ? efforts
-                  : (fallback?.supportedReasoningEfforts ?? ["medium"]),
-                ...(server.reasoningEffortConfigurable === false ? { reasoningEffortConfigurable: false } : {}),
-                ...catalog.modelFields?.(server),
-              });
-            }
-            const rank = PREFERRED_MODEL_ORDER.get(client.provider) ?? (() => 0);
-            // Tier first, then newest first. Sort is stable, so the CLI's own order still decides
-            // between models of one version.
-            const sorted = [...models].sort(
-              (left, right) => rank(left) - rank(right) || compareModelVersions(left, right),
-            );
+            const sorted = modelOptionsFromSnapshot(provider, [...serverModels.values()], hasStoredKey);
             // For a provider with a fallback, a successful but empty response is no more useful to
             // the picker than a timeout: it must not erase the built-in free tier on first
             // discovery. It is not a fresh catalog, so callers must not treat it as proof that
@@ -189,4 +162,55 @@ export class ModelCatalog {
     this.#models = discovered.flatMap((entry) => entry.models);
     return new Set(discovered.filter((entry) => entry.fresh).map((entry) => entry.provider));
   });
+}
+
+/** The same ID, name, effort and stored-key policy for each discovered account. */
+export function modelOptionsFromSnapshot(
+  provider: AgentProvider,
+  data: ModelListResponse["data"],
+  hasStoredKey = false,
+): AgentModelOption[] {
+  const catalog = BUILT_IN_PROVIDER_DRIVERS.find((driver) => driver.id === provider)?.catalog ?? {};
+  const models: AgentModelOption[] = [];
+  for (const reported of data) {
+    const server = { ...reported, model: reported.model?.trim() };
+    if (!server.model || !isAgentModel(server.model)) continue;
+    const fallback = MODEL_METADATA_FALLBACKS.find(
+      (candidate) => candidate.provider === provider && candidate.id === server.model,
+    );
+    const efforts = (server?.supportedReasoningEfforts ?? [])
+      .map((item) => item.reasoningEffort)
+      .filter(isReasoningEffort);
+    // The name the provider CLI gives, whole: a model is easier to recognise as
+    // `GPT-5.6 Sol` than as `Sol`, and its own CLI names it that way.
+    // A provider can name its models itself, such as Claude Code.
+    // Clamped, because a name over the limit is not a long name downstream: it fails
+    // `isAgentModelOption`, and the IPC and Team API list decoders fail closed on the
+    // whole array, so one over-long name empties the picker. OpenCode is the CLI that
+    // reaches it - it names a custom model `"<provider name>/<model name>"`, and 80 plus
+    // 160 characters passes 160 - but the clamp protects every CLI.
+    const name = modelDisplayName(
+      catalog.modelName?.(server.model) || server.displayName?.trim() || fallback?.name || server.model,
+    );
+    // Decided here, on the resolved name, so the catalog and the picker's Free badge cannot
+    // disagree about what costs money. With no key stored the same models can only come
+    // from the user's own sign-in, which does buy them.
+    if (hasStoredKey && catalog.usableWithStoredKey?.(server.model, name) === false) continue;
+    models.push({
+      provider: provider,
+      id: server.model,
+      name,
+      description: fallback?.description ?? `${providerLabel(provider)} model discovered from the local CLI.`,
+      defaultReasoningEffort: isReasoningEffort(server?.defaultReasoningEffort)
+        ? server.defaultReasoningEffort
+        : (fallback?.defaultReasoningEffort ?? "medium"),
+      supportedReasoningEfforts: efforts.length ? efforts : (fallback?.supportedReasoningEfforts ?? ["medium"]),
+      ...(server.reasoningEffortConfigurable === false ? { reasoningEffortConfigurable: false } : {}),
+      ...catalog.modelFields?.(server),
+    });
+  }
+  const rank = PREFERRED_MODEL_ORDER.get(provider) ?? (() => 0);
+  // Tier first, then newest first. Sort is stable, so the CLI's own order still decides
+  // between models of one version.
+  return [...models].sort((left, right) => rank(left) - rank(right) || compareModelVersions(left, right));
 }

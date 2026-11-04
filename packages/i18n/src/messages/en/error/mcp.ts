@@ -1,6 +1,8 @@
 import { defineMessages } from "../../../message";
 
 export const messages = defineMessages("error.mcp", {
+  "error.mcp.registryUnavailable":
+    "The public MCP directory could not be reached. Your saved connections are still available.",
   // MCP sign-in errors, and the sign-in page in the browser.
   "error.mcp.redirectByName": "This address is not reachable by name.",
   "error.mcp.redirectGetOnly": "This address answers GET only.",

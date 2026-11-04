@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
 import type { HostReleaseStatus, UpdateStatus } from "@openbot/contracts/ipc";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
+import { sourceText } from "@openbot/i18n/source";
 import { Deferred, Effect, Exit, Schema } from "effect";
 import { parse } from "yaml";
 import { isValidSemver } from "./update-service";
@@ -12,6 +14,7 @@ const ReleaseManifest = Schema.Struct({
 });
 
 type ReleaseTarget = { feed: string; asset: (version: string) => string };
+type ReleaseFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
 /** Only published desktop targets have a compatible release feed. */
 function releaseTarget(platform: NodeJS.Platform, arch: string): ReleaseTarget | null {
@@ -42,7 +45,7 @@ interface HostReleaseOptions {
   environment: NodeJS.ProcessEnv;
   updateStatus: () => Pick<UpdateStatus, "phase" | "managedByHost">;
   installationMode: string | null;
-  fetch?: typeof fetch;
+  fetch?: ReleaseFetch;
 }
 
 /** Reads only the install marker. No command or application file is executed. */
@@ -60,14 +63,18 @@ export const readInstallationMode = Effect.fn("HostRelease.readInstallationMode"
 export class HostReleaseService {
   readonly #options: HostReleaseOptions;
   readonly #target: ReleaseTarget | null;
+  readonly #releaseBaseUrl: string | null;
   #phase: HostReleaseStatus["phase"] = "idle";
   #latestVersion: string | null = null;
   #pending: Deferred.Deferred<HostReleaseStatus> | null = null;
 
   constructor(options: HostReleaseOptions) {
     this.#options = options;
+    this.#releaseBaseUrl = ownReleaseBaseUrl(options.environment.OPENBOT_SELF_HOSTED_UPDATE_URL);
     this.#target =
-      options.packaged && isValidSemver(options.currentVersion) ? releaseTarget(options.platform, options.arch) : null;
+      this.#releaseBaseUrl && options.packaged && isValidSemver(options.currentVersion)
+        ? releaseTarget(options.platform, options.arch)
+        : null;
   }
 
   snapshot(): HostReleaseStatus {
@@ -80,7 +87,8 @@ export class HostReleaseService {
   }
 
   #method(): HostReleaseStatus["method"] {
-    if (!this.#options.packaged) return "unavailable";
+    if (!this.#target) return "unavailable";
+    if (INDEPENDENT_EDITION) return "manual";
     if (this.#options.updateStatus().managedByHost) return "host-manager";
     if (this.#options.platform === "linux") {
       // A hosted or self-installed server, or a container of openbot-instance, whose host installs
@@ -94,16 +102,17 @@ export class HostReleaseService {
   }
 
   readonly check = Effect.fn("HostRelease.check")(function* (this: HostReleaseService) {
-    if (!this.#target) return this.snapshot();
+    if (!this.#target || !this.#releaseBaseUrl) return this.snapshot();
     if (this.#pending) return yield* Deferred.await(this.#pending);
     const pending = Deferred.makeUnsafe<HostReleaseStatus>();
     this.#pending = pending;
     this.#phase = "checking";
     this.#latestVersion = null;
     const target = this.#target;
+    const releaseBaseUrl = this.#releaseBaseUrl;
     return yield* Effect.gen({ self: this }, function* () {
       const version = yield* Effect.tryPromise({
-        try: (signal) => fetchLatestRelease(target, this.#options.fetch ?? fetch, signal),
+        try: (signal) => fetchLatestRelease(target, releaseBaseUrl, this.#options.fetch ?? fetch, signal),
         catch: () => new ReleaseCheckFailed(),
       });
       this.#latestVersion = version;
@@ -127,8 +136,14 @@ export class HostReleaseService {
 }
 
 /** The version of the latest published release for `target`. Rejects on any fault of the feed. */
-async function fetchLatestRelease(target: ReleaseTarget, request: typeof fetch, signal: AbortSignal): Promise<string> {
-  const response = await request(`https://github.com/nightly-labs/openbot/releases/latest/download/${target.feed}`, {
+async function fetchLatestRelease(
+  target: ReleaseTarget,
+  baseUrl: string,
+  request: ReleaseFetch,
+  signal: AbortSignal,
+): Promise<string> {
+  const response = await request(new URL(target.feed, `${baseUrl}/`), {
+    redirect: "error",
     signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
   });
   if (!response.ok || !response.body) {
@@ -157,10 +172,39 @@ async function fetchLatestRelease(target: ReleaseTarget, request: typeof fetch, 
 }
 
 /** The latest Linux release for `arch`, for the hosted installer. */
-export function fetchLatestLinuxRelease(arch: string, request: typeof fetch, signal: AbortSignal): Promise<string> {
+export function fetchLatestLinuxRelease(arch: string, request: ReleaseFetch, signal: AbortSignal): Promise<string> {
+  if (INDEPENDENT_EDITION) return Promise.reject(new Error(sourceText("error.update.unsupported")));
+  const baseUrl = ownReleaseBaseUrl(process.env.OPENBOT_SELF_HOSTED_UPDATE_URL);
   const target = releaseTarget("linux", arch);
-  if (!target) return Promise.reject(new Error("No release for this machine"));
-  return fetchLatestRelease(target, request, signal);
+  if (!target || !baseUrl) return Promise.reject(new Error("No configured release for this machine"));
+  return fetchLatestRelease(target, baseUrl, request, signal);
+}
+
+function ownReleaseBaseUrl(value: string | undefined): string | null {
+  if (!value?.trim()) return null;
+  try {
+    const url = new URL(value);
+    const loopback = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
+    const path = url.pathname.toLowerCase();
+    if (
+      !(url.protocol === "https:" || (url.protocol === "http:" && loopback)) ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash ||
+      url.hostname === "openbot.run" ||
+      url.hostname.endsWith(".openbot.run") ||
+      url.hostname === "openbot.site" ||
+      url.hostname.endsWith(".openbot.site") ||
+      ((url.hostname === "github.com" || url.hostname === "raw.githubusercontent.com") &&
+        path.startsWith("/nightly-labs/openbot")) ||
+      (url.hostname === "api.github.com" && path.startsWith("/repos/nightly-labs/openbot"))
+    )
+      return null;
+    return url.toString().replace(/\/+$/u, "");
+  } catch {
+    return null;
+  }
 }
 
 export function newerRelease(candidate: string, current: string): boolean {

@@ -1,9 +1,13 @@
-import { createFileRoute } from "@tanstack/solid-router";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
+import { createFileRoute, redirect } from "@tanstack/solid-router";
 import { TeamsPage } from "../components/teams/TeamsPage";
 import { OPENBOT_SOCIAL_IMAGE_ALT, OPENBOT_SOCIAL_IMAGE_URL, OPENBOT_X_HANDLE } from "../lib/site-metadata";
 import { TEAMS_PAGE_META, TEAMS_ROUTE } from "../lib/teams-page";
 
 export const Route = createFileRoute("/teams")({
+  beforeLoad: () => {
+    if (INDEPENDENT_EDITION) throw redirect({ to: "/", statusCode: 307 });
+  },
   head: ({ match }) => {
     const url = new URL(TEAMS_ROUTE, match.context.siteUrl).toString();
     const { title, description } = TEAMS_PAGE_META;

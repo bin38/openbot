@@ -1,3 +1,5 @@
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
+import { useText } from "@openbot/ui/text";
 import { OPENBOT_LINKS } from "../../lib/landing-links";
 import { SiteLogoLink } from "../brand/SiteLogoLink";
 import { Button, ButtonLink } from "../ui/button";
@@ -18,6 +20,22 @@ export interface SiteHeaderProps {
 // The one header of the public site. It keeps the `landing-header` class because
 // analytics reads it to report a click as coming from the header.
 export function SiteHeader(props: SiteHeaderProps) {
+  const { t } = useText();
+  if (INDEPENDENT_EDITION) {
+    return (
+      <header class="landing-header">
+        <SiteLogoLink />
+        <div class="site-header-actions">
+          <Button href={OPENBOT_LINKS.repository} variant="primary" size="sm" icon="github">
+            {t("webClient.independent.source")}
+          </Button>
+          <ButtonLink to="/app" reloadDocument variant="secondary" size="sm" icon="arrow-right">
+            {t("webClient.independent.app")}
+          </ButtonLink>
+        </div>
+      </header>
+    );
+  }
   // The mobile sheet repeats these actions. Only the header's own copy is the beam's source.
   const actions = (downloadRef?: (element: HTMLElement) => void) => (
     <>

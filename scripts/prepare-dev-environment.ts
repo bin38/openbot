@@ -3,8 +3,10 @@ import { createHash } from "node:crypto";
 import { constants, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { developmentInstanceIdForWorktree } from "../src/main/development-profile";
 import { type DevelopmentStateOutcome, ensureDevelopmentState } from "./development-secrets";
+import { readScriptArguments } from "./script-arguments";
 
 const scriptsRoot = dirname(fileURLToPath(import.meta.url));
 export const developmentProjectRoot = dirname(scriptsRoot);
@@ -35,6 +37,27 @@ export interface DevelopmentPreparationInput {
   executable?: string;
   bunVersion?: string;
   run?: DevelopmentCommandRunner;
+  /** Signal-only development needs identity settings, but does not own an Account API database. */
+  migrateAccountApi?: boolean;
+}
+
+/** The independent desktop needs dependencies only. It never copies keys, creates cloud state, or seeds profiles. */
+export function prepareLocalDevelopmentEnvironment(input: DevelopmentPreparationInput = {}): void {
+  const projectRoot = input.projectRoot ?? developmentProjectRoot;
+  assertSupportedBunVersion(input.bunVersion ?? process.versions.bun ?? "unknown");
+  installDevelopmentDependencies(
+    projectRoot,
+    input.executable ?? process.execPath,
+    input.run ?? execDevelopmentCommand,
+  );
+}
+
+function installDevelopmentDependencies(projectRoot: string, executable: string, run: DevelopmentCommandRunner): void {
+  runUnlessStamped(
+    join(projectRoot, INSTALL_STAMP),
+    () => installFingerprint(projectRoot),
+    () => run(executable, ["install", "--frozen-lockfile"], { cwd: projectRoot, stdio: "inherit" }),
+  );
 }
 
 export function prepareDevelopmentEnvironment(input: DevelopmentPreparationInput = {}): DevelopmentStateOutcome {
@@ -50,16 +73,14 @@ export function prepareDevelopmentEnvironment(input: DevelopmentPreparationInput
   const run = input.run ?? execDevelopmentCommand;
   const options = { cwd: projectRoot, stdio: "inherit" as const };
 
-  runUnlessStamped(
-    join(projectRoot, INSTALL_STAMP),
-    () => installFingerprint(projectRoot),
-    () => run(executable, ["install", "--frozen-lockfile"], options),
-  );
-  runUnlessStamped(
-    join(projectRoot, MIGRATION_STAMP),
-    () => (existsSync(join(projectRoot, LOCAL_D1_STATE)) ? migrationFingerprint(projectRoot) : null),
-    () => run(executable, ["run", "api:migrate:local"], options),
-  );
+  installDevelopmentDependencies(projectRoot, executable, run);
+  if (input.migrateAccountApi !== false) {
+    runUnlessStamped(
+      join(projectRoot, MIGRATION_STAMP),
+      () => (existsSync(join(projectRoot, LOCAL_D1_STATE)) ? migrationFingerprint(projectRoot) : null),
+      () => run(executable, ["run", "api:migrate:local"], options),
+    );
+  }
   return stateOutcome;
 }
 
@@ -218,7 +239,7 @@ export function assertSupportedBunVersion(version: string): void {
   if (version === supportedBunVersion) return;
 
   throw new Error(
-    `Unsupported Bun ${version}. OpenBot development requires stable Bun ${supportedBunVersion}. Install the exact version with the command in https://github.com/nightly-labs/openbot#development, then retry.`,
+    `Unsupported Bun ${version}. Development requires stable Bun ${supportedBunVersion}. Follow this checkout's README Development instructions, then retry.`,
   );
 }
 
@@ -231,9 +252,19 @@ function execDevelopmentCommand(
 }
 
 if (import.meta.main) {
-  // Generating secrets without saying so leaves a contributor guessing where the file came from.
-  // stdout rather than a logger, because this runs before `bun install` on a fresh clone.
-  if (prepareDevelopmentWorktree() === "created") {
-    process.stdout.write("Prepared local development state.\n");
+  const args = readScriptArguments({
+    usage: "Usage: bun scripts/prepare-dev-environment.ts [--with-services]",
+    options: { "with-services": { type: "boolean" } },
+  });
+  if (!args) process.exit(0);
+  if (INDEPENDENT_EDITION && !args.values["with-services"]) {
+    prepareLocalDevelopmentEnvironment();
+    process.stdout.write("Prepared local development dependencies. Existing profiles were kept.\n");
+  } else {
+    // Generating secrets without saying so leaves a contributor guessing where the file came from.
+    // stdout rather than a logger, because this runs before `bun install` on a fresh clone.
+    if (prepareDevelopmentWorktree() === "created") {
+      process.stdout.write("Prepared local development state.\n");
+    }
   }
 }

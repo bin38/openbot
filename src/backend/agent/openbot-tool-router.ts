@@ -24,6 +24,7 @@ import {
   VAULT_CHANGE_ITEM_TYPE,
   workspaceAccessEnforced,
 } from "@openbot/contracts/ipc";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { isString } from "@openbot/contracts/runtime-values";
 import { isUiBlockId, normalizeUiBlockSpec } from "@openbot/contracts/ui-blocks";
 import { sourceText } from "@openbot/i18n/source";
@@ -36,6 +37,7 @@ import type { AgentTables } from "../agent-data/agent-tables";
 import type { AgentStore } from "../agent-store";
 import type { AgentTasks } from "../agent-tasks/agent-tasks";
 import type { AgentWaits } from "../agent-waits/agent-waits";
+import { attachmentFailure } from "../attachment-effects";
 import { OPENBOT_BROWSER_NAMESPACE } from "../browser-tools";
 import type { ChannelService } from "../channel-service";
 import type { ProviderSession } from "../database/provider-sessions";
@@ -50,6 +52,7 @@ import {
   CHAT_VISUAL_PREVIEW_DEFAULT_WIDTH,
   htmlPreviewToolSchema,
   htmlRenderToolSchema,
+  isUpstreamHostingTool,
   MARKETPLACE_APP_IDS,
   removeApiKeyToolSchema,
   requestApiKeyToolSchema,
@@ -61,6 +64,14 @@ import { handleRoutineFlowTool, type RoutineFlowTools } from "../routine-flows/r
 import type { StoredStateFailure } from "../stored-state-effects";
 import { AgentInterruptTool } from "./agent-interrupt-tool";
 import type { AgentMemories } from "./agent-memories";
+import {
+  type ApiChannelTools,
+  callApiChannelWithFiles,
+  handleApiChannelTool,
+  isApiChannelTool,
+  parseApiChannelToolRequest,
+  withApiChannelRequestCancellation,
+} from "./api-channel-tools";
 import { type ApprovalAutomationPolicy, NO_APPROVAL_AUTOMATION } from "./approval-automation";
 import type { AttachmentGateway } from "./attachment-gateway";
 import type { AttentionRegistry } from "./attention-registry";
@@ -71,6 +82,8 @@ import type { ConversationRuntime } from "./conversation-runtime";
 import { handleDataTool } from "./data-tools";
 import { responseAttachmentMessageId, visualReplyFileName, visualReplyMessageId } from "./delivery-content";
 import type { DrainScheduler } from "./drain-scheduler";
+import { withE2bRequestCancellation } from "./e2b-request";
+import { type E2bDesktopTools, handleE2bTool, isE2bMutationTool, isE2bTool } from "./e2b-tools";
 import { HistoryTools } from "./history-tools";
 import type { HostedSiteCoordinator } from "./hosted-site-coordinator";
 import { isHostedSiteMutationTool } from "./hosted-site-events";
@@ -214,6 +227,8 @@ export interface OpenBotToolRouterOptions {
   screenCapture?: ScreenCaptureHost | null | undefined;
   /** The MCP servers of this OpenBot server, for the MCP tools; null where nothing holds them. */
   mcpServers?: AgentMcpServers | null | undefined;
+  e2bTools?: E2bDesktopTools | undefined;
+  apiChannelTools?: ApiChannelTools | undefined;
   /** The saved server that a Marketplace app installs, or null when it is not installed. */
   marketplaceAppServer?: ((appId: string) => MarketplaceAppServer | null) | undefined;
   /** The API keys that users saved for agents; null where nothing can save them. */
@@ -254,6 +269,8 @@ export class OpenBotToolRouter {
   readonly #visualPreview: ChatVisualPreviewHost | null;
   readonly #screenCapture: ScreenCaptureHost | null;
   readonly #mcpServers: AgentMcpServers | null;
+  readonly #e2bTools: E2bDesktopTools | undefined;
+  readonly #apiChannelTools: ApiChannelTools | undefined;
   readonly #marketplaceAppServer: (appId: string) => MarketplaceAppServer | null;
   readonly #apiKeys: AgentApiKeys | null;
   readonly #hooks: OpenBotToolRouterHooks;
@@ -289,6 +306,8 @@ export class OpenBotToolRouter {
     this.#visualPreview = options.visualPreview ?? null;
     this.#screenCapture = options.screenCapture ?? null;
     this.#mcpServers = options.mcpServers ?? null;
+    this.#e2bTools = options.e2bTools;
+    this.#apiChannelTools = options.apiChannelTools;
     this.#marketplaceAppServer = options.marketplaceAppServer ?? (() => null);
     this.#apiKeys = options.apiKeys ?? null;
     this.#hooks = options.hooks;
@@ -452,6 +471,7 @@ export class OpenBotToolRouter {
                 case "delete_vault_item":
                   return yield* this.#attention.deleteVaultItem(params);
                 case "request_link_payment":
+                  if (INDEPENDENT_EDITION) return openBotToolFailure(sourceText("error.auth.localWorkspace"));
                   return yield* this.#attention.requestLinkPayment(params);
                 default: {
                   // A Link card is read from Link before the fill; a saved card comes from the Vault.
@@ -494,6 +514,10 @@ export class OpenBotToolRouter {
               return;
             }
             if (isHostedSiteMutationTool(toolRequest.params.tool)) {
+              if (INDEPENDENT_EDITION) {
+                client.respond(toolRequest.id, openBotToolFailure(sourceText("error.auth.localWorkspace")));
+                return;
+              }
               yield* this.#attention.surfaceHostedSiteApproval(
                 client,
                 toolRequest,
@@ -517,7 +541,27 @@ export class OpenBotToolRouter {
               if (!toolRequest.signal?.aborted && client.running) client.respond(toolRequest.id, result);
               return;
             }
+            if (isE2bTool(toolRequest.params.tool)) {
+              const result = yield* withE2bRequestCancellation(
+                this.#cloudComputerTool(client, toolRequest, toolRequest.params),
+                toolRequest.signal,
+              );
+              if (!toolRequest.signal?.aborted && client.running) client.respond(toolRequest.id, result);
+              return;
+            }
+            if (isApiChannelTool(toolRequest.params.tool)) {
+              const result = yield* withApiChannelRequestCancellation(
+                this.#apiChannelTool(client, toolRequest, toolRequest.params),
+                toolRequest.signal,
+              );
+              if (!toolRequest.signal?.aborted && client.running) client.respond(toolRequest.id, result);
+              return;
+            }
             const tool = toolRequest.params.tool;
+            if (INDEPENDENT_EDITION && isUpstreamHostingTool(tool)) {
+              client.respond(toolRequest.id, openBotToolFailure(sourceText("error.auth.localWorkspace")));
+              return;
+            }
             // The calling agent can correct a profile request or an attachment path, so it gets the reason as a
             // failed tool result. Codex replaces a JSON-RPC error with "dynamic tool request failed" (#1728).
             const correctableFailure = (error: unknown) =>
@@ -1278,6 +1322,100 @@ export class OpenBotToolRouter {
    * access, and a server that needs a sign-in gets a card in the conversation. Every failure is a
    * result the agent can correct, with the MCP secrets masked.
    */
+  readonly #cloudComputerTool = Effect.fn("OpenBotToolRouter.cloudComputerTool")(function* (
+    this: OpenBotToolRouter,
+    client: AgentClient,
+    request: AppServerRequest,
+    params: DynamicToolCallParams,
+  ) {
+    const agentId = this.#conversation.agentForThread(params.threadId);
+    if (!agentId || !this.#e2bTools) return openBotToolFailure(sourceText("error.agent.toolRequestInvalid"));
+    const tools = this.#e2bTools;
+    if (isE2bMutationTool(params.tool)) {
+      const args = params.arguments;
+      const decision = yield* this.#attention
+        .awaitToolApproval(client, request, {
+          requestId: request.id,
+          agentId,
+          threadId: this.#conversation.publicThreadId(agentId, params.threadId),
+          turnId: params.turnId,
+          kind: "permissions",
+          command:
+            params.tool === "cloud_computer_execute" && isRecord(args) && isString(args.command) ? args.command : null,
+          cwd: null,
+          reason: sourceText("status.agent.cloudComputerApproval", { tool: params.tool }),
+          grantRoot: null,
+          permissions: null,
+        })
+        .pipe(toToolOperationFailed);
+      if (decision !== "accept") return openBotToolFailure(sourceText("error.e2b.declined"));
+    }
+    return yield* handleE2bTool(params.tool, params.arguments, agentId, tools, (remotePath, fileName) =>
+      this.#attachments
+        .attachProducedFile(
+          agentId,
+          params,
+          responseAttachmentMessageId(params.threadId, params.turnId, params.callId),
+          (consume) => tools.download(agentId, remotePath, fileName, consume).pipe(Effect.mapError(attachmentFailure)),
+        )
+        .pipe(Effect.mapError(() => ({ message: sourceText("error.e2b.downloadFailed") }))),
+    );
+  });
+
+  readonly #apiChannelTool = Effect.fn("OpenBotToolRouter.apiChannelTool")(function* (
+    this: OpenBotToolRouter,
+    client: AgentClient,
+    request: AppServerRequest,
+    params: DynamicToolCallParams,
+  ) {
+    const agentId = this.#conversation.agentForThread(params.threadId);
+    const tools = this.#apiChannelTools;
+    const operation = parseApiChannelToolRequest(params.tool, params.arguments);
+    if (!agentId || !tools || !operation) return openBotToolFailure(sourceText("error.agent.toolRequestInvalid"));
+    if (operation.tool !== "list_api_channels") {
+      const channel =
+        operation.tool === "call_api_channel"
+          ? tools.list().find((channel) => channel.id === operation.channelId)
+          : undefined;
+      const endpoint =
+        operation.tool === "call_api_channel"
+          ? channel?.definition.operations.find((endpoint) => endpoint.id === operation.operationId)
+          : undefined;
+      const approvalAction =
+        channel && endpoint
+          ? `${channel.definition.name} · ${endpoint.name} (${endpoint.method} ${new URL(channel.definition.baseUrl).host}${endpoint.path})`
+          : operation.tool;
+      const decision = yield* this.#attention
+        .awaitToolApproval(client, request, {
+          requestId: request.id,
+          agentId,
+          threadId: this.#conversation.publicThreadId(agentId, params.threadId),
+          turnId: params.turnId,
+          kind: "permissions",
+          command: null,
+          cwd: null,
+          reason: sourceText("status.agent.apiChannelApproval", { tool: approvalAction }),
+          grantRoot: null,
+          permissions: null,
+        })
+        .pipe(toToolOperationFailed);
+      if (decision !== "accept") return openBotToolFailure(sourceText("error.apiChannel.declined"));
+    }
+    return yield* handleApiChannelTool(operation, agentId, tools, {
+      call: (input) =>
+        callApiChannelWithFiles(agentId, input, tools, this.#attachments, toolCallIdempotencyKey(params)),
+      download: (artifactId) =>
+        this.#attachments
+          .attachProducedFile(
+            agentId,
+            params,
+            responseAttachmentMessageId(params.threadId, params.turnId, params.callId),
+            (consume) => tools.download(agentId, artifactId, consume).pipe(Effect.mapError(attachmentFailure)),
+          )
+          .pipe(Effect.mapError(() => ({ message: sourceText("error.apiChannel.artifact") }))),
+    });
+  });
+
   readonly #mcpServerTool = Effect.fn("OpenBotToolRouter.mcpServerTool")(function* (
     this: OpenBotToolRouter,
     client: AgentClient,

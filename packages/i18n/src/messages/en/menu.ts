@@ -1,9 +1,30 @@
 import { defineMessages } from "../../message";
 
 export const messages = defineMessages("menu", {
-  // The native application menu. Electron localizes its own `role:` entries from the operating
-  // system, so only the custom items are here. A role's label does not follow the app language, so
-  // the chat's right-click edit menu takes its labels from here.
+  // App-controlled native menu labels. Roles retain system actions and shortcuts.
+  "menu.application": "OpenBot",
+  "menu.edit": "Edit",
+  "menu.view": "View",
+  "menu.window": "Window",
+  "menu.hide": "Hide OpenBot",
+  "menu.hideOthers": "Hide Others",
+  "menu.showAll": "Show All",
+  "menu.reload": "Reload",
+  "menu.forceReload": "Force Reload",
+  "menu.developerTools": "Toggle Developer Tools",
+  "menu.toggleFullscreen": "Toggle Full Screen",
+  "menu.minimize": "Minimize",
+  "menu.windowZoom": "Zoom",
+  "menu.bringAllToFront": "Bring All to Front",
+  "menu.closeWindow": "Close Window",
+  "menu.substitutions": "Substitutions",
+  "menu.showSubstitutions": "Show Substitutions",
+  "menu.smartQuotes": "Smart Quotes",
+  "menu.smartDashes": "Smart Dashes",
+  "menu.textReplacement": "Text Replacement",
+  "menu.speech": "Speech",
+  "menu.startSpeaking": "Start Speaking",
+  "menu.stopSpeaking": "Stop Speaking",
   "menu.stopAllAgents": "Stop all agents",
   "menu.checkForUpdates": "Check for Updates…",
   "menu.preferences": "Settings…",

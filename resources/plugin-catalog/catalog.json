@@ -3,15 +3,39 @@
   "catalogVersion": "v1",
   "plugins": [
     {
-      "slug": "aave",
+      "slug": "x",
       "version": "1.0.0",
       "featured": true,
+      "detailSha256": "cea06fb39f568b4a2af07f984a98eff359fe0b043df4c3cc97268b13fa52b956"
+    },
+    {
+      "slug": "x-account",
+      "version": "1.0.0",
+      "featured": false,
+      "detailSha256": "86c5234a27b6b26ad8a4df1604db55148a5f2c841689f2f8ea244d2900e824d9"
+    },
+    {
+      "slug": "feishu",
+      "version": "1.0.0",
+      "featured": true,
+      "detailSha256": "43d601daf70837b1a3e854c2769c1e73594d03785dcdd132426854b1616c8cb1"
+    },
+    {
+      "slug": "github-mcp",
+      "version": "1.0.0",
+      "featured": true,
+      "detailSha256": "0a9e47dbea8e98ba1c8dfe7900534b2b835b0aac56a6134922df8adc24ea8993"
+    },
+    {
+      "slug": "aave",
+      "version": "1.0.0",
+      "featured": false,
       "detailSha256": "720bef40809f071eb0b0a1e3b3283e758165726e4c9b516febaa634d5e883fb0"
     },
     {
       "slug": "canva",
       "version": "1.0.0",
-      "featured": true,
+      "featured": false,
       "detailSha256": "c3cb9682531e3e4cb1cf0ff4ae522c4e8d0d11b0b5f8450efcb14e352a5c0afb"
     },
     {
@@ -59,7 +83,7 @@
     {
       "slug": "figma",
       "version": "1.1.0",
-      "featured": true,
+      "featured": false,
       "detailSha256": "e8143210a083f8e60e8c90d65eb7d022f052bf1c4f44be42ef593e8767c46577"
     },
     {

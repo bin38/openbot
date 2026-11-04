@@ -82,8 +82,9 @@ export interface GitHubConnectorServiceOptions {
    * and the token file that the git credential helper reads, while the connection is active.
    */
   toolDirectory: string;
-  /** The OpenBot API, which gives the installation tokens that make GitHub show the app as the author. */
+  /** Optional user-owned installation-token service; disabled unless explicitly enabled below. */
   apiUrl: string;
+  installationTokenBroker?: boolean;
   openExternal: (url: string) => Promise<void>;
   fetch?: GitHubFetch;
   now?: () => number;
@@ -155,7 +156,12 @@ export class GitHubConnectorService {
     this.#fetch = options.fetch ?? ((url, init) => fetch(url, init));
     this.#platform = GitHubPlatform.layer(this.#fetch, options.openExternal);
     this.#now = options.now ?? Date.now;
-    this.#botTokens = new GitHubBotTokens({ apiUrl: options.apiUrl, fetch: this.#fetch, now: this.#now });
+    this.#botTokens = new GitHubBotTokens({
+      apiUrl: options.apiUrl,
+      enabled: options.installationTokenBroker === true,
+      fetch: this.#fetch,
+      now: this.#now,
+    });
     registerSecretValue(this.#mcpProxySecret);
   }
 

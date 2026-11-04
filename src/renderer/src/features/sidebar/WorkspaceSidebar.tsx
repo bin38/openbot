@@ -1,5 +1,7 @@
 import { type ChatWindowTarget, canAdministerServer } from "@openbot/contracts/ipc";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { AGENT_HIDDEN_CAPABILITY } from "@openbot/contracts/team-protocol/current";
+import { classifyFailure } from "@openbot/telemetry";
 import { computeAgentAvatarMoods } from "@openbot/ui/features/agents/agent-avatar-mood";
 import { Sidebar } from "@openbot/ui/features/sidebar/Sidebar";
 import { SidebarCommunityCard } from "@openbot/ui/features/sidebar/SidebarCommunityCard";
@@ -10,6 +12,7 @@ import { computeSidebarAgentStates, sidebarChannelWaits } from "@openbot/ui/feat
 import { teamMemberName } from "@openbot/ui/features/team/TeamPersonAvatar";
 import { useText } from "@openbot/ui/text";
 import { createEffect, createMemo, createSignal, onSettled, Show } from "solid-js";
+import { actionToast } from "../../action-toast";
 import { appPort } from "../../app-port";
 import { type ChatHistoryEntry, chatHistoryKeys } from "../../chat-history";
 import { useLayout } from "../../layout";
@@ -38,6 +41,7 @@ import { SidebarUpdateIsland } from "../updates/SidebarUpdateIsland";
 import { createCommunityCardVisibility } from "./community-card";
 import { createMachineCard } from "./machine-card";
 import { useSidebar } from "./sidebar-context";
+import { sidebarPort } from "./sidebar-port";
 import { createStorageCard } from "./storage-card";
 
 /** Dismissing the mobile app card is a choice of this computer, like the sidebar width. The key is
@@ -55,7 +59,7 @@ const MOBILE_APP_DISMISSED_STORAGE_KEY = "openbot:mobile-app-card-dismissed";
  * answers disagree for a frame.
  */
 export function WorkspaceSidebar(props: { peopleEnabled: boolean }) {
-  const { t } = useText();
+  const { t, errorMessage } = useText();
   const layout = useLayout();
   const platform = usePlatform();
   const channels = useChannels();
@@ -337,6 +341,19 @@ export function WorkspaceSidebar(props: { peopleEnabled: boolean }) {
         openAgentSetup();
       }}
       onEditAgent={editAgent}
+      onOpenAgentWorkspace={
+        activeServer()?.kind === "local" && !platform.landingPreview
+          ? (agentId) =>
+              void sidebarPort()
+                .storage.openLocation({ agentId })
+                .catch((error) =>
+                  actionToast.error(t("sidebar.agentMenu.openWorkspaceFailed"), {
+                    description: errorMessage(error, t("conversation.panels.tryAgain")),
+                    report: { operation: "settings", source: "action", cause_code: classifyFailure(error) },
+                  }),
+                )
+          : undefined
+      }
       duplicateSupported={activeServerSupportsCapability("agent-duplication")}
       duplicatingAgentIds={duplicatingAgentIds()}
       onDuplicateAgent={duplicateAgent}
@@ -385,7 +402,7 @@ export function WorkspaceSidebar(props: { peopleEnabled: boolean }) {
               />
             )}
           </Show>
-          <Show when={!platform.landingPreview && !footerCard() && !mobileAppDismissed()}>
+          <Show when={!INDEPENDENT_EDITION && !platform.landingPreview && !footerCard() && !mobileAppDismissed()}>
             <SidebarMobileAppCard
               onOpenInstall={() => openAppSettings(null, "mobile-connect")}
               onDismiss={() => {
@@ -394,14 +411,24 @@ export function WorkspaceSidebar(props: { peopleEnabled: boolean }) {
               }}
             />
           </Show>
-          <Show when={!platform.landingPreview && !footerCard() && mobileAppDismissed() && !communityCard.dismissed()}>
+          <Show
+            when={
+              !INDEPENDENT_EDITION &&
+              !platform.landingPreview &&
+              !footerCard() &&
+              mobileAppDismissed() &&
+              !communityCard.dismissed()
+            }
+          >
             <SidebarCommunityCard
               onJoinDiscord={() => void appPort().openExternal("discord")}
               onFollowX={() => void appPort().openExternal("x")}
               onDismiss={communityCard.dismiss}
             />
           </Show>
-          <SidebarUpdateIsland />
+          <Show when={!INDEPENDENT_EDITION}>
+            <SidebarUpdateIsland />
+          </Show>
         </>
       }
       onOpenMarketplace={() => setSkillsMarketplaceOpen(true)}

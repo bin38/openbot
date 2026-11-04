@@ -1,4 +1,4 @@
-import { Badge, Button, Clock3, Lock } from "@openbot/ui";
+import { Badge, Button, Clock3, Cloud, Lock } from "@openbot/ui";
 import { ProviderModelPicker } from "@openbot/ui/components/ProviderModelPicker";
 import type { AgentProfile } from "@openbot/ui/data";
 import { AgentAvatar } from "@openbot/ui/features/agents/AgentAvatar";
@@ -23,6 +23,7 @@ export interface ConversationHeaderProps {
   remoteControl?: ConversationHeaderRemoteControl | undefined;
   /** Missing when the chat has no side panel, such as a deleted channel. */
   sidePanel?: SidePanelToggleProps | undefined;
+  cloudComputer?: { open: boolean; onOpen: () => void } | undefined;
   /** The thread tabs of the agent, after its name. */
   threads?: JSX.Element | undefined;
   /**
@@ -113,6 +114,22 @@ export function ConversationHeader(props: ConversationHeaderProps) {
               <Show when={control().active}>
                 <span class="remote-desktop-button-dot" aria-hidden="true" />
               </Show>
+            </Button>
+          )}
+        </Show>
+        <Show when={props.cloudComputer}>
+          {(computer) => (
+            <Button
+              variant="ghost"
+              size="sm"
+              type="button"
+              aria-label={t("conversation.cloudComputer.open")}
+              title={t("conversation.cloudComputer.open")}
+              aria-expanded={computer().open ? "true" : "false"}
+              onClick={() => computer().onOpen()}
+            >
+              <Cloud aria-hidden="true" />
+              {t("conversation.sidePanel.pane.cloudComputer")}
             </Button>
           )}
         </Show>

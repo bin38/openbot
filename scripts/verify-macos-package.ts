@@ -5,9 +5,12 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { FuseV1Options, getCurrentFuseWire } from "@electron/fuses";
+import { AGENT_PROVIDERS } from "@openbot/contracts/agent-providers";
 import { isDynamicRecord } from "@openbot/contracts/runtime-values";
 import { createOpenBotLogger } from "@openbot/logging";
 import { isMissingFileError } from "../src/backend/file-errors";
+import { parseIndependentServices } from "../src/main/independent-installation";
+import { INDEPENDENT_MACOS_IDENTITY } from "./package-independent-macos";
 
 const logger = createOpenBotLogger("verify-macos-package");
 
@@ -36,11 +39,18 @@ const EXPECTED_MACOS_ICON_FILES = [
 const architecture = process.arch === "arm64" ? "arm64" : process.arch === "x64" ? "x64" : null;
 if (!architecture) throw new Error(`OpenBot does not ship for macOS ${process.arch}.`);
 const machOArchitecture = architecture === "arm64" ? "arm64" : "x86_64";
+const independent = process.argv.includes("--independent");
+const identity = independent
+  ? INDEPENDENT_MACOS_IDENTITY
+  : { productName: "OpenBot", executableName: "OpenBot", bundleId: "app.openbot.desktop" };
+const explicitAppPath = process.argv.slice(2).find((argument) => !argument.startsWith("--"));
+const distributionPath = independent ? "dist/independent-macos" : "dist";
 const appPath = resolve(
-  process.argv[2] ?? (architecture === "arm64" ? "dist/mac-arm64/OpenBot.app" : "dist/mac/OpenBot.app"),
+  explicitAppPath ??
+    join(distributionPath, architecture === "arm64" ? "mac-arm64" : "mac", `${identity.productName}.app`),
 );
 const contentsPath = resolve(appPath, "Contents");
-const executablePath = resolve(contentsPath, "MacOS/OpenBot");
+const executablePath = resolve(contentsPath, "MacOS", identity.executableName);
 const resourcesPath = resolve(contentsPath, "Resources");
 const packagedIconPath = resolve(resourcesPath, "icon.icns");
 const sourceIconPath = resolve("build/icon-production.icns");
@@ -122,13 +132,17 @@ await assertAbsent(
 
 const plist = JSON.parse(run("plutil", ["-convert", "json", "-o", "-", plistPath]));
 if (!isDynamicRecord(plist)) throw new Error("Info.plist is not a JSON object.");
-expectEqual(plist.CFBundleDisplayName, "OpenBot", "display name");
-expectEqual(plist.CFBundleExecutable, "OpenBot", "executable name");
-expectEqual(plist.CFBundleIdentifier, "app.openbot.desktop", "bundle identifier");
+expectEqual(plist.CFBundleDisplayName, identity.productName, "display name");
+expectEqual(plist.CFBundleExecutable, identity.executableName, "executable name");
+expectEqual(plist.CFBundleIdentifier, identity.bundleId, "bundle identifier");
 expectEqual(plist.CFBundleIconFile, "icon.icns", "application icon");
 expectEqual(plist.CFBundleIconName, "Icon", "macOS 26 application icon");
 expectEqual(plist.LSMinimumSystemVersion, "13.0", "minimum macOS version");
-expectEqual(plist.ElectronTeamID, "ZTRDTUL87R", "Apple Team ID");
+if (independent) {
+  if (plist.ElectronTeamID !== undefined)
+    throw new Error("An independent local package must not claim an Apple Team ID.");
+  await verifyIndependentPackage();
+} else expectEqual(plist.ElectronTeamID, "ZTRDTUL87R", "Apple Team ID");
 if (!Array.isArray(plist.NSUserActivityTypes) || !plist.NSUserActivityTypes.includes("NSUserActivityTypeBrowsingWeb")) {
   throw new Error("The Universal Links activity type is missing.");
 }
@@ -206,8 +220,52 @@ await verifyLaunch(executablePath);
 
 logger.info(`Verified ${appPath}`);
 logger.info(
-  `OpenBot ${String(packageJson.version)} · ${machOArchitecture} · icon · GPL remote runtime · WebRTC remote stack · ASAR integrity · hardened fuses · launch`,
+  `${identity.productName} ${String(packageJson.version)} · ${machOArchitecture} · icon · GPL remote runtime · WebRTC remote stack · ASAR integrity · hardened fuses · launch`,
 );
+
+/** The own build must carry only public service defaults and no original publisher claims. */
+async function verifyIndependentPackage(): Promise<void> {
+  parseIndependentServices(await readFile(join(resourcesPath, "independent-services.json"), "utf8"));
+  for (const relative of [
+    ".openbot",
+    ".openbot-build",
+    "dev-state.json",
+    "openbot.db",
+    ".env",
+    ".env.dev",
+    ".env.production",
+    ".env.keys",
+    "mobile-secrets.sealed.json",
+    "transfer-private.pem",
+  ])
+    await assertAbsent(join(resourcesPath, relative));
+  const signature = run("codesign", ["-dvvv", appPath], true);
+  if (!signature.includes("Signature=adhoc") || !signature.includes("TeamIdentifier=not set")) {
+    throw new Error("The independent local package must use an ad-hoc signature with no publisher identity.");
+  }
+  run("codesign", ["--verify", "--deep", "--strict", appPath]);
+  const signedEntitlements = spawnSync("codesign", ["-d", "--entitlements", ":-", appPath], {
+    encoding: "utf8",
+    stdio: "pipe",
+  });
+  if (signedEntitlements.status !== 0) throw new Error("The independent package entitlements could not be read.");
+  if (signedEntitlements.stdout.trim()) {
+    const decoded = JSON.parse(
+      execFileSync("plutil", ["-convert", "json", "-o", "-", "--", "-"], {
+        input: signedEntitlements.stdout,
+        encoding: "utf8",
+        stdio: ["pipe", "pipe", "inherit"],
+      }),
+    );
+    if (!isDynamicRecord(decoded)) throw new Error("The independent package entitlements are invalid.");
+    if (
+      decoded["com.apple.developer.team-identifier"] !== undefined ||
+      decoded["com.apple.developer.associated-domains"] !== undefined
+    ) {
+      throw new Error("The independent local package must not claim a publisher team or Universal Links domain.");
+    }
+  }
+}
 
 function expectEqual(actual: unknown, expected: unknown, label: string): void {
   if (actual !== expected) {
@@ -250,6 +308,7 @@ async function verifyPackagedIconCatalog(packagedPath: string, sourcePath: strin
 
 /** The Computer Use driver keeps the signature it was published with, not OpenBot's. */
 function assertCuaDriverSignature(binary: string): void {
+  run("codesign", ["--verify", "--strict", binary]);
   const description = run("codesign", ["-dvvv", binary], true);
   if (!description.includes("Authority=Developer ID Application: Cua AI, Inc. (YCK386LBJ7)")) {
     throw new Error("The Computer Use driver no longer carries the Cua AI Developer ID signature.");
@@ -276,14 +335,7 @@ function run(command: string, args: string[], includeStderr = false): string {
 async function verifyLaunch(executable: string): Promise<void> {
   const userDataPath = await mkdtemp(join(tmpdir(), "openbot-package-smoke-"));
   const child = spawn(executable, [`--user-data-dir=${userDataPath}`, "--use-mock-keychain"], {
-    env: {
-      ...process.env,
-      CODEX_HOME: join(userDataPath, "codex-home"),
-      CLAUDE_CONFIG_DIR: join(userDataPath, "claude-home"),
-      OPENBOT_CODEX_PATH: join(userDataPath, "missing-codex"),
-      OPENBOT_CLAUDE_PATH: join(userDataPath, "missing-claude"),
-      OPENBOT_GROK_PATH: join(userDataPath, "missing-grok"),
-    },
+    env: packageSmokeEnvironment(userDataPath),
     stdio: ["ignore", "ignore", "pipe"],
   });
   let stderr = "";
@@ -395,14 +447,7 @@ async function verifySecondInstanceExits(
   launchExit: Promise<never>,
 ): Promise<void> {
   const second = spawn(executable, [`--user-data-dir=${userDataPath}`, "--use-mock-keychain"], {
-    env: {
-      ...process.env,
-      CODEX_HOME: join(userDataPath, "codex-home"),
-      CLAUDE_CONFIG_DIR: join(userDataPath, "claude-home"),
-      OPENBOT_CODEX_PATH: join(userDataPath, "missing-codex"),
-      OPENBOT_CLAUDE_PATH: join(userDataPath, "missing-claude"),
-      OPENBOT_GROK_PATH: join(userDataPath, "missing-grok"),
-    },
+    env: packageSmokeEnvironment(userDataPath),
     stdio: ["ignore", "ignore", "pipe"],
   });
   let stderr = "";
@@ -433,4 +478,45 @@ async function verifySecondInstanceExits(
     stop.abort();
     if (second.exitCode === null && second.signalCode === null) second.kill("SIGKILL");
   }
+}
+
+/** The package launch check cannot inherit a real account key or start a user's provider CLI. */
+function packageSmokeEnvironment(userDataPath: string): NodeJS.ProcessEnv {
+  const environment: NodeJS.ProcessEnv = {};
+  for (const name of [
+    "PATH",
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+    "TMPDIR",
+    "LANG",
+    "LC_ALL",
+    "TZ",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+  ]) {
+    const value = process.env[name];
+    if (value !== undefined) environment[name] = value;
+  }
+  for (const provider of AGENT_PROVIDERS) {
+    environment[`OPENBOT_${provider.toUpperCase()}_PATH`] = join(userDataPath, `missing-${provider}`);
+  }
+  for (const name of [
+    "CODEX_HOME",
+    "CLAUDE_CONFIG_DIR",
+    "GROK_HOME",
+    "GEMINI_HOME",
+    "HERMES_HOME",
+    "KIMI_SHARE_DIR",
+    "PI_CODING_AGENT_DIR",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "XDG_CACHE_HOME",
+  ]) {
+    environment[name] = join(userDataPath, name.toLowerCase());
+  }
+  return environment;
 }

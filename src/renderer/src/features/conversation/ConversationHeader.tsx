@@ -1,3 +1,4 @@
+import { modelSupportsProviderAccount } from "@openbot/contracts/account-scoped-models";
 import { foreignProvider, isKnownAgentProvider } from "@openbot/contracts/agent-providers";
 import {
   type AgentModelId,
@@ -48,6 +49,8 @@ export function ConversationHeader() {
     settingsProvider,
     settingsReasoning,
     sidePanelOpen,
+    activeRightPanel,
+    openSidePanelPane,
     sideThreadOpen,
     toggleSidePanel,
     moveThreadToPanel,
@@ -73,8 +76,12 @@ export function ConversationHeader() {
   /** Each part shows only where the two runtimes differ, so a model change alone names only the models. */
   const runtimeLabel = (runtime: BadgeRuntime, other: BadgeRuntime) => {
     const parts = [
-      props.modelOptions.find((option) => option.provider === runtime.provider && option.id === runtime.model)?.name ??
-        runtime.model,
+      props.modelOptions.find(
+        (option) =>
+          option.provider === runtime.provider &&
+          option.id === runtime.model &&
+          modelSupportsProviderAccount(option, runtime.providerAccountId),
+      )?.name ?? runtime.model,
     ];
     if (runtime.provider !== other.provider) parts.unshift(providerName(runtime.provider));
     else if (accountId(runtime) !== accountId(other)) parts.unshift(accountName(runtime));
@@ -166,6 +173,11 @@ export function ConversationHeader() {
                 : undefined,
               onToggle: toggleSidePanel,
             }
+      }
+      cloudComputer={
+        props.agent && props.server?.kind === "local" && !props.runtime && !channel
+          ? { open: activeRightPanel() === "cloud-computer", onOpen: () => openSidePanelPane("cloud-computer") }
+          : undefined
       }
     />
   );

@@ -1,4 +1,6 @@
 import { AppLogo } from "@openbot/brand";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
+import { useText } from "@openbot/ui/text";
 import { Link } from "@tanstack/solid-router";
 import { For, Show } from "solid-js";
 import { EXTERNAL_LINK_REL, FOOTER_COLUMNS, type FooterLink, OPENBOT_LINKS } from "../../lib/landing-links";
@@ -27,6 +29,24 @@ const SOCIALS = [
 ] as const;
 
 export function LandingFooter() {
+  const { t } = useText();
+  if (INDEPENDENT_EDITION) {
+    return (
+      <footer class="landing-footer">
+        <div class="landing-footer-inner">
+          <p class="landing-footer-description">{t("webClient.independent.attribution")}</p>
+          <div class="landing-footer-bottom">
+            <a href={OPENBOT_LINKS.repository} rel={EXTERNAL_LINK_REL}>
+              {t("webClient.independent.source")}
+            </a>
+            <a href={OPENBOT_LINKS.license} rel={EXTERNAL_LINK_REL}>
+              {t("webClient.independent.license")}
+            </a>
+          </div>
+        </div>
+      </footer>
+    );
+  }
   let footerRef: HTMLElement | undefined;
   const currentYear = new Date().getFullYear();
   const revealed = createLandingReveal(() => footerRef);

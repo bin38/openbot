@@ -187,6 +187,10 @@ export const messages = {
   "error.remote.channelDeleteUnsupported": "请更新这台桌面服务器以删除频道。",
   "error.remote.historyRefreshFailed": "消息已发送，但无法刷新对话历史。",
   "error.remote.taskHistoryRefreshFailed": "任务已更改，但无法刷新对话历史。",
+  "error.remote.localServerStartFailed": "本机服务器未能启动。",
+  "error.remote.localServerNotFound": "此服务器不在本机上。",
   "error.remote.localServerAccountRemovalFailed":
     "服务器已在其电脑上删除，但账户中仍列出它。请再次删除以将其从账户中移除。",
+  "error.remote.localServerLimit": "本机最多可以创建 {limit} 个服务器。请先删除一个，再创建新的服务器。",
+  "error.remote.localServersReadOnly": "此版本的 OpenBot 无法读取本机服务器列表，请更新 OpenBot。",
 } as const satisfies PartialTranslation<typeof source>;

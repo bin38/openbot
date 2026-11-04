@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { Effect, Layer, Schedule } from "effect";
+import { requestCloudflareTurnCredentials } from "./cloudflare-turn";
 import type { RemoteApiConfig } from "./config";
-import { probeTurnAllocation, type TurnProbeError } from "./turn-probe";
+import { probeTurnAllocation, probeTurnCredentials, TurnProbeError } from "./turn-probe";
 
 // `/health/turn` and the background check share the probe of each relay, so a relay gets at most one
 // probe allocation a minute from this Signal.
@@ -9,8 +10,8 @@ const PROBE_CACHE = "1 minute";
 const CHECK_INTERVAL = "1 minute";
 
 /**
- * The coturn servers that this Signal gives to peers. They share `TURN_SHARED_SECRET` and the TURN
- * ports, so the credentials of `RemoteTokenService.iceServers` work on each of them.
+ * The TURN servers that this Signal gives to peers. Coturn servers share `TURN_SHARED_SECRET` and
+ * the TURN ports. Cloudflare uses issued credentials for its one managed relay address.
  *
  * A host and its clients get the same relay: the rendezvous hash of the host ID over the relays whose
  * last probe allocated, or that have no probe yet. So the sessions of a host meet on one relay, a relay
@@ -24,14 +25,31 @@ export class TurnRelays {
   readonly #available = new Map<string, boolean>();
   readonly #probes: ReadonlyMap<string, Effect.Effect<void, TurnProbeError>>;
 
-  constructor(config: Pick<RemoteApiConfig, "turnHosts" | "turnPort" | "turnSecret">) {
+  constructor(config: Pick<RemoteApiConfig, "turnHosts" | "turnPort" | "turnSecret" | "cloudflareTurn">) {
     this.#hosts = config.turnHosts;
     this.#probes = new Map(
       config.turnHosts.map((host) => [
         host,
         Effect.runSync(
           Effect.cachedWithTTL(
-            probeTurnAllocation(host, config).pipe(
+            (config.cloudflareTurn
+              ? requestCloudflareTurnCredentials(config.cloudflareTurn, 60).pipe(
+                  Effect.mapError(() => new TurnProbeError({ reason: "refused" })),
+                  Effect.flatMap((servers) => {
+                    const relay = servers.find((server) => {
+                      const urls = typeof server.urls === "string" ? [server.urls] : server.urls;
+                      return urls.includes("turn:turn.cloudflare.com:3478?transport=udp");
+                    });
+                    if (!relay?.username || !relay.credential)
+                      return Effect.fail(new TurnProbeError({ reason: "refused" }));
+                    return probeTurnCredentials(host, config.turnPort, {
+                      username: relay.username,
+                      password: relay.credential,
+                    });
+                  }),
+                )
+              : probeTurnAllocation(host, config)
+            ).pipe(
               Effect.tap(() => Effect.sync(() => this.#available.set(host, true))),
               Effect.tapError(() => Effect.sync(() => this.#available.set(host, false))),
             ),
@@ -42,7 +60,7 @@ export class TurnRelays {
     );
   }
 
-  /** The probe of `TURN_HOST`, the relay on the machine of this Signal. */
+  /** Checks the first configured relay, with issued credentials when Cloudflare is selected. */
   get localProbe(): Effect.Effect<void, TurnProbeError> {
     return this.#probe(this.#hosts[0] ?? "");
   }

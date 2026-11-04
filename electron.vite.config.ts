@@ -37,7 +37,12 @@ export default defineConfig({
     },
   },
   preload: {
-    plugins: [externalizeDepsPlugin({ exclude: ["@openbot/contracts"] })],
+    // Sandboxed preloads cannot require npm packages. Hash upload chunks in the bundled code.
+    plugins: [
+      externalizeDepsPlugin({
+        exclude: ["@openbot/contracts", "@openbot/i18n", "@openbot/team-client", "@noble/hashes"],
+      }),
+    ],
     build: {
       rollupOptions: {
         input: {

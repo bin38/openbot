@@ -6,6 +6,47 @@ All notable changes to OpenBot will be documented here. The project follows
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-04
+
+### Added
+
+- 增加自建账号的设置页登录、本地主人显式发布和原版手机扫码连接流程；退出账号会撤销外网会话并保留本地工作区。
+- 为自建 Signal 增加 Cloudflare TURN 选项，保留原有 coturn 和手机协议；中继凭据限时有效，撤销期间的迟到响应不会恢复连接。
+- 在助手对话中增加云电脑侧栏：AI 操作时显示只读桌面预览，人工接管后可直接操作鼠标和键盘，并可交还助手。
+- 增加自定义渠道的手动模型刷新和可选每小时自动同步，显示成功、失败、上游撤下和等待运行程序重启的状态。
+- 增加自定义 API 端点，可配置 ASR、OCR 等 HTTP 请求、工作区文件、产物提取和异步任务；助手可根据文档创建停用草稿，用户完善并启用后使用。
+- 增加 5 个模板、48 项操作，覆盖 MiniMax 中国区 HTTP 能力及通用 ASR / OCR 示例。音乐仅作历史付费兼容，WebSocket 实时会话未包含；不修改默认 Codex 或已有 CPA 模型渠道。
+- Add per-agent E2B cloud desktops with an encrypted local API key, pause/resume, screenshots, file transfer, and interactive human takeover. Returning control closes the viewer before agent actions resume. E2B usage belongs to the user's E2B account.
+- Bundle 35 app entries, including X, X Account, Feishu, and GitHub MCP, with setup for the user's own credentials. Add public MCP Registry search and review of supported endpoints and pinned packages. Private Codex connectors are not included.
+- Import standard MCP configurations and Mikka server lists with a secret-safe review step, without replacing existing MCP entries. Untested Registry connections are saved disabled.
+- Add local agent, skill, and template catalogs. Publication records and copied shortcuts stay in the local profile instead of being sent to the original marketplace.
+- 增加 OpenBot 独立版 1.0.0 的 macOS Apple 芯片安装包，与原版应用和资料目录分开。
+- 安装包支持自建账号与信令服务的公开地址配置，保留本机 Codex 登录；密钥、个人数据库和开发环境文件不进入安装包。
+
+### Changed
+
+- 本地自定义渠道支持最多 256 个模型；保留旧 Team API 的 64 个模型界限。同步新增模型时保留已有助手、默认及备选模型选择，不执行模型推理。
+- 增加中文“电脑操作”快捷入口，保留本机权限和驱动检查、助手工作区与文件/浏览器入口，补充中文使用说明。
+- Start with a local workspace owner and the existing local Codex sign-in. Keep existing agents, conversations, provider choices, and credentials. Default development startup runs only Electron and Vite.
+- Disable the original account, billing, hosted-server purchase, hosted-site publication, automatic application update, analytics, and error-reporting services in the local flow. Optional remote services require an explicit operator-owned origin.
+- Accept all regular desktop attachment types and stream large files in bounded chunks on updated desktop and browser connections, with no application file-size quota on that path. Keep ten files per message, disk/provider limits, legacy transfer protocols, mobile's existing bridge, and archive-extraction safety limits.
+- Require an explicitly configured own release repository for host deployment tools and an own signing team for the macOS host manager. Preserve manifest hashes, platform signature checks, and existing files when a staged source cannot be confirmed. No signed independent release is included in these changes.
+- 首版使用本地签名，未经过 Apple 公证；保留 Electron 安全隔离、完整性检查、原生组件校验和许可证。
+- 原站的生产部署、应用商店发布、商业主机和通知工作流仅允许在原仓库运行，独立版使用自己的发布流程。
+
+### Fixed
+
+- 服务商账号行直接显示“移除账号”，保留原有确认与使用中保护；明确标注沿用主机登录的默认账号。
+- Gemini 按账号保存已发现的模型，桌面选择器显示所选账号的目录与思考档位；修复默认账号旧目录遮住付费账号新模型的问题。移除账号前校验全部助手及待切换模型，失败时不产生部分更改。
+- Allow the first custom endpoint to be added before its runtime is installed. Saving prepares the selected runtime and preserves the current default provider and model.
+- Bundle streaming-upload dependencies into the sandboxed preload and fix a loading-screen callback that could stop the interface during startup.
+
+### Security
+
+- API 密钥加密绑定目标 origin；工具结果不返回密钥，产物下载不携带渠道鉴权。任务记录加密保存，结果未知时不自动重发请求。
+- Isolate the E2B viewer from the app preload, local files, and other origins. Keep the API key and viewer credentials out of settings reads and tool results; block new agent computer actions during human takeover.
+- Keep archive integrity monitoring without an upstream recovery download. An optional recovery action requires an explicitly configured HTTPS source.
+
 ## [0.59.0] - 2026-11-02
 
 ### Added

@@ -56,6 +56,15 @@ export interface AttachmentGatewayOptions {
   hooks: AttachmentGatewayHooks;
 }
 
+/** A trusted producer owns the source handle until the consumer finishes its durable copy. */
+export type AttachmentSourceProducer = (
+  consume: (source: GeneratedAttachmentSource) => Effect.Effect<OpenBotToolResponse, AttachmentOperationError>,
+) => Effect.Effect<OpenBotToolResponse, AttachmentOperationError>;
+
+type AttachmentSourcesProducer = (
+  consume: (sources: GeneratedAttachmentSource[]) => Effect.Effect<OpenBotToolResponse, AttachmentOperationError>,
+) => Effect.Effect<OpenBotToolResponse, AttachmentOperationError>;
+
 /**
  * The `attach_files_to_response` tool: opens agent-workspace files with
  * TOCTOU-safe checks and stages them as a completed `agent_attachment`
@@ -89,15 +98,57 @@ export class AttachmentGateway {
     paths: string[],
     messageId: string,
   ) {
-    const inFlight = this.#inFlight.get(messageId);
-    if (inFlight) return yield* Deferred.await(inFlight);
-    const completion = Deferred.makeUnsafe<OpenBotToolResponse, AttachmentOperationError>();
-    this.#inFlight.set(messageId, completion);
-    const exit = yield* Effect.exit(this.#attachFilesToResponse(senderAgentId, params, paths, messageId));
-    yield* Deferred.done(completion, exit);
-    if (this.#inFlight.get(messageId) === completion) this.#inFlight.delete(messageId);
-    return yield* exit;
+    return yield* this.#deduplicate(
+      messageId,
+      this.#attachSourcesToResponse(senderAgentId, params, messageId, (consume) =>
+        Effect.acquireUseRelease(this.#openSources(senderAgentId, paths, WORKSPACE_OR_SHARED), consume, (sources) =>
+          attachmentCall(() => Promise.allSettled(sources.map((source) => source.handle.close()))).pipe(Effect.orDie),
+        ),
+      ),
+    );
   }, Effect.uninterruptible).bind(this);
+
+  /**
+   * Consumes one file produced by a trusted service, such as a cloud download. The service keeps
+   * the handle open and removes its private staging file after the consumer commits. The ordinary
+   * path tool still uses its own workspace checks; this method accepts no model-supplied path.
+   * Both a concurrent retry and a retry after commit skip the producer entirely.
+   */
+  readonly attachProducedFile = Effect.fn("AttachmentGateway.attachProducedFile")(function* (
+    this: AttachmentGateway,
+    senderAgentId: string,
+    params: { threadId: string; turnId: string; callId: string },
+    messageId: string,
+    produce: AttachmentSourceProducer,
+  ) {
+    return yield* this.#deduplicate(
+      messageId,
+      this.#attachSourcesToResponse(senderAgentId, params, messageId, (consume) =>
+        produce((source) => consume([source])),
+      ),
+    );
+  }).bind(this);
+
+  readonly #deduplicate = Effect.fn("AttachmentGateway.deduplicate")(function* (
+    this: AttachmentGateway,
+    messageId: string,
+    operation: Effect.Effect<OpenBotToolResponse, AttachmentOperationError>,
+  ) {
+    return yield* Effect.uninterruptibleMask((restore) =>
+      Effect.gen({ self: this }, function* () {
+        const inFlight = this.#inFlight.get(messageId);
+        // Cancelling a duplicate waiter must not cancel or remove the original producer.
+        if (inFlight) return yield* restore(Deferred.await(inFlight));
+        const completion = Deferred.makeUnsafe<OpenBotToolResponse, AttachmentOperationError>();
+        this.#inFlight.set(messageId, completion);
+        const exit = yield* Effect.exit(restore(operation));
+        // A stopped producer settles every waiter and releases its id only after I/O finalizers.
+        yield* Deferred.done(completion, exit);
+        if (this.#inFlight.get(messageId) === completion) this.#inFlight.delete(messageId);
+        return yield* exit;
+      }),
+    );
+  }).bind(this);
 
   /**
    * Opens local files for a caller that stages them itself instead of attaching them to a conversation
@@ -186,12 +237,12 @@ export class AttachmentGateway {
     this.#inFlight.clear();
   }
 
-  readonly #attachFilesToResponse = Effect.fn("AttachmentGateway.attachFilesToResponse")(function* (
+  readonly #attachSourcesToResponse = Effect.fn("AttachmentGateway.attachSourcesToResponse")(function* (
     this: AttachmentGateway,
     senderAgentId: string,
     params: { threadId: string; turnId: string; callId: string },
-    paths: string[],
     messageId: string,
+    produce: AttachmentSourcesProducer,
   ): Effect.fn.Return<OpenBotToolResponse, AttachmentOperationError> {
     const publicThreadId = this.#conversation.publicThreadId(senderAgentId, params.threadId);
     const snapshot = this.#conversation.ensureSnapshot(senderAgentId, publicThreadId);
@@ -209,70 +260,66 @@ export class AttachmentGateway {
       );
     }
 
-    return yield* Effect.acquireUseRelease(
-      this.#openSources(senderAgentId, paths, WORKSPACE_OR_SHARED),
-      (sources) =>
-        Effect.gen({ self: this }, function* () {
-          const attachments = yield* this.#mailbox
-            .stageGeneratedAttachments({
-              sources,
-              ownerAgentId: senderAgentId,
-              ownerThreadId: publicThreadId,
-            })
-            .pipe(Effect.mapError((failure) => attachmentFailure(failure.cause)));
-          const message: ConversationSnapshot["messages"][number] = {
-            id: messageId,
-            turnId: params.turnId,
-            author: "assistant",
-            source: "assistant",
-            text: "",
-            createdAt: new Date().toISOString(),
-            status: "completed",
-            itemType: "agent_attachment",
-            attachments,
-          };
-          snapshot.messages.push(message);
-          sortConversationMessages(snapshot.messages);
-          try {
-            const persisted = this.#mailbox.persistGeneratedAttachmentsWithConversation(
-              snapshot,
-              "response.attachments-added",
-              {
-                turnId: params.turnId,
-                messageId,
-                attachmentCount: attachments.length,
-              },
-              attachments.map((attachment) => attachment.id),
-            );
-            snapshot.revision = persisted.revision;
-            this.#conversation.rememberConversationSignature(snapshot);
-          } catch (error) {
-            const messageIndex = snapshot.messages.findIndex((candidate) => candidate.id === messageId);
-            if (messageIndex >= 0) snapshot.messages.splice(messageIndex, 1);
-            yield* this.#mailbox
-              .discardStagedGeneratedAttachments(attachments.map((attachment) => attachment.id))
-              .pipe(Effect.mapError((failure) => attachmentFailure(failure.cause)));
-            return yield* attachmentFailure(error);
-          }
-          try {
-            this.#hooks.emit({ type: "conversation", snapshot: structuredClone(snapshot) });
-          } catch (error) {
-            try {
-              this.#hooks.emitError("conversation_publication_failed", error, senderAgentId);
-            } catch {
-              // A committed attachment remains successful even if event listeners fail.
-            }
-          }
-          return yield* attachmentCall(() =>
-            openBotToolResult({
-              status: "attached",
+    return yield* produce((sources) =>
+      Effect.gen({ self: this }, function* () {
+        const attachments = yield* this.#mailbox
+          .stageGeneratedAttachments({
+            sources,
+            ownerAgentId: senderAgentId,
+            ownerThreadId: publicThreadId,
+          })
+          .pipe(Effect.mapError((failure) => attachmentFailure(failure.cause)));
+        const message: ConversationSnapshot["messages"][number] = {
+          id: messageId,
+          turnId: params.turnId,
+          author: "assistant",
+          source: "assistant",
+          text: "",
+          createdAt: new Date().toISOString(),
+          status: "completed",
+          itemType: "agent_attachment",
+          attachments,
+        };
+        snapshot.messages.push(message);
+        sortConversationMessages(snapshot.messages);
+        try {
+          const persisted = this.#mailbox.persistGeneratedAttachmentsWithConversation(
+            snapshot,
+            "response.attachments-added",
+            {
+              turnId: params.turnId,
               messageId,
-              attachments: attachments.map((attachment) => ({ id: attachment.id, name: attachment.name })),
-            }),
+              attachmentCount: attachments.length,
+            },
+            attachments.map((attachment) => attachment.id),
           );
-        }),
-      (sources) =>
-        attachmentCall(() => Promise.allSettled(sources.map((source) => source.handle.close()))).pipe(Effect.orDie),
+          snapshot.revision = persisted.revision;
+          this.#conversation.rememberConversationSignature(snapshot);
+        } catch (error) {
+          const messageIndex = snapshot.messages.findIndex((candidate) => candidate.id === messageId);
+          if (messageIndex >= 0) snapshot.messages.splice(messageIndex, 1);
+          yield* this.#mailbox
+            .discardStagedGeneratedAttachments(attachments.map((attachment) => attachment.id))
+            .pipe(Effect.mapError((failure) => attachmentFailure(failure.cause)));
+          return yield* attachmentFailure(error);
+        }
+        try {
+          this.#hooks.emit({ type: "conversation", snapshot: structuredClone(snapshot) });
+        } catch (error) {
+          try {
+            this.#hooks.emitError("conversation_publication_failed", error, senderAgentId);
+          } catch {
+            // A committed attachment remains successful even if event listeners fail.
+          }
+        }
+        return yield* attachmentCall(() =>
+          openBotToolResult({
+            status: "attached",
+            messageId,
+            attachments: attachments.map((attachment) => ({ id: attachment.id, name: attachment.name })),
+          }),
+        );
+      }).pipe(Effect.uninterruptible),
     );
   });
 

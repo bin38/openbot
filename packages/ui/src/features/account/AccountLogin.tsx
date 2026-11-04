@@ -6,12 +6,14 @@ import type { TranslatedLocale } from "@openbot/i18n";
 import { appLanguageOption } from "@openbot/i18n/languages";
 import { ArrowLeft, Button, ErrorReference, Globe2, Input, Lock, RefreshCw } from "@openbot/ui";
 import { errorReference, type UserErrorDetails } from "@openbot/user-errors";
-import type { JSX } from "@solidjs/web";
+import { Dynamic, type JSX } from "@solidjs/web";
 import { createEffect, createMemo, createSignal, onCleanup, Show, untrack } from "solid-js";
 import { useText } from "../../text";
 import { OtpInput, type OtpInputStatus } from "./OtpInput";
 
 interface AccountLoginProps {
+  /** Uses the same sign-in flow inside settings without covering the workspace. */
+  layout?: "screen" | "embedded";
   variant: AppVariant;
   state: CentralAuthState;
   onRetry: () => Promise<void>;
@@ -370,12 +372,17 @@ export function AccountLogin(props: AccountLoginProps) {
   }
 
   return (
-    <main class="account-login-screen">
+    <Dynamic
+      component={props.layout === "embedded" ? "div" : "main"}
+      class={props.layout === "embedded" ? "account-login-embedded" : "account-login-screen"}
+    >
       <div class="account-login-shell">
-        <header class="account-login-brand-lockup">
-          <AppLogo variant={props.variant} animation="blink" interactive class="account-login-logo" />
-          <span class="account-login-wordmark">{PRODUCT_NAME}</span>
-        </header>
+        <Show when={props.layout !== "embedded"}>
+          <header class="account-login-brand-lockup">
+            <AppLogo variant={props.variant} animation="blink" interactive class="account-login-logo" />
+            <span class="account-login-wordmark">{PRODUCT_NAME}</span>
+          </header>
+        </Show>
 
         <section
           class="account-login"
@@ -666,7 +673,7 @@ export function AccountLogin(props: AccountLoginProps) {
           )}
         </Show>
       </div>
-    </main>
+    </Dynamic>
   );
 }
 

@@ -28,6 +28,7 @@ import { Effect, Result, Schema } from "effect";
 import type { AgentLifecycleFailed } from "../backend/agent-service";
 import { causeHelpers } from "../backend/effect-boundary";
 import type { CentralAuthOperationError } from "./central-auth-effects";
+import type { LocalMarketplaceCatalog } from "./local-marketplace-catalog";
 import type { SkillMarketplaceFailure } from "./skill-marketplace-service";
 
 interface AgentMarketplaceAuth {
@@ -101,10 +102,15 @@ export class AgentMarketplaceService {
     private readonly auth: AgentMarketplaceAuth,
     private readonly agents: AgentMarketplaceAgents,
     private readonly skills: AgentMarketplaceSkills,
+    private readonly localCatalog?: LocalMarketplaceCatalog,
   ) {}
 
   list(query: MarketplaceAgentQuery = {}): Effect.Effect<MarketplaceAgentPage, AgentMarketplaceFailure> {
     return Effect.gen({ self: this }, function* (): Effect.fn.Return<MarketplaceAgentPage, AgentMarketplaceFailure> {
+      if (this.localCatalog) {
+        const page = yield* this.localCatalog.listAgents(query).pipe(toAgentMarketplaceFailure);
+        return { agents: page.items, nextCursor: page.nextCursor };
+      }
       const params = marketplaceQueryParams(query);
       const page = yield* this.auth
         .requestAuthorized(`/v1/marketplace/agents/?${params}`, { method: "GET" }, decodeMarketplaceAgentPage)
@@ -114,6 +120,7 @@ export class AgentMarketplaceService {
   }
 
   get(listingId: string): Effect.Effect<MarketplaceAgentDetail, AgentMarketplaceFailure> {
+    if (this.localCatalog) return this.localCatalog.getAgent(listingId).pipe(toAgentMarketplaceFailure);
     return Effect.gen({ self: this }, function* (): Effect.fn.Return<MarketplaceAgentDetail, AgentMarketplaceFailure> {
       const detail = yield* this.auth
         .requestAuthorized(
@@ -132,6 +139,7 @@ export class AgentMarketplaceService {
    * pending agent that its creator shared.
    */
   getListing(agentId: string): Effect.Effect<MarketplaceAgentDetail, AgentMarketplaceFailure> {
+    if (this.localCatalog) return this.get(agentId);
     return Effect.gen({ self: this }, function* (): Effect.fn.Return<MarketplaceAgentDetail, AgentMarketplaceFailure> {
       const detail = yield* this.auth
         .requestAuthorized(
@@ -145,6 +153,7 @@ export class AgentMarketplaceService {
   }
 
   listMine(): Effect.Effect<AgentSubmission[], AgentMarketplaceFailure> {
+    if (this.localCatalog) return this.localCatalog.listSubmissions().pipe(toAgentMarketplaceFailure);
     return Effect.gen({ self: this }, function* (): Effect.fn.Return<AgentSubmission[], AgentMarketplaceFailure> {
       const values = yield* this.auth
         .requestAuthorized("/v1/marketplace/agents/mine", { method: "GET" }, decodeAgentSubmissions)
@@ -180,6 +189,15 @@ export class AgentMarketplaceService {
   submit(input: SubmitMarketplaceAgentInput): Effect.Effect<AgentSubmission, AgentMarketplaceFailure> {
     return Effect.gen({ self: this }, function* (): Effect.fn.Return<AgentSubmission, AgentMarketplaceFailure> {
       const snapshot = yield* this.preview(input.agentId);
+      if (this.localCatalog) {
+        const avatar = this.agents.resolveAvatar(input.agentId);
+        const image = avatar
+          ? { mimeType: avatar.mimeType, bytes: new Uint8Array(yield* marketplaceIO(() => readFile(avatar.path))) }
+          : null;
+        return yield* this.localCatalog
+          .publishAgent(snapshot, input.category, image, input.listingId)
+          .pipe(toAgentMarketplaceFailure);
+      }
       const form = new FormData();
       if (input.category) form.set("category", input.category);
       if (input.showCreatorAvatar !== undefined) form.set("showCreatorAvatar", String(input.showCreatorAvatar));
@@ -223,8 +241,10 @@ export class AgentMarketplaceService {
       }
       if (existing?.marketplaceSource?.versionId === detail.versionId) return { agent: existing };
 
-      let avatar: AvatarImageInput | null = null;
-      if (detail.avatarUrl) {
+      let avatar: AvatarImageInput | null = this.localCatalog
+        ? yield* this.localCatalog.agentAvatar(detail.id).pipe(toAgentMarketplaceFailure)
+        : null;
+      if (!this.localCatalog && detail.avatarUrl) {
         const avatarUrl = detail.avatarUrl;
         const bytes = yield* this.auth.downloadAuthorized(avatarUrl).pipe(toAgentMarketplaceFailure);
         const mimeType = imageMimeType(bytes);
@@ -322,7 +342,7 @@ export class AgentMarketplaceService {
         }
       }
       // The agent is saved at this point. A failed install-count receipt does not make the install fail.
-      if (!existing) {
+      if (!existing && !this.localCatalog) {
         yield* this.auth
           .requestAuthorized(
             `/v1/marketplace/agents/${encodeURIComponent(detail.id)}/install`,

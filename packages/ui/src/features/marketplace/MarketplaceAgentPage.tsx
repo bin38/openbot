@@ -1,4 +1,5 @@
 import type { MarketplaceAgentDetail, MarketplaceAgentSummary } from "@openbot/contracts/ipc";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import type { AppTextKey } from "@openbot/i18n";
 import {
   Button,
@@ -29,15 +30,17 @@ import type { MarketplaceModel } from "./marketplace-model";
 import { createDetail, type MarketplaceScope } from "./marketplace-view";
 
 /** Made by OpenBot; made by another user and reviewed by OpenBot; or shared before its first review. */
-type Trust = "verified" | "reviewed" | "pending";
+type Trust = "verified" | "reviewed" | "pending" | "local";
 
 function trustOf(agent: MarketplaceAgentSummary | MarketplaceAgentDetail): Trust {
+  if (INDEPENDENT_EDITION) return "local";
   if ("pending" in agent && agent.pending === true) return "pending";
   return agent.verified === true ? "verified" : "reviewed";
 }
 
 /** The line under the page header. The longer text adds the warning, which shows only before the add. */
 const TRUST_TEXT = {
+  local: { added: "marketplace.local.agentTrust", add: "marketplace.local.agentTrust" },
   reviewed: { added: "marketplace.agents.trust.reviewed", add: "marketplace.agents.trust.reviewedBeforeAdd" },
   pending: { added: "marketplace.agents.trust.pending", add: "marketplace.agents.trust.pendingBeforeAdd" },
 } as const satisfies Record<Exclude<Trust, "verified">, { added: AppTextKey; add: AppTextKey }>;

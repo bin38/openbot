@@ -1,5 +1,6 @@
 import type { MarketplaceSkillSummary } from "@openbot/contracts/ipc";
 import type { MarketplaceListingLink } from "@openbot/contracts/marketplace-links";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import {
   ArrowRight,
   Button,
@@ -62,7 +63,7 @@ export function CopyListingLink(props: { model: MarketplaceModel; link: Marketpl
   return (
     <Button type="button" variant="outline" size="sm" onClick={() => props.model.copyListingLink(props.link)}>
       <Link2 aria-hidden="true" />
-      {t("plugin.copyLink")}
+      {t(INDEPENDENT_EDITION ? "marketplace.local.copyLink" : "plugin.copyLink")}
     </Button>
   );
 }

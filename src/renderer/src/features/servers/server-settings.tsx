@@ -77,7 +77,7 @@ const ServerSettings = createSimpleContext({
   name: "Server settings",
   init: () => {
     const { servers, setServers, hostStatus, setHostStatus, setHostUpdateOpener } = useServers();
-    const { signedInAccount } = useAuth();
+    const { workspaceAccount } = useAuth();
     const [serverSettingsTargetId, setServerSettingsTargetId] = createSignal<string | null>(null);
     /** The section an opener asked for, such as Updates from the host version notice. */
     const [serverSettingsSection, setServerSettingsSection] = createSignal<ServerSettingsSection | null>(null);
@@ -314,7 +314,7 @@ const ServerSettings = createSimpleContext({
         // The host needs a name to publish. One that the user did not set is generated, so the
         // switch works on its own; the user can change it in General later.
         if (published && !hostStatus().configured)
-          setHostStatus(await serversPort().host.configure({ serverName: generatedServerName(signedInAccount()) }));
+          setHostStatus(await serversPort().host.configure({ serverName: generatedServerName(workspaceAccount()) }));
         const status = published ? await serversPort().host.start() : await serversPort().host.stop();
         if (published && status.phase !== "online") throw new Error("publish_failed");
         analytics.track("team_action", { action, result: "succeeded", server_kind: "local" });

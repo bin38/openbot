@@ -1,4 +1,5 @@
 import type { ChannelSummary } from "@openbot/contracts/ipc";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { AGENT_HIDDEN_CAPABILITY } from "@openbot/contracts/team-protocol/current";
 import { SIDEBAR_PINS_CAPABILITY } from "@openbot/contracts/team-protocol/sidebar-pins-v1";
 import { createRemoteConnectionRecovery, type RemoteRecoveryStatus } from "@openbot/team-client/remote-recovery";
@@ -64,7 +65,7 @@ import { serversPort } from "./servers-port";
 const ServerScope = createSimpleContext({
   name: "Server scope",
   init: () => {
-    const { centralAuth } = useAuth();
+    const { centralAuth, currentWorkspaceUserId } = useAuth();
     const { setupState } = useSetup();
     const { servers, activeServerId, initialServersReady, serverLoadRequest, serversLoaded } = useServers();
     const {
@@ -298,7 +299,7 @@ const ServerScope = createSimpleContext({
       const handleGlobalSearchShortcut = (event: KeyboardEvent) => {
         if (
           !isGlobalSearchShortcut(event) ||
-          centralAuth().status !== "signed_in" ||
+          !currentWorkspaceUserId(selectedServer()) ||
           setupState()?.completed !== true
         ) {
           return;
@@ -390,7 +391,7 @@ const ServerScope = createSimpleContext({
 
     // The frames go with the account, with a server that leaves the list, and with ended access.
     createEffect(
-      () => centralAuth().status === "signed_out",
+      () => !INDEPENDENT_EDITION && centralAuth().status === "signed_out",
       (signedOut) => {
         if (signedOut) deleteRemoteWorkspaceFrames(null);
       },

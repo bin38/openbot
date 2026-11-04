@@ -5,6 +5,7 @@ import type { CustomProvidersDesktopApi, OpenBotDesktopApi, ProviderAdminDesktop
  */
 export interface CustomProvidersPort {
   customProviders: OpenBotDesktopApi["customProviders"];
+  customProviderModelSync: OpenBotDesktopApi["customProviderModelSync"];
 }
 
 /**

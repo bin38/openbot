@@ -546,6 +546,106 @@ jobs:
         if: ${{ !cancelled() }}
         run: bun run test:agent-api-keys
 
+      # Local fixtures only. E2B uses a test adapter, never --live or a cloud credential.
+      # Ubuntu supplies Python 3, ps, /proc, and Bash for supervision and deployment refusal checks.
+      - name: Run the E2B desktop service fixture E2E
+        if: ${{ !cancelled() }}
+        run: bun scripts/e2b-desktop-e2e.ts
+
+      - name: Run the E2B download attachment E2E
+        if: ${{ !cancelled() }}
+        run: bun scripts/e2b-download-attachment-e2e.ts
+
+      - name: Run the streaming attachment E2E
+        if: ${{ !cancelled() }}
+        run: bun scripts/attachment-streaming-e2e.ts
+
+      - name: Run the MCP configuration import E2E
+        if: ${{ !cancelled() }}
+        run: bun scripts/mcp-config-import-e2e.ts
+
+      - name: Run the custom provider model synchronization E2E
+        if: ${{ !cancelled() }}
+        run: bun scripts/custom-provider-model-sync-e2e.ts
+
+      - name: Run the configurable API channel service E2E
+        if: ${{ !cancelled() }}
+        run: bun scripts/api-channels-e2e.ts
+
+      - name: Run the agent API channel tools E2E
+        if: ${{ !cancelled() }}
+        run: bun scripts/api-channel-tools-e2e.ts
+
+      - name: Run the independent workspace E2E
+        if: ${{ !cancelled() }}
+        run: bun scripts/independent-workspace-e2e.ts
+
+      - name: Run the independent network E2E
+        if: ${{ !cancelled() }}
+        run: bun scripts/independent-network-e2e.ts
+
+      - name: Run the independent runtime source E2E
+        if: ${{ !cancelled() }}
+        run: bun scripts/independent-runtime-source-e2e.ts
+
+      - name: Run the independent development launch E2E
+        if: ${{ !cancelled() }}
+        run: bun scripts/independent-dev-launch-e2e.ts
+
+      - name: Run the independent marketplace E2E
+        if: ${{ !cancelled() }}
+        run: bun scripts/independent-marketplace-e2e.ts
+
+      - name: Run the independent account API E2E
+        if: ${{ !cancelled() }}
+        run: bun scripts/independent-account-api-e2e.ts
+
+      - name: Run the independent native account Worker E2E
+        if: ${{ !cancelled() }}
+        run: bun scripts/independent-account-worker-e2e.ts
+
+      - name: Run the local mobile publication E2E
+        if: ${{ !cancelled() }}
+        run: bun scripts/local-mobile-publication-e2e.ts
+
+      - name: Run the Cloudflare TURN adapter E2E
+        if: ${{ !cancelled() }}
+        run: bun remote/api/scripts/cloudflare-turn-e2e.ts
+
+      - name: Run the provider account model catalog E2E
+        if: ${{ !cancelled() }}
+        run: bun scripts/provider-account-models-e2e.ts
+
+      - name: Run the independent deployment source E2E
+        if: ${{ !cancelled() }}
+        run: bun scripts/independent-deployment-e2e.ts
+
+      - name: Upload the independent edition E2E reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: independent-edition-e2e
+          path: |
+            .openbot-build/e2b-desktop-e2e/report.json
+            .openbot-build/e2b-download-attachment-e2e/report.json
+            .openbot-build/attachment-streaming-e2e/report.json
+            .openbot-build/mcp-config-import-e2e/report.json
+            .openbot-build/custom-provider-model-sync-e2e/report.json
+            .openbot-build/api-channels-e2e/report.json
+            .openbot-build/api-channel-tools-e2e/report.json
+            .openbot-build/independent-workspace-e2e/report.json
+            .openbot-build/independent-network-e2e/report.json
+            .openbot-build/independent-runtime-source-e2e/report.json
+            .openbot-build/independent-dev-launch-e2e/report.json
+            .openbot-build/independent-marketplace-e2e/report.json
+            .openbot-build/independent-account-api-e2e/report.json
+            .openbot-build/independent-account-worker-e2e/report.json
+            .openbot-build/local-mobile-publication-e2e/report.json
+            .openbot-build/cloudflare-turn-e2e/report.json
+            .openbot-build/provider-account-models-e2e/report.json
+            .openbot-build/independent-deployment-e2e/report.json
+          if-no-files-found: ignore
+
       - name: Upload the reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -955,7 +1055,8 @@ jobs:
 
   deploy-production:
     name: Deploy Cloudflare production
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # This job configures the original publisher's production services, not a fork's account API.
+    if: github.repository == 'nightly-labs/openbot' && github.event_name == 'push' && github.ref == 'refs/heads/main'
     # `surfaces` gates the deploy even though the Worker it ships lives in
     # `apps/auth-api`, which `api` already covers: mobile, the site router, the
     # team client and the remote stack all consume the account API, so a red

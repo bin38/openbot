@@ -1,0 +1,49 @@
+{
+  "slug": "x",
+  "name": "X",
+  "tagline": "Search public posts with your own X access token",
+  "description": "Connect directly to the official X MCP endpoint with your own developer access token. An app-only bearer token provides read access; operations depend on the token scopes and your X API plan. This connection does not use an OpenBot or Codex connector account.",
+  "category": "productivity",
+  "creatorName": "X",
+  "iconUrl": null,
+  "version": "1.0.0",
+  "prompts": [
+    { "id": "prompt-1", "text": "Find recent public posts about this project." },
+    { "id": "prompt-2", "text": "Summarize the public posts from this account." }
+  ],
+  "apps": [
+    {
+      "id": "app-x-mcp",
+      "name": "X",
+      "description": "Search public posts with your own X access token",
+      "iconUrl": null,
+      "server": {
+        "name": "x",
+        "transport": "http",
+        "url": "https://api.x.com/mcp",
+        "auth": [
+          {
+            "id": "x-bearer",
+            "kind": "key",
+            "label": "X access token",
+            "fields": [
+              {
+                "id": "token",
+                "label": "Access token",
+                "header": "Authorization",
+                "prefix": "Bearer ",
+                "hint": "Use a token issued by your own X developer application. App-only tokens are read-only."
+              }
+            ],
+            "docsUrl": "https://docs.x.com/tools/mcp",
+            "docsLabel": "X MCP setup"
+          }
+        ]
+      }
+    }
+  ],
+  "websiteUrl": "https://docs.x.com/tools/mcp",
+  "privacyPolicyUrl": null,
+  "termsUrl": null,
+  "skills": []
+}

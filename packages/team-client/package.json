@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./attachment-streaming": "./src/attachment-streaming.ts",
     "./ed25519": "./src/ed25519.ts",
     "./host-key-handover": "./src/host-key-handover.ts",
     "./remote-directory": "./src/remote-directory.ts",

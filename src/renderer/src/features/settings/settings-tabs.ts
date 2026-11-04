@@ -1,4 +1,5 @@
 import type { AppInfo } from "@openbot/contracts/ipc";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import type { AppTextKey } from "@openbot/i18n";
 import {
   Bell,
@@ -39,7 +40,11 @@ type SettingsRow = {
 };
 
 /** False for a row that this platform does not show, so the search does not find it. */
-export function settingsRowShown(row: { macOS?: boolean }, platform: AppInfo["platform"] | undefined): boolean {
+export function settingsRowShown(
+  row: { macOS?: boolean; titleKey?: AppTextKey },
+  platform: AppInfo["platform"] | undefined,
+): boolean {
+  if (INDEPENDENT_EDITION && row.titleKey === "settings.analytics.title") return false;
   return row.macOS === undefined || row.macOS === (platform === "darwin");
 }
 
@@ -211,8 +216,15 @@ export function navItem(tab: SettingsTab): SettingsNavItem {
  * from this panel.
  */
 export function settingsTabShown(tab: SettingsTab, dynamicIslandShown: boolean): boolean {
+  if (INDEPENDENT_EDITION && ["profile", "billing", "updates", "hosted-servers"].includes(tab)) return false;
   if (tab === "hosted-servers") return false;
   return tab !== "dynamic-island" || dynamicIslandShown;
+}
+
+/** Old saved/deep-linked account pages return to local settings in the independent edition. */
+export function settingsTabForEdition(tab: SettingsTab | undefined): SettingsTab {
+  const selected = tab === "hosted-servers" ? "billing" : (tab ?? "general");
+  return INDEPENDENT_EDITION && !settingsTabShown(selected, true) ? "general" : selected;
 }
 
 /**

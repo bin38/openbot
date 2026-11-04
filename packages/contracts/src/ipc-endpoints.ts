@@ -10,7 +10,43 @@ import type {
   ResetAgentSessionSettingInput,
   SetAgentSessionSettingInput,
 } from "./ipc-agent-session-settings";
+import type {
+  ApiChannelDefinition,
+  ApiChannelIdInput,
+  ApiChannelListRunsInput,
+  ApiChannelRun,
+  ApiChannelRunSummary,
+  ApiChannelSummary,
+  ApiChannelTemplate,
+  InvokeApiChannelInput,
+  SaveApiChannelInput,
+  SetApiChannelEnabledInput,
+  ValidateApiChannelInput,
+} from "./ipc-api-channels";
+import type {
+  CustomProviderModelSyncState,
+  RefreshCustomProviderModelsInput,
+  SetCustomProviderModelSyncInput,
+} from "./ipc-custom-provider-model-sync";
+import type {
+  E2bAgentInput,
+  E2bMachine,
+  E2bScreenshot,
+  E2bSettings,
+  E2bTakeoverInput,
+  E2bViewerBoundsInput,
+  SaveE2bSettingsInput,
+} from "./ipc-e2b";
+import type { McpRegistryPage, McpRegistryQuery } from "./ipc-mcp-registry";
 import type { ServerAuditLog } from "./ipc-server-audit";
+import type {
+  AttachmentUploadId,
+  AttachmentUploadState,
+  BeginAttachmentUpload,
+  CompleteAttachmentUpload,
+  WriteAttachmentUpload,
+} from "./team-protocol/streaming-attachments-v1";
+
 // The one channel list. Each endpoint holds its wire value, the group it belongs to, and whether it
 // is a request the renderer invokes or an event the main process sends. That is what lets a
 // registrar bind its handlers as an object keyed by endpoint, so a channel with no handler, and a
@@ -27,6 +63,7 @@ import type { ServerAuditLog } from "./ipc-server-audit";
 // change on one side is a type error on the other. The types are phantom members: they exist only
 // for the checker, and the runtime value is still `{ kind, channel }`.
 
+import type { AccountScopedClientAgentModelOption } from "./account-scoped-models";
 import type { ManagedProviderId } from "./agent-providers";
 import type { AppAppearancePreference, SetAppAppearancePreferenceInput } from "./app-appearance";
 import type { AppInterfaceSizePreference, SetAppInterfaceSizePreferenceInput } from "./app-interface-size";
@@ -70,7 +107,6 @@ import type {
   BrowseAgentFoldersInput,
   ChooseAgentFolderInput,
 } from "./ipc-agent-folders";
-import type { ClientAgentModelOption } from "./ipc-agent-identity";
 import type {
   AgentImportPreview,
   AgentImportResult,
@@ -975,6 +1011,16 @@ export const IPC_ENDPOINTS = {
     // through a changed address.
     update: request<UpdateCustomProviderInput, CustomProviderResult>()("custom-providers:update"),
   },
+  customProviderModelSync: {
+    list: request<undefined, CustomProviderModelSyncState[]>()("custom-provider-model-sync:list"),
+    refresh: request<RefreshCustomProviderModelsInput, CustomProviderModelSyncState[]>()(
+      "custom-provider-model-sync:refresh",
+    ),
+    setEnabled: request<SetCustomProviderModelSyncInput, CustomProviderModelSyncState[]>()(
+      "custom-provider-model-sync:set-enabled",
+    ),
+    changed: event<CustomProviderModelSyncState[]>()("custom-provider-model-sync:changed"),
+  },
   // Local model servers and ACP agents on this computer. Main makes every request, and a scan sends
   // no key. A joined host is never scanned.
   providerDetection: {
@@ -1228,6 +1274,37 @@ export const IPC_ENDPOINTS = {
   // returns one when the user asks, and `copy` writes one to the clipboard in main. The `host*`
   // endpoints do the same for one server: a joined server answers through `vault-v1`, to an owner
   // or admin. It has no CSV import, as the file is on this computer.
+  e2b: {
+    getSettings: request<undefined, E2bSettings>()("e2b:get-settings"),
+    saveSettings: request<SaveE2bSettingsInput, E2bSettings>()("e2b:save-settings"),
+    list: request<undefined, E2bMachine[]>()("e2b:list"),
+    status: request<E2bAgentInput, E2bMachine | null>()("e2b:status"),
+    start: request<E2bAgentInput, E2bMachine>()("e2b:start"),
+    pause: request<E2bAgentInput, E2bMachine>()("e2b:pause"),
+    delete: request<E2bAgentInput, void>()("e2b:delete"),
+    takeover: request<E2bTakeoverInput, E2bMachine>()("e2b:takeover"),
+    setViewerBounds: request<E2bViewerBoundsInput, void>()("e2b:set-viewer-bounds"),
+    closeViewer: request<E2bAgentInput, void>()("e2b:close-viewer"),
+    handback: request<E2bAgentInput, E2bMachine>()("e2b:handback"),
+    screenshot: request<E2bAgentInput, E2bScreenshot>()("e2b:screenshot"),
+    preview: request<E2bAgentInput, E2bScreenshot>()("e2b:preview"),
+  },
+  mcpRegistry: {
+    search: request<McpRegistryQuery, McpRegistryPage>()("mcp-registry:search"),
+  },
+  apiChannels: {
+    list: request<undefined, ApiChannelSummary[]>()("api-channels:list"),
+    listRuns: request<ApiChannelListRunsInput, ApiChannelRunSummary[]>()("api-channels:list-runs"),
+    getRun: request<ApiChannelIdInput, ApiChannelRun>()("api-channels:get-run"),
+    templates: request<undefined, ApiChannelTemplate[]>()("api-channels:templates"),
+    validate: request<ValidateApiChannelInput, ApiChannelDefinition>()("api-channels:validate"),
+    save: request<SaveApiChannelInput, ApiChannelSummary>()("api-channels:save"),
+    setEnabled: request<SetApiChannelEnabledInput, ApiChannelSummary>()("api-channels:set-enabled"),
+    delete: request<ApiChannelIdInput, void>()("api-channels:delete"),
+    invoke: request<InvokeApiChannelInput, ApiChannelRun>()("api-channels:invoke"),
+    readRun: request<ApiChannelIdInput, ApiChannelRun>()("api-channels:read-run"),
+    saveArtifact: request<ApiChannelIdInput, void>()("api-channels:save-artifact"),
+  },
   vault: {
     list: request<undefined, VaultState>()("vault:list"),
     save: request<VaultSaveInput, VaultState>()("vault:save"),
@@ -1394,7 +1471,7 @@ export const IPC_ENDPOINTS = {
     getAnalytics: scopedRequest<AgentAnalyticsInput, AgentAnalytics | null, "required">()("agent:get-analytics"),
     getHostAnalytics: scopedRequest<HostAnalyticsInput, HostAnalytics | null, "required">()("host:get-analytics"),
     getUsage: scopedRequest<string | undefined, AccountUsage>()("agent:get-usage"),
-    listModels: scopedQuery<ClientAgentModelOption[]>()("agent:list-models"),
+    listModels: scopedQuery<AccountScopedClientAgentModelOption[]>()("agent:list-models"),
     listAgents: scopedQuery<ClientAgentSummary[]>()("agent:list"),
     readAgentSessionSettings: scopedRequest<string, AgentSessionSettings>()("agent:session-settings:read"),
     setAgentSessionSetting: scopedRequest<SetAgentSessionSettingInput, AgentSessionSettings>()(
@@ -1603,6 +1680,16 @@ export const IPC_ENDPOINTS = {
     resend: request<ResendRoutineResultInput, void>()("routine-results:resend"),
   },
   agentAttachments: {
+    beginAttachmentUpload: scopedRequest<BeginAttachmentUpload, AttachmentUploadState>()(
+      "agent:begin-attachment-upload",
+    ),
+    writeAttachmentUpload: scopedRequest<WriteAttachmentUpload, AttachmentUploadState>()(
+      "agent:write-attachment-upload",
+    ),
+    completeAttachmentUpload: scopedRequest<CompleteAttachmentUpload, DraftAttachment>()(
+      "agent:complete-attachment-upload",
+    ),
+    cancelAttachmentUpload: scopedRequest<AttachmentUploadId, void>()("agent:cancel-attachment-upload"),
     /** Imports bytes only. Disk paths remain private to the preload's attachmentImports group. */
     importAttachmentData: scopedRequest<AttachmentDataInput[], DraftAttachment[]>()("agent:import-attachment-data"),
     chooseAttachments: scopedRequest<ChooseAttachmentsInput, DraftAttachment[]>()("agent:choose-attachments"),
@@ -1974,6 +2061,7 @@ export const IPC_GROUP_PATHS = {
   backgroundProcesses: "backgroundProcesses",
   skills: "skills",
   customProviders: "customProviders",
+  customProviderModelSync: "customProviderModelSync",
   providerDetection: "providerDetection",
   customAgents: "customAgents",
   acpRegistry: "acpRegistry",
@@ -1984,6 +2072,9 @@ export const IPC_GROUP_PATHS = {
   onePasswordConnector: "onePasswordConnector",
   bitwardenConnector: "bitwardenConnector",
   linkAccount: "linkAccount",
+  e2b: "e2b",
+  mcpRegistry: "mcpRegistry",
+  apiChannels: "apiChannels",
   vault: "vault",
   hostedSites: "hostedSites",
   routineFeed: "routineFeed",

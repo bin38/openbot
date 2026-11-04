@@ -2,11 +2,13 @@ import type { PartialTranslation } from "../../../message";
 import type { messages as source } from "../../en/error/provider";
 
 export const messages = {
+  "error.provider.modelSyncFailed": "OpenBot 无法更新模型同步记录，请重试。",
+  "error.provider.localModelsTooMany": "本地渠道最多可保存 {max} 个模型。",
   // Provider, provider runtime and custom endpoint errors.
   "error.provider.mcpConfig":
     "OpenBot 无法在 Codex 配置中注册 MCP 服务器。请确认 Codex 的 config.toml 有效且可写，然后重启 OpenBot。",
   "error.provider.computerUseConfig":
-    "OpenBot 无法在 Codex 配置中注册 Computer Use。请确认 Codex 的 config.toml 有效且可写，然后重启 OpenBot。你可以在助手设置中关闭 Computer Use 以便继续。",
+    "OpenBot 无法在 Codex 配置中注册 电脑操作。请确认 Codex 的 config.toml 有效且可写，然后重启 OpenBot。你可以在助手设置中关闭 电脑操作 以便继续。",
   "error.provider.codexUnresponsive": "Codex 停止响应，OpenBot 已结束其进程。",
   "error.provider.acpUnresponsive": "{provider} 未及时响应，OpenBot 已结束其进程。",
   "error.provider.acpSignInLost": "{provider} 的登录已失效，OpenBot 已结束其进程。请重新发送消息。",
@@ -250,7 +252,7 @@ export const messages = {
   "error.provider.opencodeSessionRejected":
     "OpenCode 拒绝了这次请求，但没有给出原因。长对话或更换模型之后可能出现这种情况。OpenBot 已带着聊天记录开启新的 OpenCode 会话，请重试。如果仍然报错，请换一个模型或调低推理强度。",
   "error.provider.museMcpStartupFault":
-    "Muse 无法启动某个 MCP 服务器，并在本次会话中停用了 MCP。OpenBot 已带着聊天记录开启新的 Muse 会话，请重试。如果仍然报错，请关闭 Computer Use，或对该助手关闭启动失败的 MCP 服务器。",
+    "Muse 无法启动某个 MCP 服务器，并在本次会话中停用了 MCP。OpenBot 已带着聊天记录开启新的 Muse 会话，请重试。如果仍然报错，请关闭 电脑操作，或对该助手关闭启动失败的 MCP 服务器。",
   "error.provider.grokSignIn": "请运行 `grok login`，或设置 XAI_API_KEY 以使用 Grok。",
   "error.provider.acpSignInTimedOut": "登录超时。",
   "error.provider.acpSignInStopped": "登录在完成之前就停止了。",
@@ -279,6 +281,7 @@ export const messages = {
   "error.provider.customAgentCheckFailed": "该助手未以 ACP 助手的方式响应。",
   "error.provider.customAgentRemoveBusy": "请等待当前对话与队列结束，再移除该自定义助手。",
   "error.provider.customAgentNone": "尚未保存任何自定义助手。",
+  "error.provider.customAgentsUnavailable": "此服务器无法更改自定义助手，请更新服务器上的 OpenBot。",
   "error.provider.customAgentMissing": "该自定义助手当前未保存。请改用其他模型。",
   "error.provider.customAgentSignIn": "请用该助手自带的命令登录后重试。",
   "error.provider.customAgentsReadOnly":
@@ -302,6 +305,8 @@ export const messages = {
   "error.provider.accountNotFound": "该 {provider} 账号不在本电脑上。请刷新后重试。",
   "error.provider.accountAlreadyAdded": "该 {provider} 账号已连接。",
   "error.provider.accountDefault": "第一个 {provider} 账号无法移除。",
+  "error.provider.accountRemoveModelsUnavailable":
+    "有助手选择了默认账号不支持的模型。请先更换这些助手的模型，再移除此账号。",
   "error.provider.accountUsesKey":
     "此 {provider} 账号使用已保存的 API 密钥，没有登录。请在服务器设置 → 服务商中更改密钥。",
   "error.provider.accountInUse": "该账号上仍有助手在工作。请等该助手停止后重试。",

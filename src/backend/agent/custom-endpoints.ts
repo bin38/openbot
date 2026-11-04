@@ -1,3 +1,4 @@
+import { modelSupportsProviderAccount } from "@openbot/contracts/account-scoped-models";
 import type { AgentModelOption, AgentReasoningEffort, AgentSummary, UpdateAgentInput } from "@openbot/contracts/ipc";
 import {
   CUSTOM_AGENT_DEFAULT_MODEL,
@@ -118,6 +119,13 @@ export class CustomEndpoints {
       return this.#providers.listModels();
     // A custom agent id can be the same text as an endpoint id. Its models are not the endpoint's.
     return this.#providers.listModels().filter((option) => this.serves(option.id, option.provider));
+  }
+
+  /** The local catalog for an explicit account, with the same endpoint exclusions. */
+  availableForAccount(accountId?: string | null): AgentModelOption[] {
+    return this.#providers
+      .listLocalModels()
+      .filter((option) => modelSupportsProviderAccount(option, accountId) && this.serves(option.id, option.provider));
   }
 
   /**
@@ -617,6 +625,9 @@ export class CustomEndpoints {
     const affected = this.#store.list().filter(
       (agent) =>
         providerForAgent(agent) === provider &&
+        // The primary catalog is not proof that an added Gemini account lost its selected model.
+        // Keep its identity and selection; account-aware validation blocks unavailable new choices.
+        !(provider === "antigravity" && agent.providerAccountId) &&
         (agentIds === undefined || agentIds.has(agent.id)) &&
         !models.some((model) => model.id === agent.model) &&
         // An agent whose endpoint moved waits for `moveAgentsToHarness`, which keeps its model.

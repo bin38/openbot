@@ -34,6 +34,7 @@ import { writeFileAtomically } from "../backend/atomic-json-file";
 import { causeHelpers } from "../backend/effect-boundary";
 import { toArrayBuffer } from "./agent-marketplace-service";
 import type { CentralAuthManager } from "./central-auth-manager";
+import { localCatalogPage } from "./local-marketplace-catalog";
 import type { LocalSkillLibrary } from "./local-skill-library";
 import { listManagedSkillsForChat, MANAGED_SKILL_FOLDERS, MANAGED_SKILL_SLUGS } from "./managed-skill-service";
 import { listFolderSkills, listHomeFolderSkills } from "./skill-folder-discovery";
@@ -85,15 +86,20 @@ export class SkillMarketplaceService {
   );
 
   constructor(
-    private readonly auth: CentralAuthManager,
+    private readonly auth: Pick<CentralAuthManager, "requestAuthorized" | "downloadAuthorized" | "resolveApiUrl">,
     private readonly listAgents: () => AgentSummary[],
     private readonly refreshAgentRuntime: (agentId: string) => Effect.Effect<void, AgentLifecycleFailed> = () =>
       Effect.void,
     readonly localLibrary?: LocalSkillLibrary,
+    private readonly localOnly = false,
   ) {}
 
   list(query: MarketplaceSkillQuery = {}): Effect.Effect<MarketplaceSkillPage, SkillMarketplaceFailure> {
     return Effect.gen({ self: this }, function* (): Effect.fn.Return<MarketplaceSkillPage, SkillMarketplaceFailure> {
+      if (this.localOnly) {
+        const page = localCatalogPage(yield* this.requireLocalLibrary().list().pipe(toSkillMarketplaceFailure), query);
+        return { skills: page.items, nextCursor: page.nextCursor };
+      }
       const params = marketplaceQueryParams(query);
       const page = yield* this.auth
         .requestAuthorized(`/v1/skills/?${params}`, { method: "GET" }, decodeMarketplaceSkillPage)
@@ -113,6 +119,10 @@ export class SkillMarketplaceService {
     return Effect.gen({ self: this }, function* (): Effect.fn.Return<MarketplaceSkillDetail, SkillMarketplaceFailure> {
       if (skillId.startsWith("local-skill-"))
         return yield* this.requireLocalLibrary().get(skillId).pipe(toSkillMarketplaceFailure);
+      if (this.localOnly)
+        return yield* new SkillMarketplaceFailure({
+          cause: new Error(sourceText("error.marketplace.localListingMissing")),
+        });
       const detail = yield* this.auth
         .requestAuthorized(`/v1/skills/${encodeURIComponent(skillId)}`, { method: "GET" }, decodeMarketplaceSkillDetail)
         .pipe(toSkillMarketplaceFailure);
@@ -127,6 +137,16 @@ export class SkillMarketplaceService {
   /** The skill a shared link names, by its slug. Only a link reads this; it never adds the skill. */
   getBySlug(slug: string): Effect.Effect<MarketplaceSkillDetail, SkillMarketplaceFailure> {
     return Effect.gen({ self: this }, function* (): Effect.fn.Return<MarketplaceSkillDetail, SkillMarketplaceFailure> {
+      if (this.localOnly) {
+        const skill = (yield* this.requireLocalLibrary().list().pipe(toSkillMarketplaceFailure)).find(
+          (entry) => entry.slug === slug,
+        );
+        if (!skill)
+          return yield* new SkillMarketplaceFailure({
+            cause: new Error(sourceText("error.marketplace.localListingMissing")),
+          });
+        return skill;
+      }
       const detail = yield* this.auth
         .requestAuthorized(
           `/v1/skills/slug/${encodeURIComponent(slug)}`,
@@ -144,6 +164,8 @@ export class SkillMarketplaceService {
 
   listMine(): Effect.Effect<SkillSubmission[], SkillMarketplaceFailure> {
     return Effect.gen({ self: this }, function* (): Effect.fn.Return<SkillSubmission[], SkillMarketplaceFailure> {
+      if (this.localOnly)
+        return (yield* this.requireLocalLibrary().list().pipe(toSkillMarketplaceFailure)).map(localSkillSubmission);
       const submissions = yield* this.auth
         .requestAuthorized("/v1/skills/mine", { method: "GET" }, decodeSubmissions)
         .pipe(toSkillMarketplaceFailure);
@@ -173,6 +195,13 @@ export class SkillMarketplaceService {
       const draft = this.#drafts.get(input.draftId);
       if (!draft || Date.now() - draft.createdAt > DRAFT_LIFETIME_MS)
         return yield* new SkillMarketplaceFailure({ cause: new Error(sourceText("error.skill.draftExpired")) });
+      if (this.localOnly) {
+        const skill = yield* this.requireLocalLibrary()
+          .saveBundle(draft.bytes, input.skillId)
+          .pipe(toSkillMarketplaceFailure);
+        this.#drafts.delete(input.draftId);
+        return localSkillSubmission(skill);
+      }
       const form = new FormData();
       form.set("category", input.category);
       if (input.showCreatorAvatar !== undefined) form.set("showCreatorAvatar", String(input.showCreatorAvatar));
@@ -278,6 +307,17 @@ export class SkillMarketplaceService {
     replaceModified?: boolean;
   }): Effect.Effect<InstalledSkill, SkillMarketplaceFailure> {
     return Effect.gen({ self: this }, function* (): Effect.fn.Return<InstalledSkill, SkillMarketplaceFailure> {
+      if (input.skillId.startsWith("local-skill-"))
+        return yield* this.installLocal({
+          agentId: input.agentId,
+          skillId: input.skillId,
+          revision: Number(input.versionId),
+          ...(input.replaceModified === undefined ? {} : { replaceModified: input.replaceModified }),
+        });
+      if (this.localOnly)
+        return yield* new SkillMarketplaceFailure({
+          cause: new Error(sourceText("error.marketplace.localListingMissing")),
+        });
       const agent = yield* skillSync(() => this.requireAgent(input.agentId));
       const detail = yield* this.auth
         .requestAuthorized(
@@ -302,7 +342,7 @@ export class SkillMarketplaceService {
       const result: MarketplaceAgentSkill[] = [];
       for (const entry of Object.values(lock.skills)) {
         if (entry.enabled === false) continue;
-        if (entry.skillId.startsWith("local-skill-"))
+        if (!this.localOnly && entry.skillId.startsWith("local-skill-"))
           return yield* new SkillMarketplaceFailure({ cause: new Error(sourceText("error.skill.publishLocalFirst")) });
         result.push(yield* this.publishedReferenceEffect(agent, entry));
       }
@@ -322,7 +362,7 @@ export class SkillMarketplaceService {
       const result: AgentTemplateSkill[] = [];
       for (const entry of Object.values(lock.skills)) {
         if (entry.enabled === false) continue;
-        if (entry.skillId.startsWith("local-skill-")) {
+        if (this.localOnly || entry.skillId.startsWith("local-skill-")) {
           const [directory] = targetDirectories(agent.workspacePath, entry.slug);
           result.push(yield* embeddedSkill(join(directory, "SKILL.md"), entry.name));
         } else result.push({ kind: "marketplace", ...(yield* this.publishedReferenceEffect(agent, entry)) });
@@ -478,7 +518,7 @@ export class SkillMarketplaceService {
       };
       lock.skills[detail.id] = entry;
       yield* writeLock(agent.workspacePath, lock);
-      if (!detail.id.startsWith("local-skill-"))
+      if (!this.localOnly && !detail.id.startsWith("local-skill-"))
         yield* this.auth
           .requestAuthorized(
             `/v1/skills/${encodeURIComponent(detail.id)}/install`,
@@ -626,6 +666,7 @@ export class SkillMarketplaceService {
     agentId: string;
     skillId: string;
     revision: number;
+    replaceModified?: boolean;
   }): Effect.Effect<InstalledSkill, SkillMarketplaceFailure> {
     return Effect.gen({ self: this }, function* (): Effect.fn.Return<InstalledSkill, SkillMarketplaceFailure> {
       const detail = yield* this.requireLocalLibrary()
@@ -634,7 +675,12 @@ export class SkillMarketplaceService {
       const bundle = yield* this.requireLocalLibrary()
         .bundle(input.skillId, input.revision)
         .pipe(toSkillMarketplaceFailure);
-      return yield* this.installResolved(yield* skillSync(() => this.requireAgent(input.agentId)), detail, bundle);
+      return yield* this.installResolved(
+        yield* skillSync(() => this.requireAgent(input.agentId)),
+        detail,
+        bundle,
+        input.replaceModified,
+      );
     });
   }
 
@@ -1038,6 +1084,22 @@ const assertSkillPaths = Effect.fn("SkillMarketplace.checkPaths")(function* (wor
     }
   }
 });
+
+function localSkillSubmission(skill: MarketplaceSkillDetail): SkillSubmission {
+  return {
+    id: `${skill.id}:${skill.version}`,
+    skillId: skill.id,
+    slug: skill.slug,
+    name: skill.name,
+    description: skill.description,
+    category: skill.category,
+    version: skill.version,
+    status: "approved",
+    rejectionNote: null,
+    iconUrl: skill.iconUrl,
+    createdAt: skill.updatedAt,
+  };
+}
 
 export class SkillMarketplaceFailure extends Schema.TaggedError<SkillMarketplaceFailure>()("SkillMarketplaceFailure", {
   cause: Schema.Defect(),

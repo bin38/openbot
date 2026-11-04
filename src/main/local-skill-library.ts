@@ -111,6 +111,24 @@ export class LocalSkillLibrary {
     );
   }
 
+  /** Imports an archive explicitly chosen in the local library UI; it never publishes to a remote account. */
+  saveBundle(bytes: Uint8Array, existingId?: string): Effect.Effect<MarketplaceSkillDetail, LocalSkillFailure> {
+    return this.serialize(
+      Effect.gen({ self: this }, function* () {
+        const info = yield* localSync(() => inspectArchive(bytes));
+        const current = existingId ? yield* this.get(existingId) : null;
+        if (current && current.slug !== info.slug)
+          return yield* new LocalSkillFailure({ cause: new Error(sourceText("error.skill.localKeepName")) });
+        if (!current && (yield* this.list()).some((entry) => entry.slug === info.slug))
+          return yield* new LocalSkillFailure({ cause: new Error(sourceText("error.skill.localNameTaken")) });
+        const id = current?.id ?? `local-skill-${randomUUID()}`;
+        const revision = (current?.version ?? 0) + 1;
+        yield* this.publishEffect(id, revision, bytes);
+        return yield* this.get(id, revision);
+      }),
+    );
+  }
+
   revise(
     agentId: string,
     id: string,

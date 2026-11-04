@@ -1,4 +1,5 @@
 import type { RoutineFields } from "@openbot/contracts/ipc";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { HostedServerUpsellDialog } from "@openbot/ui/features/servers/HostedServerUpsellDialog";
 import { HostedServerUpsellNotice } from "@openbot/ui/features/servers/HostedServerUpsellNotice";
 import type { HostedUpsellHost } from "@openbot/ui/features/servers/hosted-server-upsell-host";
@@ -69,6 +70,7 @@ const [modalThisSession, setModalThisSession] = createSignal(false);
 
 /** Called when a routine is new on the open host, from the editor or from an agent. */
 export function hostedUpsellRoutineCreated(routine: HostedUpsellRoutine): void {
+  if (INDEPENDENT_EDITION) return;
   untrack(controller)?.routineCreated(routine);
 }
 
@@ -77,6 +79,7 @@ export function hostedUpsellRoutineCreated(routine: HostedUpsellRoutine): void {
  * It counts as shown each time it appears.
  */
 export function createHostedUpsellOffline(offline: () => boolean): () => { onSeePlans: () => void } | null {
+  if (INDEPENDENT_EDITION) return () => null;
   const offer = createMemo(() => {
     const current = offline() ? controller() : null;
     return current?.canOffer() ? current : null;
@@ -114,6 +117,7 @@ export function createdRoutines(
 }
 
 export function HostedServerUpsell(props: HostedServerUpsellProps) {
+  if (INDEPENDENT_EDITION) return null;
   const platform = usePlatform();
   const [pending, setPending] = createSignal<{ routine: HostedUpsellRoutine; serverId: string } | null>(null);
   const [openRoutine, setOpenRoutine] = createSignal<HostedUpsellRoutine | null>(null);
@@ -249,6 +253,7 @@ export function HostedServerUpsell(props: HostedServerUpsellProps) {
 
 /** The offer at the bottom of the routines panel, while active routines depend on this host. */
 export function HostedUpsellRoutinesNotice(props: { count: number }) {
+  if (INDEPENDENT_EDITION) return null;
   return (
     <Show when={props.count > 0 && controller()?.noticeVisible() ? controller() : null}>
       {(upsell) => <ShownNotice upsell={upsell()} count={props.count} />}

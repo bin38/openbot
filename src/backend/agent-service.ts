@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
+import type { AccountScopedAgentModelOption } from "@openbot/contracts/account-scoped-models";
 import { agentProviderDescriptor, customAgentIdOfModel } from "@openbot/contracts/agent-providers";
 import { sortConversationMessages } from "@openbot/contracts/conversation-order";
 import { developmentStartingModel } from "@openbot/contracts/development-defaults";
@@ -140,6 +141,7 @@ import { Cause, Deferred, Effect, Exit, Fiber, Result, Schema, Scope, Semaphore 
 import { AgentMemories } from "./agent/agent-memories";
 import { AgentRemoval, AgentRemovalFailed } from "./agent/agent-removal";
 import { AgentSettingsRefused } from "./agent/agent-settings-refused";
+import type { ApiChannelTools } from "./agent/api-channel-tools";
 import type { ApprovalAutomationPolicy } from "./agent/approval-automation";
 import { AttachmentGateway } from "./agent/attachment-gateway";
 import {
@@ -160,6 +162,7 @@ import { DeltaBuffer } from "./agent/delta-buffer";
 import type { SectionTeammates } from "./agent/developer-instructions";
 import { DrainScheduler } from "./agent/drain-scheduler";
 import { DuplicationGate, toAgentDuplicationFailed } from "./agent/duplication-gate";
+import type { E2bDesktopTools } from "./agent/e2b-tools";
 import type { FailureContext, FailureSignal } from "./agent/failure-signal";
 import { type AgentHostedSites, HostedSiteCoordinator } from "./agent/hosted-site-coordinator";
 import { ImageGenRuntime } from "./agent/image-gen-runtime";
@@ -324,6 +327,8 @@ export interface AgentServiceOptions {
   providerAccounts?: ProviderAccountStore;
   saveProviderUse?: (provider: AgentProvider, on: boolean) => Effect.Effect<void, AgentLifecycleFailed>;
   localSkillTools?: (() => LocalSkillTools) | undefined;
+  e2bTools?: E2bDesktopTools | undefined;
+  apiChannelTools?: ApiChannelTools | undefined;
   /** Built after the service, so read when a tool call needs it. */
   routineFlowTools?: () => RoutineFlowTools;
   /** Built after the service, so read when a tool call needs it. */
@@ -611,7 +616,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       profileClients: this.#profileClients,
       listAgents: () => this.listAgents(),
       models: (agent) =>
-        this.#providers.ensureProvider(agent.provider).pipe(Effect.map(() => this.#endpoints.available())),
+        this.#providers
+          .ensureProvider(agent.provider)
+          .pipe(Effect.map(() => this.#endpoints.availableForAccount(agent.providerAccountId))),
       createProfileClient: (agent) => this.#providers.createProfileClient(agent.provider, agent.providerAccountId),
       usageObserver: (agent, model) =>
         memoryReviewUsageObserver(this.#store.database.usage, agent.id, agent.provider, model.id),
@@ -1532,6 +1539,8 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       ...(options.visualPreview === undefined ? {} : { visualPreview: options.visualPreview }),
       ...(options.screenCapture === undefined ? {} : { screenCapture: options.screenCapture }),
       mcpServers: mcpServersFromGateway(this.#mcp, options.prepareMcpTest),
+      e2bTools: options.e2bTools,
+      apiChannelTools: options.apiChannelTools,
       ...(options.marketplaceAppServer === undefined ? {} : { marketplaceAppServer: options.marketplaceAppServer }),
       apiKeys: options.agentApiKeys ?? null,
       hooks: {
@@ -2212,6 +2221,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     return this.#endpoints.available();
   }
 
+  /** Local IPC only. Released Team API clients retain the primary-account catalog. */
+  listLocalModels(): AccountScopedAgentModelOption[] {
+    return this.#providers.listLocalModels().filter((model) => this.#endpoints.serves(model.id, model.provider));
+  }
+
   readonly generateProfile = Effect.fn("AgentService.generateProfile")(
     function* (this: AgentService, input: GenerateAgentProfileInput, sections: SidebarSection[]) {
       const agent = input.agentId ? this.listAgents().find((candidate) => candidate.id === input.agentId) : null;
@@ -2225,7 +2239,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         });
       const provider = agent?.provider ?? this.#startingChoice()?.provider ?? this.#providers.preferredProvider();
       yield* this.#providers.ensureProvider(provider);
-      const models = this.#endpoints.available();
+      const models = this.#endpoints.availableForAccount(agent?.providerAccountId);
       const model = agent
         ? models.find((candidate) => candidate.id === agent.model && candidate.provider === provider)
         : startingModel(provider, models, this.#preference());
@@ -2257,7 +2271,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       if (this.#profileClients.busy()) return yield* failed(sourceText("error.agent.sideQuestionBusy"));
       yield* this.#providers.ensureProvider(agent.provider);
       const model = this.#endpoints
-        .available()
+        .availableForAccount(agent.providerAccountId)
         .find((candidate) => candidate.provider === agent.provider && candidate.id === agent.model);
       if (!model) return yield* failed(sourceText("error.provider.noModel"));
       if (this.#stopping) return yield* failed(sourceText("error.backend.shuttingDown"));
@@ -2767,21 +2781,24 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       () => {
         this.#conversation.requireKnownAgent(input.agentId);
         const previous = this.#store.list().find((agent) => agent.id === input.agentId);
+        const candidateAccount =
+          input.providerAccountId !== undefined
+            ? input.providerAccountId
+            : previous && input.provider !== undefined && input.provider !== providerForAgent(previous)
+              ? null
+              : previous?.providerAccountId;
+        const accountModels = this.#endpoints.availableForAccount(candidateAccount);
         const requestedModel = input.model
-          ? this.#endpoints
-              .available()
-              .find((model) => model.id === input.model && (!input.provider || model.provider === input.provider))
+          ? accountModels.find(
+              (model) => model.id === input.model && (!input.provider || model.provider === input.provider),
+            )
           : undefined;
         if (input.model && !requestedModel) {
           // A change of model alone stays on the agent's provider, so that provider is the one to explain.
           const provider = input.provider ?? (previous ? providerForAgent(previous) : undefined);
           throw new AgentSettingsRefused(
-            modelUnavailableError(
-              input.model,
-              provider,
-              this.#endpoints.available(),
-              this.#providers.status().providers ?? [],
-            ).message,
+            modelUnavailableError(input.model, provider, accountModels, this.#providers.status().providers ?? [])
+              .message,
           );
         }
         const requestedProvider = input.provider ?? requestedModel?.provider ?? previous?.provider;
@@ -2816,6 +2833,39 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
               provider: requestedProvider ? providerLabel(requestedProvider) : "",
             }),
           );
+        for (const backup of input.backupModels?.order ?? []) {
+          if (backup.provider !== "antigravity") continue;
+          const backupModels = this.#endpoints.availableForAccount(backup.providerAccountId);
+          if (!backupModels.some((model) => model.provider === backup.provider && model.id === backup.model))
+            throw new AgentSettingsRefused(
+              modelUnavailableError(
+                backup.model,
+                backup.provider,
+                backupModels,
+                this.#providers.status().providers ?? [],
+              ).message,
+            );
+        }
+        const changesAccountModel =
+          input.model !== undefined || input.provider !== undefined || input.providerAccountId !== undefined;
+        const modelId = requestedModel?.id ?? previous?.model;
+        if (
+          changesAccountModel &&
+          requestedProvider === "antigravity" &&
+          modelId &&
+          !this.#endpoints
+            .availableForAccount(requestedAccount)
+            .some((model) => model.provider === requestedProvider && model.id === modelId)
+        ) {
+          throw new AgentSettingsRefused(
+            modelUnavailableError(
+              modelId,
+              requestedProvider,
+              this.#endpoints.availableForAccount(requestedAccount),
+              this.#providers.status().providers ?? [],
+            ).message,
+          );
+        }
         // The sessions of one account are not in the folder of another, so an account change is
         // handed over like a provider change. A requested change while work runs is queued below.
         if (previous && requestedAccount !== previousAccount && !queueWhileBusy) requireIdle(previous);
@@ -2889,7 +2939,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     ) {
       const queuedModel =
         requestedModel ??
-        this.#endpoints.available().find((model) => model.provider === queued.provider && model.id === queued.model);
+        this.#endpoints
+          .availableForAccount(queued.providerAccountId)
+          .find((model) => model.provider === queued.provider && model.id === queued.model);
       return yield* queue({
         ...queued,
         ...(requestedModel ? { model: requestedModel.id } : {}),
@@ -3044,7 +3096,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     // The agent keeps its reasoning effort where the other model has it. It goes back with the effort it left.
     const move = (choice: AgentModelChoice, reasoningEffort = agent.reasoningEffort) => {
       const model = this.#endpoints
-        .available()
+        .availableForAccount(choice.providerAccountId)
         .find((option) => option.provider === choice.provider && option.id === choice.model);
       return {
         agentId,
@@ -3101,7 +3153,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       (accounts === undefined
         ? accountId === DEFAULT_PROVIDER_ACCOUNT_ID
         : accounts.some((account) => account.id === accountId && account.state === "connected")) &&
-      this.#endpoints.available().some((model) => model.provider === choice.provider && model.id === choice.model)
+      this.#endpoints
+        .availableForAccount(choice.providerAccountId)
+        .some((model) => model.provider === choice.provider && model.id === choice.model)
     );
   }
 
@@ -3235,8 +3289,9 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
    */
   #appendModelSwitchMarker(agent: AgentSummary, reason: ModelSwitchReason): void {
     const model =
-      this.#endpoints.available().find((option) => option.provider === agent.provider && option.id === agent.model)
-        ?.name ?? agent.model;
+      this.#endpoints
+        .availableForAccount(agent.providerAccountId)
+        .find((option) => option.provider === agent.provider && option.id === agent.model)?.name ?? agent.model;
     const text = sourceText(MODEL_SWITCH_TEXT[reason], { model });
     try {
       this.channels.noteModelSwitch(agent.id, text, MODEL_SWITCH_ITEM_TYPES[reason]);
@@ -3742,19 +3797,31 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           const agents = this.#store
             .list()
             .filter((agent) => providerForAgent(agent) === provider && agentProviderAccount(agent) === accountId);
-          yield* lifecycleStep("check provider account", () => {
-            if (agents.some((agent) => this.#runsTurn(agent.id) || this.#mailbox.hasUnfinishedDelivery(agent.id)))
-              throw new Error(sourceText("error.provider.accountInUse"));
-          });
-          for (const agent of agents) yield* this.#applyAgentUpdate({ agentId: agent.id, providerAccountId: null });
-          // A queued change to the account moves to the provider's own sign-in too, so it does not fail
-          // before the next turn. The running turn does not use the account, so it can continue.
           const queued = this.#store
             .list()
             .filter(
               (agent) =>
                 agent.pendingRuntime?.provider === provider && agentProviderAccount(agent.pendingRuntime) === accountId,
             );
+          yield* lifecycleStep("check provider account", () => {
+            if (agents.some((agent) => this.#runsTurn(agent.id) || this.#mailbox.hasUnfinishedDelivery(agent.id)))
+              throw new Error(sourceText("error.provider.accountInUse"));
+            // Check every move before changing any assignment, including queued handovers.
+            if (provider === "antigravity") {
+              const defaultModels = this.#endpoints.availableForAccount();
+              const requestedModels = [
+                ...agents.map((agent) => agent.model),
+                ...queued.flatMap((agent) => (agent.pendingRuntime ? [agent.pendingRuntime.model] : [])),
+              ];
+              const unavailable = requestedModels.find(
+                (id) => !defaultModels.some((model) => model.provider === provider && model.id === id),
+              );
+              if (unavailable) throw new Error(sourceText("error.provider.accountRemoveModelsUnavailable"));
+            }
+          });
+          for (const agent of agents) yield* this.#applyAgentUpdate({ agentId: agent.id, providerAccountId: null });
+          // A queued change to the account moves to the provider's own sign-in too, so it does not fail
+          // before the next turn. The running turn does not use the account, so it can continue.
           for (const agent of queued)
             if (agent.pendingRuntime)
               yield* this.#store.updateAgent({

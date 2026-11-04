@@ -1,6 +1,28 @@
 import { defineMessages } from "../../message";
 
 export const messages = defineMessages("customProvider", {
+  "customProvider.sync.auto": "Update models automatically",
+  "customProvider.sync.autoLabel": "Update models automatically for {name}",
+  "customProvider.sync.description":
+    "Check the saved endpoint every hour while OpenBot is running. New models are added; existing choices stay unchanged.",
+  "customProvider.sync.refresh": "Refresh models",
+  "customProvider.sync.refreshLabel": "Refresh models for {name}",
+  "customProvider.sync.refreshing": "Refreshing models…",
+  "customProvider.sync.failed":
+    "Model refresh did not finish. Saved models are retained. Check the endpoint, credentials, or runtime and retry.",
+  "customProvider.sync.lastSuccess": "Last successful update: {time}",
+  "customProvider.sync.lastFailure": "Last failed update: {time}",
+  "customProvider.sync.notChecked": "This endpoint has not been checked yet.",
+  "customProvider.sync.missing": {
+    one: "The upstream no longer lists {count} saved model: {models}. Existing choices are kept.",
+    other: "The upstream no longer lists {count} saved models: {models}. Existing choices are kept.",
+  },
+  "customProvider.sync.capacity": {
+    one: "{count} new model could not be added because this endpoint's saved model list is full.",
+    other: "{count} new models could not be added because this endpoint's saved model list is full.",
+  },
+  "customProvider.sync.restartPending":
+    "Models are saved. They will become available when the busy provider can restart.",
   "customProvider.registry.title": "ACP registry",
   "customProvider.registry.description":
     "Install agents on this server. Remove runtime keeps agent settings, credentials, and conversations.",
@@ -57,6 +79,8 @@ export const messages = defineMessages("customProvider", {
   "customProvider.removeFailed": "OpenBot could not remove {name}.",
   "customProvider.saveUnavailable": "This build cannot save an endpoint.",
   "customProvider.removeUnavailable": "This build cannot remove an endpoint.",
+  "customProvider.runtimeHint":
+    "Add your API address and key now. OpenBot prepares the selected runtime after you save. A runtime that is off stays off until you enable it.",
 
   // The add dialog.
   "customProvider.form.title": "Add a custom provider",

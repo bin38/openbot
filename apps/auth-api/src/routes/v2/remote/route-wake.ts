@@ -1,3 +1,4 @@
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { TELEGRAM_BOT_ID_PATTERN, TELEGRAM_CHAT_ID_PATTERN } from "@openbot/contracts/signal-protocol/telegram-route";
 import { createFileRoute } from "@tanstack/solid-router";
 import { Effect } from "effect";
@@ -50,7 +51,7 @@ export const Route = createFileRoute("/v2/remote/route-wake")({
             }
             if (!parsed.success) return apiError(400, "invalid_route", "The route is invalid.");
             const hostId = yield* requestRemoteControlPlane().routeHost(parsed.data.route);
-            if (!hostId) return json({ hostId: null, state: "not_hosted" });
+            if (!hostId || INDEPENDENT_EDITION) return json({ hostId, state: "not_hosted" });
             const hosting = requestHostedServerService();
             const state = yield* hosting.routeState(hostId);
             if (!parsed.data.wake || (state !== "sleeping" && state !== "starting")) return json({ hostId, state });

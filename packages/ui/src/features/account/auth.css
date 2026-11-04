@@ -27,6 +27,11 @@
   -webkit-app-region: no-drag;
 }
 
+.account-login-embedded {
+  display: grid;
+  justify-items: start;
+}
+
 .account-login-brand-lockup {
   display: inline-flex;
   align-items: center;
@@ -64,6 +69,15 @@
   font-weight: 580;
   letter-spacing: -0.035em;
   line-height: 30px;
+}
+
+:where(.account-login-embedded) .account-login {
+  text-align: start;
+}
+
+.account-login-embedded .account-login-title {
+  font-size: var(--openbot-text-lg);
+  line-height: var(--openbot-leading-lg);
 }
 
 .account-login-description {

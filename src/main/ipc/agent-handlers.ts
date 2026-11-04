@@ -1,3 +1,4 @@
+import { withoutProviderAccountModelScope } from "@openbot/contracts/account-scoped-models";
 import {
   AGENT_FAST_MODE_CAPABILITY,
   AGENT_FAST_MODE_ROUTES,
@@ -314,10 +315,10 @@ export function agentIpcHandlers({
             : runCauseEffect(remoteServers.request(serverId, TEAM_API_ROUTES.agents.usage, decodeAccountUsageFromHost)),
       }),
       listModels: scopedQueryHandler({
-        local: () => logRejectedModels(service.listModels(), "local"),
+        local: () => logRejectedModels(service.listLocalModels(), "local"),
         remote: (serverId) => {
           const models = remoteServers.request(serverId, TEAM_API_ROUTES.agents.models, (value) =>
-            decodeAgentModelOptions(logRejectedModels(value, "remote")),
+            decodeAgentModelOptions(logRejectedModels(value, "remote")).map(withoutProviderAccountModelScope),
           );
           // The released model list drops the fast tier, so a host with `agent-fast-mode-v1` gives it
           // on its own route, and the picker shows the Fast switch as for a local agent. The tiers are

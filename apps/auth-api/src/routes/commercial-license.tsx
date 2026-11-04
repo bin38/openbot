@@ -1,9 +1,13 @@
-import { createFileRoute } from "@tanstack/solid-router";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
+import { createFileRoute, redirect } from "@tanstack/solid-router";
 import { CommercialLicensePage } from "../components/legal/CommercialLicensePage";
 import { COMMERCIAL_LICENSE_META, COMMERCIAL_LICENSE_ROUTE } from "../lib/commercial-license";
 import { OPENBOT_SOCIAL_IMAGE_ALT, OPENBOT_SOCIAL_IMAGE_URL, OPENBOT_X_HANDLE } from "../lib/site-metadata";
 
 export const Route = createFileRoute("/commercial-license")({
+  beforeLoad: () => {
+    if (INDEPENDENT_EDITION) throw redirect({ to: "/", statusCode: 307 });
+  },
   head: ({ match }) => {
     const url = new URL(COMMERCIAL_LICENSE_ROUTE, match.context.siteUrl).toString();
     const { title, description } = COMMERCIAL_LICENSE_META;

@@ -1,4 +1,5 @@
 import type { UpdateStatus } from "@openbot/contracts/ipc";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { createSignal, flush, onSettled } from "solid-js";
 import { desktopAnalytics } from "../../analytics";
 import { FALLBACK_UPDATE_STATUS } from "../../app-defaults";
@@ -21,6 +22,7 @@ const Updates = createSimpleContext({
     const [status, setStatus] = createSignal<UpdateStatus>(FALLBACK_UPDATE_STATUS);
 
     onSettled(() => {
+      if (INDEPENDENT_EDITION) return;
       const unsubscribe = updatesPort().update.onEvent((next) => {
         flush(() => setStatus(next));
       });
@@ -38,6 +40,7 @@ const Updates = createSimpleContext({
      * settles even if the event is slower than the call.
      */
     async function runAction(): Promise<void> {
+      if (INDEPENDENT_EDITION) return;
       const analytics = desktopAnalytics.scope();
       const current = status();
       // Host-managed tenants never act: the host owns check, download and install timing.

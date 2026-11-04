@@ -14,7 +14,11 @@ import {
   type ExternalLinkBrowser,
   externalLinkAppName,
   GROK_BOT_EXPORT_URL,
+  type LocalWorkspaceProfile,
+  type MobileConnectAvailability,
 } from "@openbot/contracts/ipc";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
+import { sourceText } from "@openbot/i18n/source";
 import { analyticsOnByDefault } from "@openbot/telemetry";
 import { app, type BrowserWindow, dialog, type OpenDialogOptions } from "electron";
 import { version as developmentVersion } from "../../../package.json";
@@ -87,6 +91,17 @@ const EXTERNAL_DESTINATIONS: Record<ExternalDestination, string> = {
   "hosted-server-contact": HOSTED_SERVER_CONTACT_URL,
   "mac-screen-recording": MAC_PERMISSION_URLS["screen-recording"],
 };
+const UPSTREAM_PRODUCT_DESTINATIONS: ReadonlySet<ExternalDestination> = new Set([
+  "agent-setup",
+  "feedback",
+  "message",
+  "changelog",
+  "guides",
+  "discord",
+  "github",
+  "x",
+  "hosted-server-contact",
+]);
 
 import { runCauseEffect } from "../../backend/effect-boundary";
 import { openHttpLink } from "../message-link-relay";
@@ -121,6 +136,8 @@ export interface AppIpcDependencies {
   interfaceSize: InterfaceSizeService;
   initializeAgent: () => Promise<void>;
   appVariant: AppVariant;
+  localWorkspace?: LocalWorkspaceProfile | null;
+  getMobileConnectAvailability?: () => MobileConnectAvailability;
   analyticsCaptureUrl: string | null;
   analyticsInstallId: string | null;
   getMainWindow: () => BrowserWindow | null;
@@ -155,6 +172,8 @@ export function appIpcHandlers({
   interfaceSize,
   initializeAgent,
   appVariant,
+  localWorkspace,
+  getMobileConnectAvailability,
   analyticsCaptureUrl,
   analyticsInstallId,
   getMainWindow,
@@ -177,6 +196,8 @@ export function appIpcHandlers({
           version,
           platform,
           variant: appVariant,
+          ...(localWorkspace ? { localWorkspace } : {}),
+          ...(getMobileConnectAvailability ? { mobileConnectAvailability: getMobileConnectAvailability() } : {}),
           ...(analyticsCaptureUrl ? { analyticsCaptureUrl } : {}),
           ...(analyticsInstallId ? { analyticsInstallId } : {}),
         };
@@ -263,7 +284,11 @@ export function appIpcHandlers({
         await initializeAgent();
         return state;
       }),
-      openExternal: payloadHandler(parseExternalDestination, (parsed) => openLink(EXTERNAL_DESTINATIONS[parsed])),
+      openExternal: payloadHandler(parseExternalDestination, (parsed) => {
+        if (INDEPENDENT_EDITION && UPSTREAM_PRODUCT_DESTINATIONS.has(parsed))
+          throw new Error(sourceText("error.auth.localWorkspace"));
+        return openLink(EXTERNAL_DESTINATIONS[parsed]);
+      }),
       openUrl: payloadHandler(stringPayload("URL", INPUT_LIMITS.browserUrl), (url) => openHttpLink(url, openLink)),
       getExternalLinkPreference: handler(() => externalLinkPreference.get()),
       setExternalLinkPreference: payloadHandler(parseExternalLinkPreference, (parsed) =>

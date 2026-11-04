@@ -1,5 +1,5 @@
 import { Effect, Semaphore } from "effect";
-import { type ProviderRuntimeFailure, runtimeSync, toProviderRuntimeFailure } from "./provider-runtime-effects";
+import { ProviderRuntimeFailure, runtimeSync, toProviderRuntimeFailure } from "./provider-runtime-effects";
 // The user's own model endpoints: list, add, remove. The local IPC handlers and the `providers-v1`
 // host routes share one instance, so a change from a joined admin and a change from this window
 // wait for each other.
@@ -8,16 +8,21 @@ import { type ProviderRuntimeFailure, runtimeSync, toProviderRuntimeFailure } fr
 // exists: it is given a getter, and reads it again at every provider spawn.
 
 import {
+  CUSTOM_PROVIDER_LOCAL_MODEL_LIMIT,
   type CustomProviderHarness,
   type CustomProviderRestart,
   type CustomProviderResult,
   type CustomProviderSummary,
+  composedCustomModelId,
   DEFAULT_CUSTOM_PROVIDER_HARNESS,
+  isAgentModel,
   type SaveCustomProviderInput,
   type UpdateCustomProviderInput,
 } from "@openbot/contracts/ipc";
+import { sourceText } from "@openbot/i18n/source";
 import { AgentLifecycleFailed, type AgentService } from "../backend/agent-service";
 import type { CustomProviderStore } from "./custom-provider-store";
+import type { ProviderDetection } from "./provider-detection";
 import type { ProviderRuntimeManager } from "./provider-runtime-manager";
 
 export interface CustomProviderChangeDependencies {
@@ -31,8 +36,12 @@ export interface CustomProviderChangeDependencies {
     | "reloadCustomProviderConfig"
     | "startHarnessForMovedAgents"
   >;
-  customProviders: Pick<CustomProviderStore, "list" | "save" | "checkUpdate" | "update" | "remove">;
+  customProviders: Pick<
+    CustomProviderStore,
+    "list" | "configs" | "modelSyncStates" | "save" | "checkUpdate" | "update" | "remove"
+  >;
   providerRuntimes: Pick<ProviderRuntimeManager, "startCustomProviderHarness">;
+  discovery: Pick<ProviderDetection, "discoverModels">;
 }
 
 export interface CustomProviderChanges {
@@ -42,12 +51,24 @@ export interface CustomProviderChanges {
   /** This computer only: the Team API routes take `PeerCustomProviderChanges`. */
   update(input: UpdateCustomProviderInput): Effect.Effect<CustomProviderResult, ProviderRuntimeFailure>;
   remove(id: string): Effect.Effect<CustomProviderResult, ProviderRuntimeFailure>;
+  syncModels(
+    id: string,
+    onlyWhenEnabled?: boolean,
+  ): Effect.Effect<CustomProviderModelsSynchronized | null, ProviderRuntimeFailure>;
+}
+
+export interface CustomProviderModelsSynchronized {
+  upstreamCount: number;
+  missingModelIds: string[];
+  omittedModelCount: number;
+  restart: CustomProviderRestart | null;
 }
 
 export function createCustomProviderChanges({
   service,
   customProviders,
   providerRuntimes,
+  discovery,
 }: CustomProviderChangeDependencies): CustomProviderChanges {
   /**
    * One endpoint change at a time, from the first read to the last write.
@@ -98,6 +119,64 @@ export function createCustomProviderChanges({
 
   return {
     list: () => customProviders.list(),
+    // Use the same gate as endpoint edits. The request can neither use a superseded address/key
+    // nor overwrite an edit made while model discovery was in flight.
+    syncModels: (id, onlyWhenEnabled = false) =>
+      gate.withPermit(
+        Effect.fn("CustomProviderChanges.syncModels")(function* () {
+          if (onlyWhenEnabled && !customProviders.modelSyncStates().some((state) => state.id === id && state.enabled))
+            return null;
+          const saved = customProviders.configs().find((provider) => provider.id === id);
+          if (!saved)
+            return yield* Effect.fail(
+              new ProviderRuntimeFailure({ cause: new Error(sourceText("error.provider.endpointNotSaved")) }),
+            );
+          const discovered = yield* discovery
+            .discoverModels({
+              savedProviderId: id,
+              baseUrl: saved.baseUrl,
+              apiKey: null,
+              headers: saved.headers.map((header) => ({ name: header.name, value: "" })),
+            })
+            .pipe(Effect.mapError((cause) => new ProviderRuntimeFailure({ cause })));
+          const upstream = discovered.models;
+          const available = upstream.filter((model) => isAgentModel(composedCustomModelId(id, model.id)));
+          const availableIds = new Set(available.map((model) => model.id));
+          const savedIds = new Set(saved.models.map((model) => model.id));
+          const additions = available.filter((model) => !savedIds.has(model.id));
+          const capacity = Math.max(0, CUSTOM_PROVIDER_LOCAL_MODEL_LIMIT - saved.models.length);
+          const models = [
+            ...saved.models,
+            ...additions.slice(0, capacity).map((model) => ({ id: model.id, name: model.id })),
+          ];
+          const outcome = {
+            upstreamCount: available.length,
+            missingModelIds: saved.models.filter((model) => !availableIds.has(model.id)).map((model) => model.id),
+            omittedModelCount: Math.max(0, additions.length - capacity),
+          };
+          if (models.length === saved.models.length) {
+            const previous = customProviders.modelSyncStates().find((state) => state.id === id);
+            const needsRestart = previous?.lastRestart === "skipped-busy" || previous?.lastFailure === "failed";
+            return {
+              ...outcome,
+              restart: needsRestart ? yield* restart(saved.harness, undefined).pipe(toProviderRuntimeFailure) : null,
+            };
+          }
+          // No models are removed. Existing/default model selections therefore stay intact.
+          yield* service
+            .updateCustomProvider(id, saved.harness ?? DEFAULT_CUSTOM_PROVIDER_HARNESS, [], () =>
+              customProviders
+                .update({ id, name: saved.name, baseUrl: saved.baseUrl, models })
+                .pipe(
+                  Effect.mapError(
+                    (error) => new AgentLifecycleFailed({ operation: "syncCustomProviderModels", cause: error.cause }),
+                  ),
+                ),
+            )
+            .pipe(toProviderRuntimeFailure);
+          return { ...outcome, restart: yield* restart(saved.harness, undefined).pipe(toProviderRuntimeFailure) };
+        })(),
+      ),
     /**
      * Persist first, then restart. The save resolves on the durable write plus the restart outcome,
      * and deliberately not on model discovery, which can take the full request timeout: the models

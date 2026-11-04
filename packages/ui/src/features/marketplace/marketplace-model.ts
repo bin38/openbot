@@ -249,6 +249,8 @@ export interface MarketplaceModel {
   removeServer: (id: string) => Promise<boolean>;
   /** Opens the form that adds a custom MCP server. Absent when the user cannot add one. */
   addServer?: (() => void) | undefined;
+  /** Public server metadata; discovery itself cannot install or connect software. */
+  browseRegistry?: (() => void) | undefined;
   runPrompt?: ((prompt: MarketplacePluginPrompt) => void) | undefined;
   copyLink: (slug: string) => void;
   /** Copies the shared link of an agent or a skill. */

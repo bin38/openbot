@@ -1,4 +1,5 @@
 import type { ServerSummary } from "@openbot/contracts/ipc";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { classifyFailure } from "@openbot/telemetry";
 import type { ServerActionCallbacks } from "@openbot/ui/features/servers/ServerActionItems";
 import type { HiddenLocalServer } from "@openbot/ui/features/servers/ServerRail";
@@ -73,6 +74,10 @@ export function useServerActions() {
    */
   function add(): void {
     if (platform.landingPreview) return;
+    if (INDEPENDENT_EDITION) {
+      setCreateLocalServerOpen(true);
+      return;
+    }
     if (hostedServersAvailable()) setAddServerOpen(true, "server_rail");
     else setJoinServerOpen(true);
     void refreshHostedServersAvailable();
@@ -87,6 +92,7 @@ export function useServerActions() {
    * button opens the invite dialog in place of the plans.
    */
   function addMenuCreateLocal(): (() => void) | undefined {
+    if (INDEPENDENT_EDITION) return undefined;
     return hostedServersAvailable() ? undefined : createLocal;
   }
 
@@ -126,13 +132,14 @@ export function useServerActions() {
     onLeave: requestLeaveServer,
     // The same confirmation: main removes an owned server from the account instead of leaving it.
     onRemove: requestLeaveServer,
-    canRemove: (serverId) => hostedServersLoaded() && !hostedServerIds().has(serverId) && !onThisComputer(serverId),
+    canRemove: (serverId) =>
+      !INDEPENDENT_EDITION && hostedServersLoaded() && !hostedServerIds().has(serverId) && !onThisComputer(serverId),
     // A server on this computer uses the leave confirmation, which deletes it in that case.
     onDelete: (serverId, trigger) =>
       onThisComputer(serverId) ? requestLeaveServer(serverId, trigger) : openHostedServerDelete(serverId, trigger),
-    canDelete: (serverId) => hostedServerIds().has(serverId) || onThisComputer(serverId),
+    canDelete: (serverId) => (!INDEPENDENT_EDITION && hostedServerIds().has(serverId)) || onThisComputer(serverId),
     onRestart: requestRestartServer,
-    canRestart: (serverId) => hostedServerIds().has(serverId) || onThisComputer(serverId),
+    canRestart: (serverId) => (!INDEPENDENT_EDITION && hostedServerIds().has(serverId)) || onThisComputer(serverId),
     onHide: (serverId) => void hideLocal(serverId),
     // Only beside another server: the list is never empty.
     canHide: () => remoteServers().length > 0,
@@ -144,7 +151,7 @@ export function useServerActions() {
     add,
     createLocal,
     addMenuCreateLocal,
-    addCreatesServer: hostedServersAvailable,
+    addCreatesServer: () => INDEPENDENT_EDITION || hostedServersAvailable(),
     hiddenLocal,
     callbacks,
   };

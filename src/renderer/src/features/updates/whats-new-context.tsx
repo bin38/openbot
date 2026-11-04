@@ -1,3 +1,4 @@
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { summarizeWhatsNew, type WhatsNewNotes, type WhatsNewRelease } from "@openbot/ui/features/updates/whats-new";
 import { createEffect, createStore, onSettled } from "solid-js";
 import { usePlatform } from "../../platform";
@@ -36,6 +37,7 @@ const WhatsNew = createSimpleContext({
     });
 
     async function load(automatic: boolean, version: string, from: string | null): Promise<void> {
+      if (INDEPENDENT_EDITION) return;
       const id = ++request;
       pending?.abort();
       const controller = new AbortController();
@@ -66,6 +68,7 @@ const WhatsNew = createSimpleContext({
     }
 
     createEffect(platform.appInfo, (info) => {
+      if (INDEPENDENT_EDITION) return;
       if (initialized || platform.landingPreview || !platform.appInfoLoadedFromHost()) return;
       const current = releaseVersion(info?.version ?? null);
       if (current === null) return;

@@ -171,6 +171,7 @@ export function MobileConnectAddPhoneDialog(props: {
   open: boolean;
   store: Store;
   canCancelTicket: boolean;
+  showStoreLinks?: boolean;
   onClose: () => void;
 }) {
   const { t } = useText();
@@ -229,18 +230,22 @@ export function MobileConnectAddPhoneDialog(props: {
                       <span class="settings-mobile-choice-hint">{t("settings.mobileConnect.add.signIn.hint")}</span>
                     </span>
                   </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    class="settings-mobile-choice"
-                    onClick={() => setScreen("install")}
-                  >
-                    <Download aria-hidden="true" />
-                    <span class="settings-mobile-choice-text">
-                      <span class="settings-mobile-choice-title">{t("settings.mobileConnect.add.install.title")}</span>
-                      <span class="settings-mobile-choice-hint">{t("settings.mobileConnect.add.install.hint")}</span>
-                    </span>
-                  </Button>
+                  <Show when={props.showStoreLinks !== false}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      class="settings-mobile-choice"
+                      onClick={() => setScreen("install")}
+                    >
+                      <Download aria-hidden="true" />
+                      <span class="settings-mobile-choice-text">
+                        <span class="settings-mobile-choice-title">
+                          {t("settings.mobileConnect.add.install.title")}
+                        </span>
+                        <span class="settings-mobile-choice-hint">{t("settings.mobileConnect.add.install.hint")}</span>
+                      </span>
+                    </Button>
+                  </Show>
                 </div>
               </Match>
               <Match when={current === "install"}>

@@ -1,3 +1,4 @@
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { OPENBOT_SITE_URL } from "../lib/site-metadata";
 
 const SITE_ORIGIN = new URL(OPENBOT_SITE_URL).origin;
@@ -10,6 +11,7 @@ const SITE_HOST = new URL(OPENBOT_SITE_URL).hostname;
  * 308 keeps the method and the body, and search engines read it as permanent.
  */
 export function canonicalHostRedirect(request: Request): Response | null {
+  if (INDEPENDENT_EDITION) return null;
   const url = new URL(request.url);
   const isWww = url.hostname === `www.${SITE_HOST}`;
   if (!isWww && !(url.hostname === SITE_HOST && url.protocol === "http:")) return null;
@@ -39,5 +41,6 @@ export function permanentTrailingSlashRedirect(request: Request, response: Respo
  * install can take its grant. Another origin, such as a development one, keeps its own.
  */
 export function installReturnPage(path: string, callbackUrl: URL): URL {
+  if (INDEPENDENT_EDITION) return new URL(path, callbackUrl);
   return new URL(path, callbackUrl.hostname === `api.${SITE_HOST}` ? SITE_ORIGIN : callbackUrl);
 }

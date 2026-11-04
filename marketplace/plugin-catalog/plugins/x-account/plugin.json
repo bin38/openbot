@@ -1,0 +1,53 @@
+{
+  "slug": "x-account",
+  "name": "X Account",
+  "tagline": "Use your own signed-in X developer application",
+  "description": "The official xurl bridge connects the X MCP endpoint with your own user authorization. Set up your own developer application and complete xurl login on this computer before connecting. X does not support native MCP dynamic OAuth registration. Actions depend on the permissions you authorize and your X API plan.",
+  "category": "productivity",
+  "creatorName": "X",
+  "iconUrl": null,
+  "version": "1.0.0",
+  "prompts": [
+    {
+      "id": "prompt-1",
+      "text": "Read the posts that my authorized account can access."
+    },
+    {
+      "id": "prompt-2",
+      "text": "Draft an X post from this document and show it to me before posting."
+    }
+  ],
+  "apps": [
+    {
+      "id": "app-x-account-mcp",
+      "name": "X Account",
+      "description": "Use your own signed-in X developer application",
+      "iconUrl": null,
+      "server": {
+        "name": "x-account",
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@xdevplatform/xurl@1.3.4", "mcp", "https://api.x.com/mcp"],
+        "auth": [
+          {
+            "id": "x-account-local",
+            "kind": "local",
+            "label": "Own X account",
+            "steps": [
+              "Set up the official xurl CLI with your own X developer application.",
+              "Complete xurl OAuth sign-in on this computer with the permissions you need.",
+              "Return here and connect. Review any write action before you send it."
+            ],
+            "note": "Your own X app and user authorization are required. OpenBot does not supply a shared OAuth client or credits.",
+            "docsUrl": "https://docs.x.com/tools/mcp",
+            "docsLabel": "Configure xurl"
+          }
+        ]
+      }
+    }
+  ],
+  "skills": [],
+  "websiteUrl": "https://docs.x.com/tools/mcp",
+  "privacyPolicyUrl": null,
+  "termsUrl": null
+}

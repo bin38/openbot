@@ -1,5 +1,7 @@
-import { Cause, Effect, Exit, Option, Schema } from "effect";
+import { Cause, Effect, Exit, Option } from "effect";
 import type { AccountAnalytics, EmailKind, EmailResult } from "./account-analytics";
+import { createCloudflareEmailCodeDelivery, createCloudflareInviteEmailDelivery } from "./cloudflare-email-delivery";
+import { EmailDeliveryError } from "./email-delivery-error";
 import {
   AMBIGUOUS_DELIVERY_ERRORS,
   RATE_LIMITED_DELIVERY_ERROR,
@@ -19,9 +21,7 @@ import type {
   WorkerBindings,
 } from "./types";
 
-export class EmailDeliveryError extends Schema.TaggedError<EmailDeliveryError>()("EmailDeliveryError", {
-  message: Schema.String,
-}) {}
+export { EmailDeliveryError } from "./email-delivery-error";
 
 export type EmailDeliveryBindings = Pick<
   WorkerBindings,
@@ -34,12 +34,15 @@ export type EmailDeliveryBindings = Pick<
   | "EMAIL_RELAY"
   | "EMAIL_DELIVERY_WEBHOOK_URL"
   | "EMAIL_DELIVERY_WEBHOOK_SECRET"
+  | "EMAIL"
+  | "AUTH_ALLOWED_EMAILS"
 >;
 
 export function createEmailCodeDelivery(
   bindings: EmailDeliveryBindings,
   analytics: AccountAnalytics,
 ): EmailCodeDelivery | null {
+  if (bindings.EMAIL) return createCloudflareEmailCodeDelivery(bindings);
   const smtp = readSmtpConfig(bindings);
   if (smtp) {
     return {
@@ -75,6 +78,7 @@ export function createTeamInviteEmailDelivery(
   bindings: EmailDeliveryBindings,
   analytics: AccountAnalytics,
 ): TeamInviteEmailDelivery | null {
+  if (bindings.EMAIL) return createCloudflareInviteEmailDelivery(bindings);
   const smtp = readSmtpConfig(bindings);
   return smtp ? { send: (message) => tracked(analytics, "team_invite", sendPrivateTeamInvite(smtp, message)) } : null;
 }

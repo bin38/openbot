@@ -101,6 +101,8 @@ export interface ServerSummary {
    * is reached as a joined server, so `kind` stays `"remote"`. Absent for every other server.
    */
   thisComputer?: true;
+  /** Local IPC only: the member authenticated by this app when attaching its own child server. */
+  currentMemberId?: string;
   compatibility?: ServerCompatibility | null;
   issue?: ServerConnectionIssue | null;
   connectionSequence?: number;

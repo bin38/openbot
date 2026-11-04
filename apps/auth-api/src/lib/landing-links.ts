@@ -1,4 +1,9 @@
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
+
 export const EXTERNAL_LINK_REL = "noopener noreferrer";
+const SOURCE_REPOSITORY = INDEPENDENT_EDITION
+  ? "https://github.com/bin38/openbot"
+  : "https://github.com/nightly-labs/openbot";
 
 /** The installer each platform's download button starts: Apple silicon on macOS, x64 elsewhere. */
 export const OPENBOT_DOWNLOAD_LINKS = {
@@ -34,19 +39,23 @@ export const OPENBOT_LINKS = {
   guides: "/guides",
   marketplace: "/marketplace",
   changelog: "/changelog",
-  releases: "https://github.com/nightly-labs/openbot/releases",
-  repository: "https://github.com/nightly-labs/openbot",
+  releases: INDEPENDENT_EDITION ? SOURCE_REPOSITORY : `${SOURCE_REPOSITORY}/releases`,
+  repository: SOURCE_REPOSITORY,
   license: "https://github.com/nightly-labs/openbot/blob/main/LICENSE",
-  privacy: "https://github.com/nightly-labs/openbot/blob/main/PRIVACY.md",
-  documentation: "https://github.com/nightly-labs/openbot#readme",
-  troubleshooting: "https://github.com/nightly-labs/openbot/blob/main/docs/TROUBLESHOOTING.md",
+  privacy: `${SOURCE_REPOSITORY}/blob/main/PRIVACY.md`,
+  documentation: `${SOURCE_REPOSITORY}#readme`,
+  troubleshooting: `${SOURCE_REPOSITORY}/blob/main/docs/TROUBLESHOOTING.md`,
   /** GitHub Pages hosts the status page, so it stays up when Cloudflare does not. */
   status: "https://status.openbot.run",
-  selfHostedServer: "https://github.com/nightly-labs/openbot/blob/main/docs/self-hosted-server.md",
-  dockerDocumentation: "https://github.com/nightly-labs/openbot/blob/main/docs/docker.md",
+  selfHostedServer: INDEPENDENT_EDITION
+    ? `${SOURCE_REPOSITORY}#readme`
+    : `${SOURCE_REPOSITORY}/blob/main/docs/self-hosted-server.md`,
+  dockerDocumentation: INDEPENDENT_EDITION
+    ? `${SOURCE_REPOSITORY}#readme`
+    : `${SOURCE_REPOSITORY}/blob/main/docs/docker.md`,
   dockerInstallUbuntu: "https://docs.docker.com/engine/install/ubuntu/",
-  architecture: "https://github.com/nightly-labs/openbot#architecture",
-  contributing: "https://github.com/nightly-labs/openbot/blob/main/CONTRIBUTING.md",
+  architecture: `${SOURCE_REPOSITORY}#architecture`,
+  contributing: `${SOURCE_REPOSITORY}/blob/main/CONTRIBUTING.md`,
   codex: "https://learn.chatgpt.com/docs/app-server",
   claude: "https://code.claude.com/docs/en/overview",
   anthropicAgents: "https://www.anthropic.com/engineering/building-effective-agents",

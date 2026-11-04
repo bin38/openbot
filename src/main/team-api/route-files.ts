@@ -1,3 +1,5 @@
+import { isKnownAttachmentName, SUPPORTED_ATTACHMENT_DESCRIPTION } from "@openbot/contracts/attachment-files";
+
 // Bytes leaving the machine: draft attachments, shared files and workspace files.
 //
 // These four routes are the only ones that write a body themselves instead of going through
@@ -23,12 +25,14 @@ import { ATTACHMENT_LIMITS, INPUT_LIMITS } from "@openbot/contracts/input-limits
 import { TEAM_API_ROUTES } from "@openbot/contracts/team-api-routes";
 import { sourceText } from "@openbot/i18n/source";
 import { Deferred, Effect } from "effect";
+import type { AttachmentUploadSessions } from "../../backend/attachment-upload-sessions";
 import { runCauseEffect } from "../../backend/effect-boundary";
 import { remoteCall } from "../remote-service-effects";
 import type { TeamApiAgents, TeamApiMailbox } from "./dependencies";
 import { HttpError } from "./http-error";
 import type { RouteOutcome, TeamApiRequestContext } from "./request-context";
 import { pathIdentifier, readBinary } from "./request-helpers";
+import { routeAttachmentUploads } from "./route-attachment-uploads";
 import { rethrowWorkspacePathError } from "./route-workspace-directory";
 
 // Each upload holds its body, up to 100 MB, until the attachment is on disk. Two at a time keep that
@@ -83,13 +87,15 @@ export interface FileRouteDependencies {
     "prepareImportedAttachments" | "discardDraftAttachment" | "resolveSharedFile" | "resolveWorkspaceFile"
   >;
   mailbox: TeamApiMailbox;
+  uploads?: AttachmentUploadSessions;
 }
 
 export async function routeFiles(
   context: TeamApiRequestContext,
-  { agents, mailbox }: FileRouteDependencies,
+  { agents, mailbox, uploads }: FileRouteDependencies,
 ): Promise<RouteOutcome> {
   const { method, url, request, response, json, empty } = context;
+  if (uploads && (await routeAttachmentUploads(context, { agents, mailbox, uploads })) === "handled") return "handled";
 
   if (method === "POST" && url.pathname === TEAM_API_ROUTES.attachments) {
     const name = url.searchParams.get("name")?.trim();
@@ -97,6 +103,10 @@ export async function routeFiles(
     if (!name || basename(name) !== name || name.length > INPUT_LIMITS.attachmentName) {
       throw new HttpError(400, sourceText("error.team.attachmentNameRequired"));
     }
+    if (!isKnownAttachmentName(name))
+      throw new Error(
+        `${name} is not supported. Attach ${SUPPORTED_ATTACHMENT_DESCRIPTION}. For other audio or video formats, export as MP3, MOV, or MP4, or attach a text transcript.`,
+      );
     if (mimeType.length > INPUT_LIMITS.mimeType) {
       throw new HttpError(400, "The attachment MIME type is too long.");
     }

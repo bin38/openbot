@@ -8,6 +8,7 @@ import {
   Ellipsis,
   ListChecks,
   MotionTooltip,
+  MousePointer2,
   Pin,
   Settings,
   Store,
@@ -213,6 +214,8 @@ export interface PageRailProps {
   /** Absent while Marketplace cannot open. */
   onMarketplace?: (() => void) | undefined;
   onSettings: (button: HTMLElement) => void;
+  /** Opens this computer's local app-control permissions. Omitted by remote-only clients. */
+  onComputerUse?: ((button: HTMLElement) => void) | undefined;
   /** A notice for the Settings button, such as an update, when no other place shows it. A dot marks it. */
   settingsNotice?: string | undefined;
   /** The Help menu, between Marketplace and Settings. */
@@ -414,6 +417,13 @@ export function PageRail(props: PageRailProps) {
           )}
         </Show>
         {props.help}
+        <Show when={props.onComputerUse}>
+          {(open) => (
+            <RailButton label={t("app.rail.computerUse")} onClick={open()}>
+              <MousePointer2 aria-hidden="true" />
+            </RailButton>
+          )}
+        </Show>
         <RailButton
           label={
             props.settingsNotice

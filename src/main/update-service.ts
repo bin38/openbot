@@ -9,6 +9,7 @@ import type {
   UpdateStatus,
 } from "@openbot/contracts/ipc";
 import { isUpdateBusyPhase } from "@openbot/contracts/ipc";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { sourceText } from "@openbot/i18n/source";
 import { createOpenBotLogger, toLogValue } from "@openbot/logging";
 import { Cause, Deferred, Effect, Result, Schema, Scope, Semaphore } from "effect";
@@ -161,6 +162,7 @@ export function supportsInstalledUpdates(
   platform: NodeJS.Platform,
   environment: NodeJS.ProcessEnv = process.env,
 ): boolean {
+  if (INDEPENDENT_EDITION) return false;
   if (platform === "linux") return Boolean(environment.APPIMAGE?.trim());
   return platform === "darwin" || platform === "win32";
 }

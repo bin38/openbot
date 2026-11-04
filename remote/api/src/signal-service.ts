@@ -35,7 +35,12 @@ import {
   type WebhookDeliveryStatus,
 } from "./protocol";
 import { runTelegramCall, type SignalTelegram, type TelegramAnswer, telegramFailure } from "./telegram";
-import { RemoteTokenError, type RemoteTokenUnavailableError, type TelegramChatLink } from "./tokens";
+import {
+  RemoteTokenError,
+  type RemoteTokenUnavailableError,
+  type RemoteTurnUnavailableError,
+  type TelegramChatLink,
+} from "./tokens";
 
 /** The workspaces a verified route ticket names, each with the time it was linked to the host. */
 interface SlackRoute {
@@ -66,7 +71,7 @@ export interface RemoteTokenProvider {
   verifyResumeToken(token: string): Effect.Effect<RemoteTicketClaims, RemoteTokenError | RemoteTokenUnavailableError>;
   validateClaims(claims: RemoteTicketClaims): Effect.Effect<boolean, RemoteTokenUnavailableError>;
   issueResumeToken(claims: RemoteTicketClaims): Effect.Effect<string, RemoteTokenError>;
-  iceServers(claims: RemoteTicketClaims): IceServer[];
+  iceServers(claims: RemoteTicketClaims): Effect.Effect<IceServer[], RemoteTokenError | RemoteTurnUnavailableError>;
   /** Without a route verifier, no ingress socket connects. */
   verifySlackRoute?(token: string, hostId: string): Effect.Effect<SlackRoute, RemoteTokenError>;
   validateSlackRoute?(hostId: string, teams: SlackRouteTeam[]): Effect.Effect<string[], RemoteTokenError>;
@@ -142,6 +147,11 @@ interface ActiveConnection {
   sessionId: string;
   client: SignalSocket;
   host: SignalSocket;
+}
+
+interface TurnCredentialRequest {
+  peer: AuthenticatedPeer;
+  effect: Effect.Effect<IceServer[], RemoteTokenError | RemoteTurnUnavailableError>;
 }
 
 export interface SignalMetrics {
@@ -329,6 +339,8 @@ export class SignalService {
   readonly #maximumMessagesPerMinute: number;
   readonly #sockets = new Map<string, SignalSocket>();
   readonly #peers = new Map<string, AuthenticatedPeer>();
+  readonly #authenticating = new Map<string, SignalSocket>();
+  readonly #turnRequests = new Map<string, TurnCredentialRequest>();
   readonly #hosts = new Map<string, Set<string>>();
   // Slack workspace ID to the `ingress` socket that said hello last with a route ticket for it.
   readonly #slackTeams = new Map<string, string>();
@@ -499,9 +511,22 @@ export class SignalService {
         return;
       }
       if (message.type === "hello") {
+        const connectedSocket = this.#sockets.get(socket.id);
+        if (!connectedSocket) return;
+        if (this.#authenticating.get(socket.id) === connectedSocket) {
+          this.#fail(socket, "protocol_error", "This socket is already authenticating.", 1008);
+          return;
+        }
         // The deadline is for the hello only. Verification has its own request deadlines.
         this.#clearHelloTimer(socket.id);
-        yield* this.#authenticate(socket, message);
+        this.#authenticating.set(socket.id, connectedSocket);
+        yield* this.#authenticate(socket, message).pipe(
+          Effect.ensuring(
+            Effect.sync(() => {
+              if (this.#authenticating.get(socket.id) === connectedSocket) this.#authenticating.delete(socket.id);
+            }),
+          ),
+        );
         return;
       }
       const peer = this.#peers.get(socket.id);
@@ -519,16 +544,24 @@ export class SignalService {
           return;
         }
         const resumeToken = yield* tokens.issueResumeToken(peer.claims);
-        const now = Date.now();
-        if (!peer.turnCredentials || now - peer.turnCredentials.issuedAt >= TURN_CREDENTIAL_REUSE_MILLISECONDS) {
-          peer.turnCredentials = { iceServers: this.#tokens.iceServers(peer.claims), issuedAt: now };
+        const credentials = yield* this.#peerIceServers(peer).pipe(Effect.result);
+        if (Result.isFailure(credentials)) {
+          socket.close(1013, "TURN credentials are unavailable.");
+          return;
         }
+        if (
+          this.#peers.get(socket.id) !== peer ||
+          this.#isRevoked(peer.claims) ||
+          peer.claims.sessionExpiresAt <= Math.floor(Date.now() / 1_000)
+        )
+          return;
+        if (message.connectionId !== null && !this.#ownsConnection(peer, message.connectionId)) return;
         this.#send(socket, {
           type: "ready",
           version: 1,
           connectionId: message.connectionId,
           resumeToken,
-          iceServers: peer.turnCredentials.iceServers,
+          iceServers: credentials.success,
           ...this.#capabilities(peer.peer),
         });
         return;
@@ -584,6 +617,7 @@ export class SignalService {
         return;
       }
       this.#peers.delete(socket.id);
+      if (this.#turnRequests.get(socket.id)?.peer === peer) this.#turnRequests.delete(socket.id);
       if (peer.peer === "host") {
         const hostSockets = this.#hosts.get(peer.claims.hostId);
         hostSockets?.delete(socket.id);
@@ -1239,6 +1273,8 @@ export class SignalService {
   readonly #authenticate = Effect.fn("Signal.authenticate")(
     (socket: SignalSocket, message: Extract<SignalClientMessage, { type: "hello" }>) =>
       Effect.gen({ self: this }, function* () {
+        const connectedSocket = this.#sockets.get(socket.id);
+        if (!connectedSocket) return;
         if (this.#peers.has(socket.id)) {
           this.#fail(socket, "protocol_error", "This socket is already authenticated.", 1008);
           return;
@@ -1344,13 +1380,36 @@ export class SignalService {
           this.#pruneReplayCache();
           if (usedInitialTicket && this.#usedTicketIds.has(claims.jti))
             return yield* new RemoteTokenError({ message: "Ticket was already used." });
-          return { claims, slackRoute, telegramRoute, discordRoute, webhookRoute, githubRoute, resumeToken };
+          const iceServers = yield* tokens.iceServers(claims);
+          if (this.#isRevoked(claims))
+            return yield* new RemoteTokenError({ message: "Revoked ticket or ended session." });
+          if (claims.sessionExpiresAt <= Math.floor(Date.now() / 1_000))
+            return yield* new RemoteTokenError({ message: "The remote session has expired." });
+          this.#pruneReplayCache();
+          if (usedInitialTicket && this.#usedTicketIds.has(claims.jti))
+            return yield* new RemoteTokenError({ message: "Ticket was already used." });
+          return {
+            claims,
+            slackRoute,
+            telegramRoute,
+            discordRoute,
+            webhookRoute,
+            githubRoute,
+            resumeToken,
+            iceServers,
+          };
         }).pipe(Effect.result);
+        // An old authentication must not register a replacement socket with the same ID.
+        if (this.#sockets.get(socket.id) !== connectedSocket) return;
         if (Result.isFailure(authentication)) {
           // After a restart every resume asks the account service. When it does not answer, the
           // session can still be active: close without an error frame, so that the peer keeps its
           // data channels and connects again after its backoff.
           const failure = authentication.failure;
+          if (failure._tag === "RemoteTurnUnavailableError") {
+            socket.close(1013, "TURN credentials are unavailable.");
+            return;
+          }
           if (failure._tag === "RemoteTokenUnavailableError" && !this.#isRevoked(failure)) {
             this.#metrics.authenticationUnavailable += 1;
             socket.close(1013, "The account service is unavailable.");
@@ -1364,8 +1423,6 @@ export class SignalService {
           this.#fail(socket, "authentication_required", "Remote ticket is invalid or expired.", 1008);
           return;
         }
-        // Verification may finish after disconnect removed the socket. Register nothing then.
-        if (!this.#sockets.has(socket.id)) return;
         if (this.#peers.has(socket.id)) {
           this.#fail(socket, "protocol_error", "This socket is already authenticated.", 1008);
           return;
@@ -1375,7 +1432,7 @@ export class SignalService {
           socket.close(1013, NOT_ENTRY_REASON);
           return;
         }
-        const { claims, slackRoute, telegramRoute, discordRoute, webhookRoute, githubRoute, resumeToken } =
+        const { claims, slackRoute, telegramRoute, discordRoute, webhookRoute, githubRoute, resumeToken, iceServers } =
           authentication.success;
         // A reconnect replaces the old client even when its host has disconnected and the peer has
         // no connection record. Admission and replacement must have no asynchronous gap.
@@ -1406,7 +1463,7 @@ export class SignalService {
           githubRepositories: githubRoute.repositories.map((repository) =>
             githubRepositoryKey(repository.installationId, repository.id),
           ),
-          turnCredentials: null,
+          turnCredentials: { iceServers, issuedAt: Date.now() },
         };
         this.#peers.set(socket.id, peer);
         this.#schedulePeerExpiration(peer);
@@ -1469,7 +1526,7 @@ export class SignalService {
             version: 1,
             connectionId: null,
             resumeToken,
-            iceServers: this.#tokens.iceServers(claims),
+            iceServers,
             ...this.#capabilities("ingress"),
           });
           if (webhookRoute.routes.length > 0) {
@@ -1515,7 +1572,7 @@ export class SignalService {
             version: 1,
             connectionId: null,
             resumeToken,
-            iceServers: this.#tokens.iceServers(claims),
+            iceServers,
           });
           yield* this.#restoreWaitingClients(peer);
           return;
@@ -1567,7 +1624,7 @@ export class SignalService {
           version: 1,
           connectionId,
           resumeToken,
-          iceServers: this.#tokens.iceServers(claims),
+          iceServers,
         });
         this.#send(host.socket, {
           type: "peer-ready",
@@ -1613,6 +1670,27 @@ export class SignalService {
     return null;
   }
 
+  readonly #peerIceServers = Effect.fn("Signal.peerIceServers")((peer: AuthenticatedPeer) =>
+    Effect.gen({ self: this }, function* () {
+      if (peer.turnCredentials && Date.now() - peer.turnCredentials.issuedAt < TURN_CREDENTIAL_REUSE_MILLISECONDS)
+        return peer.turnCredentials.iceServers;
+      const pending = this.#turnRequests.get(peer.socket.id);
+      if (pending?.peer === peer) return yield* pending.effect;
+      const tokens = yield* SignalTokens;
+      const request = { peer, effect: yield* Effect.cached(tokens.iceServers(peer.claims)) };
+      this.#turnRequests.set(peer.socket.id, request);
+      const iceServers = yield* request.effect.pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            if (this.#turnRequests.get(peer.socket.id) === request) this.#turnRequests.delete(peer.socket.id);
+          }),
+        ),
+      );
+      if (this.#peers.get(peer.socket.id) === peer) peer.turnCredentials = { iceServers, issuedAt: Date.now() };
+      return iceServers;
+    }),
+  );
+
   readonly #restoreWaitingClients = Effect.fn("Signal.restoreWaitingClients")((host: AuthenticatedPeer) =>
     Effect.gen({ self: this }, function* () {
       const tokens = yield* SignalTokens;
@@ -1635,8 +1713,26 @@ export class SignalService {
           continue;
         }
         const resumeToken = yield* tokens.issueResumeToken(client.claims);
-        if (this.#peers.get(host.socket.id) !== host) return;
+        const credentials = yield* this.#peerIceServers(client).pipe(Effect.result);
+        if (Result.isFailure(credentials)) {
+          client.socket.close(1013, "TURN credentials are unavailable.");
+          continue;
+        }
+        if (
+          this.#peers.get(host.socket.id) !== host ||
+          this.#currentHost(host.claims.hostId) !== host ||
+          this.#isRevoked(host.claims) ||
+          host.claims.sessionExpiresAt <= Math.floor(Date.now() / 1_000)
+        )
+          return;
         if (this.#peers.get(client.socket.id) !== client || client.connectionId !== null) continue;
+        if (this.#isRevoked(client.claims) || client.claims.sessionExpiresAt <= Math.floor(Date.now() / 1_000))
+          continue;
+        if (
+          !host.multiplex &&
+          [...this.#connections.values()].some((connection) => connection.hostId === host.claims.hostId)
+        )
+          return;
         const connectionId = randomIdentifier();
         client.connectionId = connectionId;
         this.#connections.set(connectionId, {
@@ -1652,7 +1748,7 @@ export class SignalService {
           version: 1,
           connectionId,
           resumeToken,
-          iceServers: this.#tokens.iceServers(client.claims),
+          iceServers: credentials.success,
         });
         this.#send(host.socket, {
           type: "peer-ready",

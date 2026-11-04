@@ -32,6 +32,8 @@ interface SettingsMobileConnectTabProps {
   canManageLink: boolean;
   canRevokeDevice: boolean;
   canSetRoute: boolean;
+  /** False for an own build whose phone app is distributed by its operator. */
+  showStoreLinks?: boolean;
 }
 
 const IOS_PLATFORM_LABEL = "iOS";
@@ -121,6 +123,7 @@ export function SettingsMobileConnectTab(props: SettingsMobileConnectTabProps) {
         open={adding()}
         store={props.store}
         canCancelTicket={props.canCancelTicket}
+        showStoreLinks={props.showStoreLinks}
         onClose={() => setAdding(false)}
       />
       <Show when={props.canManageLink}>

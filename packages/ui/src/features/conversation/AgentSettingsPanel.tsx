@@ -1,4 +1,5 @@
 import type { ExpressionId } from "@norbert_bodziony/bloub";
+import { modelSupportsProviderAccount } from "@openbot/contracts/account-scoped-models";
 import { agentProviderDescriptor, agentProviderName, foreignProvider } from "@openbot/contracts/agent-providers";
 import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import {
@@ -424,7 +425,10 @@ export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
 
   const selectedModel = createMemo(() =>
     props.modelOptions.find(
-      (option) => option.provider === draft.runtime.provider && option.id === draft.runtime.model,
+      (option) =>
+        option.provider === draft.runtime.provider &&
+        option.id === draft.runtime.model &&
+        modelSupportsProviderAccount(option, agentNextProviderAccountId(props.agent)),
     ),
   );
   const reasoningOptions = createMemo(() => selectedModel()?.supportedReasoningEfforts ?? ["medium" as const]);
@@ -769,7 +773,17 @@ export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
     accountId: string | null | undefined,
   ): Promise<void> {
     const option = props.modelOptions.find(
-      (candidate) => candidate.provider === nextProvider && candidate.id === nextModel,
+      (candidate) =>
+        candidate.provider === nextProvider &&
+        candidate.id === nextModel &&
+        modelSupportsProviderAccount(
+          candidate,
+          accountId === undefined
+            ? nextProvider === draft.runtime.provider
+              ? agentNextProviderAccountId(props.agent)
+              : null
+            : accountId,
+        ),
     );
     if (!option) return;
     // A plain copy, not `snapshot`: a snapshot of an unmodified subtree is the store's own object,
@@ -905,8 +919,12 @@ export default function AgentSettingsPanel(props: AgentSettingsPanelProps) {
   const ownModelName = () => {
     const own = ownModel();
     return (
-      props.modelOptions.find((option) => option.provider === own.provider && option.id === own.model)?.name ??
-      own.model
+      props.modelOptions.find(
+        (option) =>
+          option.provider === own.provider &&
+          option.id === own.model &&
+          modelSupportsProviderAccount(option, own.providerAccountId),
+      )?.name ?? own.model
     );
   };
 

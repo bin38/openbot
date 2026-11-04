@@ -7,12 +7,15 @@ import {
 } from "@openbot/contracts/chat-visual";
 import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import { API_KEY_NAME_PATTERN, CONNECTOR_IDS } from "@openbot/contracts/ipc";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { isUiBlockId, UI_BLOCK_LIMITS } from "@openbot/contracts/ui-blocks";
 import { z } from "zod";
 import pluginCatalog from "../../resources/plugin-catalog/catalog.json";
 import { advertisedJsonSchema } from "./agent/advertised-json-schema";
 import { interruptAgentToolSchema } from "./agent/agent-interrupt-tool";
+import { API_CHANNEL_TOOL_DEFINITIONS } from "./agent/api-channel-tools";
 import { DATA_TOOL_DEFINITIONS } from "./agent/data-tools";
+import { E2B_TOOL_DEFINITIONS } from "./agent/e2b-tools";
 import { HISTORY_TOOL_DEFINITIONS } from "./agent/history-tools";
 import { MCP_SERVER_TOOL_DEFINITIONS } from "./agent/mcp-tools";
 import { MEMORY_RECALL_TOOL_DEFINITIONS } from "./agent/memory-tool-inputs";
@@ -296,7 +299,7 @@ export const MARKETPLACE_APP_IDS: readonly string[] = [
 ];
 
 /** Shared declarations for Codex, Grok, and Claude. Service handlers enforce execution rules. */
-export const OPENBOT_TOOL_DEFINITIONS: readonly OpenBotToolDefinition[] = [
+const ALL_OPENBOT_TOOL_DEFINITIONS: readonly OpenBotToolDefinition[] = [
   ...CHANNEL_TOOL_DEFINITIONS,
   ...MESSAGING_TOOL_DEFINITIONS,
   ...HISTORY_TOOL_DEFINITIONS,
@@ -304,6 +307,8 @@ export const OPENBOT_TOOL_DEFINITIONS: readonly OpenBotToolDefinition[] = [
   ...LOCAL_SKILL_TOOL_DEFINITIONS,
   ...ROUTINE_FLOW_TOOL_DEFINITIONS,
   ...MCP_SERVER_TOOL_DEFINITIONS,
+  ...E2B_TOOL_DEFINITIONS,
+  ...API_CHANNEL_TOOL_DEFINITIONS,
   {
     name: "list_sites",
     description:
@@ -713,6 +718,14 @@ export const OPENBOT_TOOL_DEFINITIONS: readonly OpenBotToolDefinition[] = [
     },
   },
 ];
+
+const UPSTREAM_HOSTING_TOOLS = new Set(["list_sites", "publish_site", "replace_site", "delete_site"]);
+export function isUpstreamHostingTool(name: string): boolean {
+  return UPSTREAM_HOSTING_TOOLS.has(name);
+}
+export const OPENBOT_TOOL_DEFINITIONS = ALL_OPENBOT_TOOL_DEFINITIONS.filter(
+  (definition) => !INDEPENDENT_EDITION || !isUpstreamHostingTool(definition.name),
+);
 
 export const OPENBOT_DYNAMIC_TOOLS = {
   type: "namespace",

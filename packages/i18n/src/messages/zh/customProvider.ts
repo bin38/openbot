@@ -2,6 +2,19 @@ import type { PartialTranslation } from "../../message";
 import type { messages as source } from "../en/customProvider";
 
 export const messages = {
+  "customProvider.sync.auto": "自动更新模型",
+  "customProvider.sync.autoLabel": "自动更新 {name} 的模型",
+  "customProvider.sync.description": "OpenBot 运行时每小时检查此渠道。自动添加新模型，保留已有模型选择。",
+  "customProvider.sync.refresh": "刷新模型",
+  "customProvider.sync.refreshLabel": "刷新 {name} 的模型",
+  "customProvider.sync.refreshing": "正在刷新模型…",
+  "customProvider.sync.failed": "模型刷新未完成，已保存的模型仍然保留。检查渠道地址、密钥或运行程序后重试。",
+  "customProvider.sync.lastSuccess": "上次更新成功：{time}",
+  "customProvider.sync.lastFailure": "上次更新失败：{time}",
+  "customProvider.sync.notChecked": "尚未检查此渠道。",
+  "customProvider.sync.missing": { other: "上游已撤下 {count} 个已保存模型：{models}。已有选择仍然保留。" },
+  "customProvider.sync.capacity": { other: "此渠道的模型列表已满，暂未添加 {count} 个新模型。" },
+  "customProvider.sync.restartPending": "模型已保存，当前服务商空闲并重启后可用。",
   "customProvider.registry.title": "ACP 注册表",
   "customProvider.registry.description": "在这台服务器上安装助手。移除运行时不会删除助手设置、凭据和对话。",
   "customProvider.registry.search": "搜索注册表",
@@ -55,6 +68,8 @@ export const messages = {
   "customProvider.removeFailed": "OpenBot 无法移除 {name}。",
   "customProvider.saveUnavailable": "当前版本无法保存端点。",
   "customProvider.removeUnavailable": "当前版本无法移除端点。",
+  "customProvider.runtimeHint":
+    "可以先添加自己的 API 地址和密钥。保存后会准备所选运行程序；已关闭的运行程序需要手动启用。",
 
   // The add dialog.
   "customProvider.form.title": "添加自定义服务商",

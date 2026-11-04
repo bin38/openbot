@@ -1,0 +1,65 @@
+{
+  "slug": "feishu",
+  "name": "飞书 / Feishu",
+  "tagline": "Documents, tables, and messages through your own Feishu app",
+  "description": "Use the official Lark/Feishu MCP server with your own application ID and secret. The server acts with the permissions granted to that application; it does not inherit every user document or chat. Personal-user access requires a separate user OAuth login in the official CLI.",
+  "category": "productivity",
+  "creatorName": "Lark / Feishu",
+  "iconUrl": null,
+  "version": "1.0.0",
+  "prompts": [
+    {
+      "id": "prompt-1",
+      "text": "List the documents and tables my Feishu application can access."
+    },
+    {
+      "id": "prompt-2",
+      "text": "Summarize this Feishu document."
+    },
+    {
+      "id": "prompt-3",
+      "text": "Prepare a message for the selected Feishu chat and ask me before sending."
+    }
+  ],
+  "apps": [
+    {
+      "id": "app-feishu-mcp",
+      "name": "飞书 / Feishu",
+      "description": "Documents, tables, and messages through your own Feishu app",
+      "iconUrl": null,
+      "server": {
+        "name": "feishu",
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@larksuiteoapi/lark-mcp@0.5.1", "mcp"],
+        "auth": [
+          {
+            "id": "feishu-app",
+            "kind": "key",
+            "label": "Own Feishu application",
+            "fields": [
+              {
+                "id": "app-id",
+                "label": "App ID",
+                "env": "APP_ID",
+                "hint": "Application credentials from your own Feishu developer console."
+              },
+              {
+                "id": "app-secret",
+                "label": "App secret",
+                "env": "APP_SECRET",
+                "hint": "The secret of that application. Grant only the API permissions you need."
+              }
+            ],
+            "docsUrl": "https://github.com/larksuite/lark-openapi-mcp/blob/main/docs/usage/configuration/configuration.md",
+            "docsLabel": "Feishu MCP setup"
+          }
+        ]
+      }
+    }
+  ],
+  "skills": [],
+  "websiteUrl": "https://github.com/larksuite/lark-openapi-mcp",
+  "privacyPolicyUrl": null,
+  "termsUrl": null
+}

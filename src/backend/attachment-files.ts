@@ -31,7 +31,6 @@ import { isWithin } from "./workspace-paths";
 
 const MAX_ATTACHMENTS = INPUT_LIMITS.attachments;
 const MAX_FILE_BYTES = ATTACHMENT_LIMITS.fileBytes;
-const MAX_TOTAL_BYTES = ATTACHMENT_LIMITS.totalBytes;
 const TRANSFER_MANIFEST_FILE = ".openbot-transfer.json";
 
 export interface StoredAttachment extends AttachmentSummary {
@@ -218,7 +217,6 @@ export class AttachmentFiles {
 
     const prepared: StoredDraft[] = [];
     const preparedRoots: string[] = [];
-    let total = 0;
     let completed = false;
     return yield* Effect.gen({ self: this }, function* () {
       try {
@@ -235,19 +233,6 @@ export class AttachmentFiles {
           );
           yield* attachmentCall(() => copyFile(source.path, targetPath)).pipe(Effect.uninterruptible);
           const copied = yield* attachmentCall(() => stat(targetPath));
-          if (copied.size > MAX_FILE_BYTES) {
-            yield* attachmentCall(() => rm(targetDirectory, { recursive: true, force: true })).pipe(
-              Effect.uninterruptible,
-            );
-            throw new Error(`${name} exceeds the 100 MB limit.`);
-          }
-          total += copied.size;
-          if (total > MAX_TOTAL_BYTES) {
-            yield* attachmentCall(() => rm(targetDirectory, { recursive: true, force: true })).pipe(
-              Effect.uninterruptible,
-            );
-            throw new Error(sourceText("error.attachment.totalTooLarge"));
-          }
           prepared.push({
             ...attachmentRecord(
               id,
@@ -259,13 +244,15 @@ export class AttachmentFiles {
             createdAt: new Date().toISOString(),
           });
         }
+        let bufferedTotal = 0;
         for (const item of data) {
           const bytes = normalizeBytes(item.bytes);
           if (bytes.byteLength > MAX_FILE_BYTES) {
             throw new Error(`${item.name} exceeds the 100 MB limit.`);
           }
-          total += bytes.byteLength;
-          if (total > MAX_TOTAL_BYTES) throw new Error(sourceText("error.attachment.totalTooLarge"));
+          bufferedTotal += bytes.byteLength;
+          if (bufferedTotal > ATTACHMENT_LIMITS.totalBytes)
+            throw new Error(sourceText("error.attachment.totalTooLarge"));
           const id = randomUUID();
           const targetDirectory = join(this.#draftsRoot, id);
           preparedRoots.push(targetDirectory);
@@ -327,7 +314,6 @@ export class AttachmentFiles {
         );
 
         const attachments: StoredAttachment[] = [];
-        let total = 0;
         for (const source of inspected) {
           const sourceName = sanitizeName(source.path);
           const name = yield* attachmentCall(async () => {
@@ -346,9 +332,6 @@ export class AttachmentFiles {
           const id = randomUUID();
           const targetPath = join(temporaryRoot, name);
           const copied = yield* attachmentCall(() => stat(targetPath));
-          if (copied.size > MAX_FILE_BYTES) throw new Error(`${name} exceeds the 100 MB limit.`);
-          total += copied.size;
-          if (total > MAX_TOTAL_BYTES) throw new Error(sourceText("error.attachment.totalTooLarge"));
           attachments.push(
             attachmentRecord(
               id,
@@ -405,16 +388,11 @@ export class AttachmentFiles {
             return yield* attachmentFailure(
               new Error(sourceText("error.backend.attachmentNotFile", { path: source.path })),
             );
-          if (metadata.size > MAX_FILE_BYTES)
-            return yield* attachmentFailure(new Error(`${basename(source.path)} exceeds the 100 MB limit.`));
           yield* attachmentSync(() => assertSupportedAttachmentName(source.path));
           return { ...source, size: metadata.size };
         }),
       { concurrency: "unbounded" },
     );
-    const total = sources.reduce((sum, source) => sum + source.size, 0);
-    if (total > MAX_TOTAL_BYTES)
-      return yield* attachmentFailure(new Error(sourceText("error.attachment.totalTooLarge")));
 
     const usedNames = new Set<string>();
     const entries = sources.map((source) => {
@@ -428,16 +406,12 @@ export class AttachmentFiles {
     return yield* Effect.gen({ self: this }, function* () {
       try {
         const attachments: StoredGeneratedAttachment[] = [];
-        let copiedTotal = 0;
         for (const entry of entries) {
           yield* attachmentCall(() => mkdir(entry.generatedRoot, { recursive: true, mode: 0o700 })).pipe(
             Effect.uninterruptible,
           );
-          yield* copyOpenedFileEffect(entry.source.handle, entry.targetPath, entry.name, MAX_TOTAL_BYTES - copiedTotal);
+          yield* copyOpenedFileEffect(entry.source.handle, entry.targetPath, entry.name, entry.source.size);
           const copied = yield* attachmentCall(() => stat(entry.targetPath));
-          if (copied.size > MAX_FILE_BYTES) throw new Error(`${entry.name} exceeds the 100 MB limit.`);
-          copiedTotal += copied.size;
-          if (copiedTotal > MAX_TOTAL_BYTES) throw new Error(sourceText("error.attachment.totalTooLarge"));
           const attachment: StoredGeneratedAttachment = {
             ...attachmentRecord(
               entry.id,
@@ -646,8 +620,6 @@ const inspectSourceEffect = Effect.fn("Attachments.inspectSource")(function* (
     return yield* attachmentFailure(
       new Error(sourceText("error.backend.attachmentNotRegularFile", { name: basename(path) })),
     );
-  if (metadata.size > MAX_FILE_BYTES)
-    return yield* attachmentFailure(new Error(`${basename(path)} exceeds the 100 MB limit.`));
   return { path, size: metadata.size };
 });
 
@@ -692,8 +664,11 @@ function attachmentMetadata(
   explicitMimeType?: string,
 ): { kind: AttachmentKind; mimeType: string; previewKind: AttachmentPreviewKind } {
   const inferred = attachmentMimeTypeForName(name);
+  // Unknown bytes never become a preview because an uploader claimed an image or text MIME.
+  // The internal voice recorder already validated voice.webm and keeps its released audio MIME.
   // Media, archives and SVG keep the type of their name even if an importer supplies another MIME type.
   const mimeType =
+    (inferred === "application/octet-stream" && !(name === "voice.webm" && explicitMimeType === "audio/webm")) ||
     inferred.startsWith("audio/") ||
     inferred.startsWith("video/") ||
     inferred === "application/zip" ||
@@ -755,7 +730,7 @@ function generatedRootForPath(root: string, path: string): string | null {
 }
 
 const copyOpenedFileEffect = Effect.fn("Attachments.copyOpenedFile")(
-  (source: FileHandle, targetPath: string, name: string, remainingTotalBytes: number) =>
+  (source: FileHandle, targetPath: string, name: string, sourceSize: number) =>
     Effect.acquireUseRelease(
       attachmentCall(() => open(targetPath, "wx", 0o600)),
       (target) =>
@@ -764,12 +739,14 @@ const copyOpenedFileEffect = Effect.fn("Attachments.copyOpenedFile")(
           let position = 0;
           for (;;) {
             const { bytesRead } = yield* attachmentCall(() => source.read(buffer, 0, buffer.byteLength, position));
-            if (bytesRead === 0) return;
+            if (bytesRead === 0) {
+              if (position !== sourceSize)
+                return yield* attachmentFailure(new Error(sourceText("error.backend.attachmentCopyFailed", { name })));
+              return;
+            }
             const nextPosition = position + bytesRead;
-            if (nextPosition > MAX_FILE_BYTES)
-              return yield* attachmentFailure(new Error(`${name} exceeds the 100 MB limit.`));
-            if (nextPosition > remainingTotalBytes)
-              return yield* attachmentFailure(new Error(sourceText("error.attachment.totalTooLarge")));
+            if (nextPosition > sourceSize)
+              return yield* attachmentFailure(new Error(sourceText("error.backend.attachmentCopyFailed", { name })));
             let written = 0;
             while (written < bytesRead) {
               const result = yield* attachmentCall(() =>

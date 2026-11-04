@@ -183,6 +183,8 @@ export interface ConversationProps {
   onSignInWithCodeProvider?: ((provider: AgentProviderId) => void) | undefined;
   /** Open the Providers section of this server's settings, where the user adds an endpoint. */
   onManageProviders?: ((trigger: HTMLElement) => void) | undefined;
+  /** Opens this computer's E2B settings; absent on clients without local cloud-computer support. */
+  onManageCloudComputer?: ((trigger: HTMLElement) => void) | undefined;
   /**
    * Open the Browser profiles section of the settings of the server that runs the agent. Absent for
    * a member, and for a host without `browser-profiles-v1`.
@@ -406,6 +408,7 @@ export type RightPanelMode =
   /** The side panel with no open pane. It lists the panes it can open. */
   | "side-panel"
   | "browser"
+  | "cloud-computer"
   | "browser-expanded"
   | "browser-pip"
   | "settings"

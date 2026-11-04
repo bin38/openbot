@@ -1,6 +1,9 @@
 import { defineMessages } from "../../../message";
 
 export const messages = defineMessages("error.auth", {
+  "error.auth.localWorkspace":
+    "This workspace uses a local owner. A self-hosted account service is not configured for this action.",
+  "error.auth.independentServiceUnavailable": "This service is not available in the independent edition.",
   // Errors from the OpenBot account service.
   "error.auth.serviceUnavailable":
     "OpenBot could not reach the account service. Check that the API is running, then try again.",

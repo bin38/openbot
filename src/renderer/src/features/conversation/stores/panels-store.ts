@@ -64,6 +64,7 @@ const SIDE_PANEL_EMPTY: SidePanelState = { panes: [], selected: null, maximized:
 /** The panel mode of each pane. */
 export const SIDE_PANEL_MODES = {
   browser: "browser",
+  "cloud-computer": "cloud-computer",
   files: "files",
   settings: "settings",
   question: "question",

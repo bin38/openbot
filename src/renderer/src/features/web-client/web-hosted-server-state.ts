@@ -1,5 +1,6 @@
 import type { HostedServerEntryPoint } from "@openbot/contracts/hosted-servers";
 import type { PricingOrder } from "@openbot/contracts/license";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { createEffect, createSignal } from "solid-js";
 import type { AddServerResume } from "../servers/AddServerOverlay";
 import { createWebHostedServerCalls } from "./web-hosted-servers";
@@ -27,9 +28,10 @@ export function createWebHostedServers(options: WebHostedServersOptions) {
   // True when the account can create hosted servers. The plus button then opens the plans.
   const [available, setAvailable] = createSignal(false);
   /** The hosted servers of this account. The server menu can delete these. */
-  const [loaded, setLoaded] = createSignal(false);
+  const [loaded, setLoaded] = createSignal(INDEPENDENT_EDITION);
   const [hostedIds, setHostedIds] = createSignal<ReadonlySet<string>>(new Set());
   async function refresh(): Promise<boolean> {
+    if (INDEPENDENT_EDITION) return false;
     // A failed read keeps the last answer: a network error does not turn the plans off.
     const list = await calls.list().catch(() => null);
     if (!list) return available();
@@ -38,16 +40,18 @@ export function createWebHostedServers(options: WebHostedServersOptions) {
     setHostedIds(new Set(list.servers.map((server) => server.serverId)));
     return list.available;
   }
-  void refresh();
+  if (!INDEPENDENT_EDITION) void refresh();
   // A server that the add server dialog creates comes into the host list as an owned host. Each owned
   // host is read once, so its Delete server item shows without a reload.
   const readOwnedHostIds = new Set<string>();
   createEffect(
     () =>
-      options
-        .hosts()
-        .filter((host) => host.role === "owner" && !readOwnedHostIds.has(host.hostId))
-        .map((host) => host.hostId),
+      INDEPENDENT_EDITION
+        ? []
+        : options
+            .hosts()
+            .filter((host) => host.role === "owner" && !readOwnedHostIds.has(host.hostId))
+            .map((host) => host.hostId),
     (hostIds) => {
       if (hostIds.length === 0) return;
       for (const hostId of hostIds) readOwnedHostIds.add(hostId);
@@ -56,7 +60,7 @@ export function createWebHostedServers(options: WebHostedServersOptions) {
   );
   createEffect(options.hostingReturn, (resume) => {
     if (!resume) return;
-    setAddServer({ resume, entryPoint: "checkout_resume", order: null });
+    if (!INDEPENDENT_EDITION) setAddServer({ resume, entryPoint: "checkout_resume", order: null });
     options.onHostingReturnConsumed?.();
   });
 
@@ -76,6 +80,10 @@ export function createWebHostedServers(options: WebHostedServersOptions) {
      * is for the next click.
      */
     openAddServer(entryPoint: HostedServerEntryPoint, order: PricingOrder | null = null): void {
+      if (INDEPENDENT_EDITION) {
+        options.onJoin();
+        return;
+      }
       if (available()) setAddServer({ resume: null, entryPoint, order });
       else options.onJoin();
       void refresh();

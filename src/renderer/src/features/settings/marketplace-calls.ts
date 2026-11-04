@@ -1,4 +1,5 @@
 import type { AddedAgent, InstallMarketplaceAgentInput, McpSignInRelayPage } from "@openbot/contracts/ipc";
+import type { McpRegistryApi } from "@openbot/contracts/ipc-mcp-registry";
 import { appPort } from "../../app-port";
 import { type AgentSkillCalls, agentSkillCalls, type SkillsPort, skillsPort } from "../../skills-port";
 
@@ -7,6 +8,8 @@ import { type AgentSkillCalls, agentSkillCalls, type SkillsPort, skillsPort } fr
  * browser client reads the catalog on its own origin and changes its host over the Team API.
  */
 export interface MarketplaceCalls {
+  /** The public directory is fetched by this computer, without an account session. */
+  registry?: McpRegistryApi;
   skills: Pick<SkillsPort["skills"], "get" | "getBySlug" | "list">;
   agents: Pick<SkillsPort["marketplaceAgents"], "get" | "getListing" | "list">;
   agentSkills: (hostServerId?: string) => AgentSkillCalls;
@@ -45,6 +48,7 @@ export interface MarketplaceSignInRelay {
 export function desktopMarketplaceCalls(): MarketplaceCalls {
   const port = skillsPort();
   return {
+    registry: window.openbot.mcpRegistry,
     skills: port.skills,
     agents: port.marketplaceAgents,
     agentSkills: agentSkillCalls,

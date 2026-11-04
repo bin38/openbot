@@ -2,6 +2,20 @@ import type { PartialTranslation } from "../../message";
 import type { messages as source } from "../en/webClient";
 
 export const messages = {
+  "webClient.error.commerceUnavailable": "独立版不提供原站账单与托管购买功能。",
+  "webClient.independent.title": "OpenBot · 独立版",
+  "webClient.independent.heading": "你的本地工作区",
+  "webClient.independent.description": "使用本地 Codex 账号、自己的 E2B 云电脑和自行配置的插件。",
+  "webClient.independent.setup": "从此仓库启动桌面应用。独立版不使用原厂商的账号、付费托管或结账服务。",
+  "webClient.independent.downloads": "独立版尚未配置安装包来源，使用源码和构建说明进行安装。",
+  "webClient.independent.remote": "浏览器访问和远程连接需要自行部署账号和 Signal 服务。",
+  "webClient.independent.providers": "E2B 和插件服务使用你自己的凭据，相关服务商可能收取费用。",
+  "webClient.independent.attribution": "源码许可证和原作者署名继续有效。",
+  "webClient.independent.source": "源代码",
+  "webClient.independent.build": "构建说明",
+  "webClient.independent.license": "源码许可证",
+  "webClient.independent.app": "浏览器客户端",
+  "webClient.independent.contactFooter": "来自联系表单，回复此邮件即可联系 {email}。",
   "webClient.loading": "正在加载 OpenBot…",
   "webClient.loadingLine.wake": "正在唤醒助手…",
   "webClient.loadingLine.coffee": "正在给助手倒咖啡…",

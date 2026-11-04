@@ -1,3 +1,4 @@
+import type { AccountScopedClientAgentModelOption } from "@openbot/contracts/account-scoped-models";
 import { ProviderModelPicker } from "@openbot/ui/components/ProviderModelPicker";
 import { fn } from "storybook/test";
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
@@ -23,6 +24,65 @@ type Story = StoryObj<typeof meta>;
 
 export const Pill: Story = {
   args: { reasoningEffort: "medium", onReasoningEffortChange: fn() },
+};
+
+const paidAccountId = "a0123456789abcdef";
+const accountModelChoices: AccountScopedClientAgentModelOption[] = [
+  {
+    provider: "antigravity",
+    id: "gemini-3.8-flash",
+    name: "Gemini 3.8 Flash",
+    description: "Default account fixture",
+    defaultReasoningEffort: "low",
+    supportedReasoningEfforts: ["low", "medium"],
+    providerAccountIds: ["default"],
+  },
+  {
+    provider: "antigravity",
+    id: "gemini-3.8-flash",
+    name: "Gemini 3.8 Flash",
+    description: "Added account fixture",
+    defaultReasoningEffort: "high",
+    supportedReasoningEfforts: ["medium", "high"],
+    providerAccountIds: [paidAccountId],
+  },
+  {
+    provider: "antigravity",
+    id: "gemini-4-argon",
+    name: "Gemini 4 Argon",
+    description: "Added account fixture",
+    defaultReasoningEffort: "high",
+    supportedReasoningEfforts: ["low", "medium", "high"],
+    providerAccountIds: [paidAccountId],
+  },
+];
+
+/** Account rails filter before grouping; the shared model can also have different effort settings. */
+export const AccountCatalogs: Story = {
+  args: {
+    provider: "antigravity",
+    value: "gemini-4-argon",
+    providerAccountId: paidAccountId,
+    accountChoice: true,
+    modelOptions: accountModelChoices,
+    reasoningEffort: "high",
+    onReasoningEffortChange: fn(),
+    agentStatus: {
+      ...STORY_AGENT_STATUS,
+      providers: [
+        {
+          id: "antigravity",
+          state: "available",
+          version: "1.4.5",
+          message: null,
+          accounts: [
+            { id: "default", label: "Default", email: null, state: "connected", message: null },
+            { id: paidAccountId, label: "Work", email: null, state: "connected", message: null },
+          ],
+        },
+      ],
+    },
+  },
 };
 
 /** A Claude model with every effort level. */

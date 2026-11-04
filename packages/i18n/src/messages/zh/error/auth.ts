@@ -2,6 +2,8 @@ import type { PartialTranslation } from "../../../message";
 import type { messages as source } from "../../en/error/auth";
 
 export const messages = {
+  "error.auth.localWorkspace": "当前使用本地主人身份，此操作尚未配置自建账号服务。",
+  "error.auth.independentServiceUnavailable": "独立版不提供此服务。",
   // Errors from the OpenBot account service.
   "error.auth.serviceUnavailable": "OpenBot 无法连接账号服务。请确认 API 正在运行后重试。",
   "error.auth.networkBlocked":

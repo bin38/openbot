@@ -1,5 +1,22 @@
 import { isMobileConnectDevelopmentHost } from "@openbot/contracts/mobile-connect";
 
+interface SignalEnvironment extends Record<string, string | undefined> {
+  OPENBOT_SELF_HOSTED_API_URL?: string;
+  OPENBOT_SELF_HOSTED_SIGNAL_URL?: string;
+  OPENBOT_AUTH_API_URL?: string;
+  OPENBOT_REMOTE_SIGNAL_URL?: string;
+}
+
+/** Independent services never fall back to the original account configuration. */
+export function configuredSelfHostedSignalOrigin(environment: SignalEnvironment, independent: boolean): string | null {
+  return independent
+    ? readSelfHostedSignalOrigin(environment.OPENBOT_SELF_HOSTED_API_URL, environment.OPENBOT_SELF_HOSTED_SIGNAL_URL, {
+        account: "OPENBOT_SELF_HOSTED_API_URL",
+        signal: "OPENBOT_SELF_HOSTED_SIGNAL_URL",
+      })
+    : readSelfHostedSignalOrigin(environment.OPENBOT_AUTH_API_URL, environment.OPENBOT_REMOTE_SIGNAL_URL);
+}
+
 export function buildContentSecurityPolicy(
   packaged: boolean,
   developmentSignalUrl?: string,
@@ -20,10 +37,10 @@ export function buildContentSecurityPolicy(
     // The lightbox plays a recording from the attachment scheme, and the preview panel plays one
     // from an object URL of the bytes that the main process sent. Neither matches `default-src`.
     "media-src 'self' blob: openbot-attachment: openbot-remote-attachment:",
-    `connect-src 'self' openbot-attachment: openbot-remote-attachment: https://analytics.openbot.run ws://127.0.0.1:* wss://*.openbot.run${selfHostedSignalSource}${developmentSources}`,
+    `connect-src 'self' openbot-attachment: openbot-remote-attachment: ws://127.0.0.1:*${selfHostedSignalSource}${developmentSources}`,
     "object-src 'none'",
     // The remote desktop viewer uses a loopback proxy in packaged apps too.
-    "frame-src 'self' openbot-attachment: openbot-remote-attachment: openbot-visual: openbot-remote-visual: https://*.openbot.run http://127.0.0.1:* http://localhost:*",
+    "frame-src 'self' openbot-attachment: openbot-remote-attachment: openbot-visual: openbot-remote-visual: http://127.0.0.1:* http://localhost:*",
     "base-uri 'none'",
   ].join("; ");
 }
@@ -36,12 +53,25 @@ export function buildContentSecurityPolicy(
 export function readSelfHostedSignalOrigin(
   authApiUrl: string | undefined,
   signalUrl: string | undefined,
+  names = { account: "OPENBOT_AUTH_API_URL", signal: "OPENBOT_REMOTE_SIGNAL_URL" },
 ): string | null {
   if (!signalUrl) return null;
-  if (!authApiUrl) throw new Error("OPENBOT_REMOTE_SIGNAL_URL needs OPENBOT_AUTH_API_URL.");
+  if (!authApiUrl) throw new Error(`${names.signal} needs ${names.account}.`);
+  const auth = new URL(authApiUrl);
   const url = new URL(signalUrl);
   if (url.protocol !== "wss:" || url.username !== "" || url.password !== "") {
-    throw new Error("OPENBOT_REMOTE_SIGNAL_URL must be a wss: URL without credentials.");
+    throw new Error(`${names.signal} must be a wss: URL without credentials.`);
+  }
+  if (
+    [auth.hostname, url.hostname].some(
+      (name) =>
+        name === "openbot.run" ||
+        name.endsWith(".openbot.run") ||
+        name === "openbot.site" ||
+        name.endsWith(".openbot.site"),
+    )
+  ) {
+    throw new Error("Configure your own Account API and Signal origins.");
   }
   return url.origin;
 }

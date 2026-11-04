@@ -1,17 +1,23 @@
 import { parseBillingSessionUrl, parseBillingState } from "@openbot/contracts/billing";
 import {
+  LICENSE_UNAVAILABLE_STATE,
   PRICING_ORDER_PARAMS,
   type PricingOrder,
   parseLicenseCheckoutUrl,
   parseLicenseState,
   parsePricingOrder,
 } from "@openbot/contracts/license";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { isDynamicRecord, isString } from "@openbot/contracts/runtime-values";
 import type { BillingCalls } from "@openbot/ui/features/billing/billing-store";
 import type { LicenseCalls } from "@openbot/ui/features/billing/license-store";
 import { currentText } from "@openbot/ui/text";
 
 const REQUEST_TIMEOUT_MS = 15_000;
+
+function unavailableCommerce(): Promise<never> {
+  return Promise.reject(new Error(currentText().t("webClient.error.commerceUnavailable")));
+}
 
 /**
  * The Billing dialog calls for a signed-in browser. They use the `/api/browser/v1/me/billing...`
@@ -21,6 +27,11 @@ export function createWebBillingCalls(
   accountFetch: typeof fetch,
   navigate: (url: string) => void = (url) => window.location.assign(url),
 ): BillingCalls {
+  if (INDEPENDENT_EDITION)
+    return {
+      getState: async () => ({ available: false, hasCustomer: false, servers: [] }),
+      openPortal: unavailableCommerce,
+    };
   const request = browserRequest(accountFetch);
 
   async function openStripe(path: string, body: string): Promise<void> {
@@ -47,6 +58,14 @@ export function createWebLicenseCalls(
   accountFetch: typeof fetch,
   navigate: (url: string) => void = (url) => window.location.assign(url),
 ): LicenseCalls {
+  if (INDEPENDENT_EDITION)
+    return {
+      getState: async () => structuredClone(LICENSE_UNAVAILABLE_STATE),
+      openCheckout: unavailableCommerce,
+      setUsers: unavailableCommerce,
+      changePlan: unavailableCommerce,
+      setRenewal: unavailableCommerce,
+    };
   const request = browserRequest(accountFetch);
 
   async function state(path: string, body?: string) {
@@ -115,5 +134,6 @@ export function takeWebAppStart(url: URL): WebAppStart | null {
   const order = parsePricingOrder(url.searchParams);
   url.searchParams.delete(WEB_APP_START_PARAM);
   for (const param of PRICING_ORDER_PARAMS) url.searchParams.delete(param);
+  if (INDEPENDENT_EDITION) return null;
   return start === "server" || start === "license" ? { kind: start, order } : null;
 }

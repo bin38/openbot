@@ -13,14 +13,15 @@ const VISUAL_PAGE_CACHE = 8;
  * connection: saved as a download, or previewed from its bytes.
  */
 export function createWebAttachmentFiles(
-  remote: Pick<WebWorkspaceRuntime, "download" | "sharedFile" | "workspaceFile">,
+  remote: Pick<WebWorkspaceRuntime, "download" | "saveAttachment" | "sharedFile" | "workspaceFile">,
   hostId: () => string,
 ) {
   const save = createWebFileSaver();
   const pages = new Map<string, Promise<string>>();
   return {
     async download(id: string): Promise<void> {
-      save(await remote.download(id));
+      if (remote.saveAttachment) await remote.saveAttachment(id);
+      else save(await remote.download(id));
     },
     async preview(attachment: AttachmentSummary): Promise<FilePreview> {
       return filePreview(await remote.download(attachment.id));

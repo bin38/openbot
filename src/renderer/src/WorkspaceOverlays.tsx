@@ -5,6 +5,7 @@ import {
   type RoutineFields,
   type ServerSummary,
 } from "@openbot/contracts/ipc";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { BROWSER_PROFILES_CAPABILITY } from "@openbot/contracts/team-protocol/browser-profiles-v1";
 import { VAULT_CAPABILITY } from "@openbot/contracts/team-protocol/vault-v1";
 import { VAULT_V2_CAPABILITY } from "@openbot/contracts/team-protocol/vault-v2";
@@ -105,11 +106,13 @@ export function WorkspaceOverlays(props: AccountProps) {
   });
   return (
     <>
-      <SharedAgentInstall />
-      <JoinServer account={props.account} />
-      <AddServer />
+      <Show when={!INDEPENDENT_EDITION}>
+        <SharedAgentInstall />
+        <JoinServer account={props.account} />
+        <AddServer />
+        <HostedUpsell account={props.account} />
+      </Show>
       <CreateLocalServer />
-      <HostedUpsell account={props.account} />
       <LeaveServer />
       <RestartServer />
       <ServerSettings />
@@ -512,7 +515,7 @@ function ServerSettings() {
       store: createVaultStore(local ? desktopVaultCalls() : hostVaultCalls(serverId)),
       apiKeys: vaultApiKeys(),
       // Link signs in on this computer only: a joined server's host has no Link account.
-      link: local ? createLinkAccountStore() : undefined,
+      link: local && !INDEPENDENT_EDITION ? createLinkAccountStore() : undefined,
     };
   });
   // The workspace belongs to the selected server. For another server, the switch comes first and
@@ -586,6 +589,9 @@ function ServerSettings() {
       onDeleteCustomProvider: endpoints.deleteCustomProvider,
       // The Team API has no edit route, so only this computer's endpoints have Edit.
       onUpdateCustomProvider: local ? localEndpoints.updateCustomProvider : undefined,
+      get customProviderModelSync() {
+        return local ? localEndpoints.modelSync() : undefined;
+      },
       get providerKeys() {
         return providerRuntimeDownloadsAvailable() ? providerKeys() : undefined;
       },
@@ -713,6 +719,7 @@ function ServerSettings() {
     <Show when={serverSettingsTarget()}>
       {(server) => (
         <ServerSettingsOverlay
+          onClose={windowPage.showAgents}
           // The settings show only as a page of the window, so they wait for the page.
           open={serverSettingsOpen() && windowPage.settingsPlacement("server") !== undefined}
           page={windowPage.settingsPlacement("server")}
@@ -727,18 +734,31 @@ function ServerSettings() {
           onRetry={() => refreshServerSettings(server().id)}
           onSaveIdentity={saveServerIdentity}
           onSetPublished={setServerPublished}
-          onRotateHostKey={server().kind === "local" ? rotateHostKey : undefined}
+          onRotateHostKey={!INDEPENDENT_EDITION && server().kind === "local" ? rotateHostKey : undefined}
           onCreateInvite={createServerInvite}
-          license={appPort().license}
-          onContactUs={() => void appPort().openExternal("hosted-server-contact")}
+          license={INDEPENDENT_EDITION ? undefined : appPort().license}
+          onContactUs={INDEPENDENT_EDITION ? undefined : () => void appPort().openExternal("hosted-server-contact")}
           onUpdateMember={updateServerMember}
           onRemoveMember={removeServerMember}
           onRevokeInvite={revokeServerInvite}
           onLeaveServer={leaveServer}
           // Billing deletes a hosted server, so its owner does not remove it here.
-          onRemoveServer={hostedServersLoaded() && !hostedServerIds().has(server().id) ? leaveServer : undefined}
+          onRemoveServer={
+            !INDEPENDENT_EDITION && hostedServersLoaded() && !hostedServerIds().has(server().id)
+              ? leaveServer
+              : undefined
+          }
           onOpenScreenRecordingSettings={() => appPort().openExternal("mac-screen-recording")}
           onRecheckScreenRecording={recheckScreenRecording}
+          cloudComputer={
+            server().kind === "local"
+              ? {
+                  api: appPort().e2b,
+                  listAgents: () => appPort().agent.listAgents(server().id),
+                }
+              : undefined
+          }
+          apiChannels={server().kind === "local" ? { api: appPort().apiChannels } : undefined}
           mcpServers={serverSettingsMcp()}
           // Only for the computer whose runtimes this window holds: another host starts its servers
           // with its own runtime, which this window has not read.
@@ -795,7 +815,7 @@ function ServerSettings() {
           // This computer, or a remote host with `hosted-sites-v1`. Every member lists; the host deletes
           // only for an owner or admin.
           hostedSites={
-            serverSupportsCapability(server(), "hosted-sites-v1")
+            !INDEPENDENT_EDITION && serverSupportsCapability(server(), "hosted-sites-v1")
               ? {
                   api: appPort().hostedSites,
                   onOpenSite: (url) => void appPort().openUrl(url),
@@ -913,6 +933,15 @@ function AppSettings(props: AccountProps) {
         onRestartWhenIdle={updates.restartWhenIdle}
         onCancelIdleRestart={updates.cancelIdleRestart}
         account={props.account()}
+        selfHostedAccount={{
+          get state() {
+            return auth.centralAuth();
+          },
+          onRetry: auth.retryCentralAccount,
+          onRequestEmailCode: auth.requestEmailCode,
+          onVerifyEmailCode: auth.verifyEmailCode,
+          onSignOut: auth.logoutCentralAccount,
+        }}
         onUpdateAccountName={auth.updateAccountName}
         onUpdateAccountAvatar={auth.updateAccountAvatar}
         onCreateMobileConnect={auth.createMobileConnect}
@@ -926,11 +955,11 @@ function AppSettings(props: AccountProps) {
         onSetRemoteNetworkRoute={(route) => settingsPort().setRemoteNetworkRoute({ route })}
         onListAccountSessions={auth.listAccountSessions}
         onRevokeAccountSession={auth.revokeAccountSession}
-        onSignOut={platform.landingPreview ? undefined : auth.logoutCentralAccount}
-        billingApi={appPort().billing}
-        licenseApi={appPort().license}
-        onContactUs={() => void appPort().openExternal("hosted-server-contact")}
-        hostedServersApi={appPort().hostedServers}
+        onSignOut={platform.landingPreview || INDEPENDENT_EDITION ? undefined : auth.logoutCentralAccount}
+        billingApi={INDEPENDENT_EDITION ? undefined : appPort().billing}
+        licenseApi={INDEPENDENT_EDITION ? undefined : appPort().license}
+        onContactUs={INDEPENDENT_EDITION ? undefined : () => void appPort().openExternal("hosted-server-contact")}
+        hostedServersApi={INDEPENDENT_EDITION ? undefined : appPort().hostedServers}
         onAddHostedServer={() => {
           setAppSettingsOpen(false);
           setAddServerOpen(true, "settings_billing");

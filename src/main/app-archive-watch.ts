@@ -15,7 +15,6 @@ import { Option, Schema } from "effect";
 import { dialog, shell } from "electron";
 
 const logger = createOpenBotLogger("app-archive");
-const DOWNLOAD_URL = "https://openbot.run/download";
 // A copy of the archive writes for some seconds. Check once the writes stop.
 const SETTLE_MS = 2_000;
 
@@ -72,16 +71,49 @@ async function readPlistHash(resourcesPath: string): Promise<string | null> {
   }
 }
 
-async function showArchiveChanged(translate: AppTranslate): Promise<void> {
+function recoverySource(value: string | undefined): string | null {
+  if (!value?.trim()) return null;
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.toLowerCase().replace(/\.+$/u, "");
+    const path = decodeURIComponent(url.pathname).toLowerCase();
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash ||
+      hostname === "openbot.run" ||
+      hostname.endsWith(".openbot.run") ||
+      hostname === "openbot.site" ||
+      hostname.endsWith(".openbot.site") ||
+      ((hostname === "github.com" || hostname.endsWith(".github.com") || hostname === "raw.githubusercontent.com") &&
+        (path.startsWith("/nightly-labs/openbot") || path.startsWith("/repos/nightly-labs/openbot")))
+    )
+      return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+export async function showArchiveChanged(
+  translate: AppTranslate,
+  configuredRecoverySource = process.env.OPENBOT_RECOVERY_URL,
+): Promise<void> {
+  const recoveryUrl = recoverySource(configuredRecoverySource);
+  const buttons = recoveryUrl
+    ? [translate("startup.archiveChangedDownload"), translate("common.close")]
+    : [translate("common.close")];
   const { response } = await dialog.showMessageBox({
     type: "warning",
     message: translate("startup.archiveChangedTitle"),
     detail: translate("startup.archiveChangedBody"),
-    buttons: [translate("startup.archiveChangedDownload"), translate("common.close")],
-    defaultId: 0,
-    cancelId: 1,
+    buttons,
+    defaultId: buttons.length - 1,
+    cancelId: buttons.length - 1,
   });
-  if (response === 0) await shell.openExternal(DOWNLOAD_URL);
+  if (response === 0 && recoveryUrl) await shell.openExternal(recoveryUrl);
 }
 
 /**

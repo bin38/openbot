@@ -18,6 +18,9 @@ export interface WorkerBindings {
   /** Checked by the Live Activity relay only, so a Worker without it keeps its other routes. */
   LIVE_ACTIVITY_RATE_LIMITER?: RateLimit;
   AUTH_EXPOSE_DEVELOPMENT_CODE?: string;
+  /** Optional native Cloudflare email transport. The lean Worker requires an explicit login allowlist. */
+  EMAIL?: SendEmail;
+  AUTH_ALLOWED_EMAILS?: string;
   EMAIL_SMTP_HOST?: string;
   EMAIL_SMTP_PORT?: string;
   EMAIL_SMTP_USERNAME?: string;
@@ -121,6 +124,58 @@ export interface WorkerBindings {
    * Cloud Messaging. The Android notification relay is off without it.
    */
   FCM_SERVICE_ACCOUNT?: string;
+}
+
+/** Bindings used by native account and remote-directory APIs, without marketplace or hosting storage. */
+export type AccountWorkerBindings = Pick<
+  WorkerBindings,
+  | "DB"
+  | "AVATARS"
+  | "AUTH_EXPOSE_DEVELOPMENT_CODE"
+  | "EMAIL"
+  | "AUTH_ALLOWED_EMAILS"
+  | "EMAIL_SMTP_HOST"
+  | "EMAIL_SMTP_PORT"
+  | "EMAIL_SMTP_USERNAME"
+  | "EMAIL_SMTP_PASSWORD"
+  | "EMAIL_FROM"
+  | "EMAIL_LICENSE_FROM"
+  | "EMAIL_RELAY"
+  | "EMAIL_DELIVERY_WEBHOOK_URL"
+  | "EMAIL_DELIVERY_WEBHOOK_SECRET"
+  | "REMOTE_TICKET_PRIVATE_JWK"
+  | "REMOTE_TICKET_PUBLIC_JWKS"
+  | "REMOTE_TICKET_KEY_ID"
+  | "REMOTE_SIGNAL_URL"
+  | "REMOTE_SIGNAL_HOMES"
+  | "REMOTE_AUTH_WEBHOOK_URL"
+  | "REMOTE_AUTH_WEBHOOK_URLS"
+  | "REMOTE_AUTH_WEBHOOK_SECRET"
+  | "SLACK_ROUTE_PRIVATE_JWK"
+  | "SLACK_ROUTE_KEY_ID"
+  | "DISCORD_ROUTE_PRIVATE_JWK"
+  | "DISCORD_ROUTE_KEY_ID"
+  | "TELEGRAM_BOT_ID"
+  | "TELEGRAM_BOT_USERNAME"
+  | "OPENPANEL_CLIENT_ID"
+  | "OPENPANEL_CLIENT_SECRET"
+>;
+
+function isAccountWorkerBindings(value: unknown): value is AccountWorkerBindings {
+  if (!isDynamicRecord(value)) return false;
+  return (
+    isDynamicRecord(value.DB) &&
+    isFunction(value.DB.prepare) &&
+    isDynamicRecord(value.AVATARS) &&
+    isFunction(value.AVATARS.get) &&
+    isFunction(value.AVATARS.put) &&
+    isFunction(value.AVATARS.delete)
+  );
+}
+
+export function requireAccountWorkerBindings(value: unknown): AccountWorkerBindings {
+  if (!isAccountWorkerBindings(value)) throw new Error("Cloudflare account bindings are unavailable.");
+  return value;
 }
 
 function isWorkerBindings(value: unknown): value is WorkerBindings {

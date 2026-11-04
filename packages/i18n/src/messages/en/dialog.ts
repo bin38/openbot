@@ -8,6 +8,7 @@ export const messages = defineMessages("dialog", {
   "dialog.chooseSkill": "Choose a skill folder or ZIP",
   "dialog.filter.skillPackages": "Skill packages",
   "dialog.filter.images": "Images",
+  "dialog.filter.allFiles": "All files",
   "dialog.filter.supportedFiles": "Supported files",
   "dialog.filter.attachment": "Attachment",
   "dialog.filter.zipArchive": "ZIP archive",

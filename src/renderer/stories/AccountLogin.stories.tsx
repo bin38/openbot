@@ -41,6 +41,16 @@ function codeSentState(overrides: Partial<Extract<CentralAuthState, { status: "c
 
 export const SignIn: Story = {};
 
+export const EmbeddedSignIn: Story = {
+  args: { layout: "embedded" },
+  parameters: { layout: "padded" },
+};
+
+export const EmbeddedCodeSent: Story = {
+  args: { layout: "embedded", state: codeSentState() },
+  parameters: { layout: "padded" },
+};
+
 export const Interactive: Story = {
   render: (storyArgs) => {
     const [state, setState] = createSignal<CentralAuthState>({ status: "signed_out" });

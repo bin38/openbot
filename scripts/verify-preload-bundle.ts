@@ -10,6 +10,7 @@ import {
   type IpcGroupName,
 } from "@openbot/contracts/ipc";
 import { createOpenBotLogger } from "@openbot/logging";
+import { readScriptArguments } from "./script-arguments";
 
 // Runs the built preload bundles in a VM with a fake Electron, after `bun run build`. The types
 // describe the source; this reads what the renderer really gets. It fails when the bundle:
@@ -40,7 +41,15 @@ const HAND_WRITTEN_METHODS: ReadonlyMap<string, IpcEndpoint | null> = new Map<st
 const SANDBOX_MODULES = new Set(["electron", "events", "timers", "url"]);
 const nodeRequire = createRequire(import.meta.url);
 
-const PRELOAD_DIRECTORY = resolve(import.meta.dirname, "../out/preload");
+const args = readScriptArguments({
+  usage: "Usage: bun scripts/verify-preload-bundle.ts [--preload-dir=<built directory>]",
+  options: { "preload-dir": { type: "string" } },
+});
+if (!args) process.exit(0);
+// The same check can validate the actual dev bundle without a repository-wide production build.
+const PRELOAD_DIRECTORY = args.values["preload-dir"]
+  ? resolve(args.values["preload-dir"])
+  : resolve(import.meta.dirname, "../out/preload");
 
 // Every method of `window.openbot` takes a payload or a listener first.
 type BridgeMethod = (payloadOrListener: unknown) => unknown;

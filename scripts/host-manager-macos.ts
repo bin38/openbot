@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { chmod, lstat, mkdir, readdir, readlink, rename, rm } from "node:fs/promises";
+import { chmod, lstat, mkdir, readdir, readFile, readlink, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
@@ -11,13 +11,38 @@ const exec = promisify(execFile);
 export const SHARED_APP = "/Applications/OpenBot.app";
 const STAGING = "/Applications/.openbot-host-stage";
 const PRIVATE = join(HOST_MANAGER_DIRECTORY, "private");
-const SIGNING_REQUIREMENT =
-  '=anchor apple generic and identifier "app.openbot.desktop" and certificate leaf[subject.OU] = "ZTRDTUL87R"';
+const STAGED_SOURCE = join(STAGING, "release-source.json");
+const stagedSourceSchema = z.object({
+  repository: z.string(),
+  signingTeam: z.string(),
+  version: z.string(),
+});
 const releaseSchema = z.object({
   tag_name: z.string().regex(/^v?\d+\.\d+\.\d+$/),
   draft: z.literal(false),
   prerelease: z.literal(false),
 });
+
+export function macHostReleaseSource(environment: NodeJS.ProcessEnv): { repository: string; signingTeam: string } {
+  const repository = environment.OPENBOT_RELEASE_REPOSITORY?.toLowerCase();
+  if (
+    !repository ||
+    !/^[a-z0-9][a-z0-9_.-]*\/[a-z0-9][a-z0-9_.-]*$/u.test(repository) ||
+    repository === "nightly-labs/openbot" ||
+    repository === "nightly-labs/openbot.git"
+  ) {
+    throw new Error("Set OPENBOT_RELEASE_REPOSITORY to your own owner/repo before installation or updates.");
+  }
+  return { repository, signingTeam: signingTeamId(environment) };
+}
+
+function signingTeamId(environment: NodeJS.ProcessEnv): string {
+  const signingTeam = environment.OPENBOT_HOST_SIGNING_TEAM_ID;
+  if (!signingTeam || !/^[A-Z0-9]{10}$/u.test(signingTeam)) {
+    throw new Error("Set OPENBOT_HOST_SIGNING_TEAM_ID to the Apple team ID that signs your own build.");
+  }
+  return signingTeam;
+}
 
 export async function hostCommand(file: string, args: string[], timeout = 60_000): Promise<string> {
   const result = await exec(file, args, {
@@ -109,8 +134,10 @@ export async function verifyBundleTree(root: string, requireRootOwner: boolean):
     throw new Error("Bundle has access-granting ACLs.");
 }
 
-export async function verifySignature(app: string): Promise<void> {
-  await command("/usr/bin/codesign", ["--verify", "--deep", "--strict", "-R", SIGNING_REQUIREMENT, app]);
+export async function verifySignature(app: string, signingTeam = signingTeamId(process.env)): Promise<void> {
+  if (!/^[A-Z0-9]{10}$/u.test(signingTeam)) throw new Error("Invalid Apple signing team ID.");
+  const requirement = `=anchor apple generic and identifier "app.openbot.desktop" and certificate leaf[subject.OU] = "${signingTeam}"`;
+  await command("/usr/bin/codesign", ["--verify", "--deep", "--strict", "-R", requirement, app]);
   await command("/usr/sbin/spctl", ["--assess", "--type", "execute", app]);
 }
 
@@ -144,20 +171,22 @@ export async function runningOpenBotProcesses(): Promise<Array<{ uid: number; pi
   return (await bundleProcesses()).filter((process) => process.main).map(({ uid, pid }) => ({ uid, pid }));
 }
 
-export function macHostOperations(): HostManagerOperations {
+export function macHostOperations(environment: NodeJS.ProcessEnv = process.env): HostManagerOperations {
   return {
     runningTenants: runningOpenBotProcesses,
     applicationInUse: async () => (await bundleProcesses()).length !== 0,
     installedVersion: async () => {
       await verifyBundleTree(SHARED_APP, true);
-      await verifySignature(SHARED_APP);
+      await verifySignature(SHARED_APP, signingTeamId(environment));
       return bundleVersion();
     },
     stageLatest: async () => {
+      const source = macHostReleaseSource(environment);
       await verifySharedAppParent();
       await verifyBundleTree(SHARED_APP, true);
-      await verifySignature(SHARED_APP);
-      const response = await fetch("https://api.github.com/repos/nightly-labs/openbot/releases/latest", {
+      await verifySignature(SHARED_APP, source.signingTeam);
+      const response = await fetch(`https://api.github.com/repos/${source.repository}/releases/latest`, {
+        redirect: "error",
         signal: AbortSignal.timeout(30_000),
         headers: { Accept: "application/vnd.github+json" },
       });
@@ -170,8 +199,8 @@ export function macHostOperations(): HostManagerOperations {
       await ensureHostDirectory(STAGING, 0o700);
       const dmg = join(PRIVATE, "release.dmg");
       await rm(dmg, { force: true });
-      // Asset names and repository are fixed. No tenant supplies a network destination.
-      const url = `https://github.com/nightly-labs/openbot/releases/download/${release.tag_name}/OpenBot-${version}-arm64.dmg`;
+      // Only the host operator configures the repository. A tenant cannot change the destination.
+      const url = `https://github.com/${source.repository}/releases/download/${release.tag_name}/OpenBot-${version}-arm64.dmg`;
       await command(
         "/usr/bin/curl",
         [
@@ -195,18 +224,20 @@ export function macHostOperations(): HostManagerOperations {
       await ensureHostDirectory(mount, 0o700);
       await command("/usr/bin/hdiutil", ["attach", dmg, "-readonly", "-nobrowse", "-noautoopen", "-mountpoint", mount]);
       try {
-        const source = join(mount, "OpenBot.app");
-        await verifyBundleTree(source, false);
-        await verifySignature(source);
-        if ((await bundleVersion(source)) !== version) throw new Error("Downloaded version mismatch.");
+        const downloaded = join(mount, "OpenBot.app");
+        await verifyBundleTree(downloaded, false);
+        await verifySignature(downloaded, source.signingTeam);
+        if ((await bundleVersion(downloaded)) !== version) throw new Error("Downloaded version mismatch.");
         const staged = join(STAGING, "OpenBot.app");
+        await rm(STAGED_SOURCE, { force: true });
         await rm(staged, { recursive: true, force: true });
-        await command("/usr/bin/ditto", ["--noqtn", source, staged], 180_000);
+        await command("/usr/bin/ditto", ["--noqtn", downloaded, staged], 180_000);
         await command("/usr/sbin/chown", ["-Rh", "root:wheel", staged]);
         await command("/bin/chmod", ["-RN", staged]);
         await command("/bin/chmod", ["-R", "go-w", staged]);
         await verifyBundleTree(staged, true);
-        await verifySignature(staged);
+        await verifySignature(staged, source.signingTeam);
+        await writeFile(STAGED_SOURCE, JSON.stringify({ ...source, version }), { mode: 0o600, flag: "wx" });
       } finally {
         await command("/usr/bin/hdiutil", ["detach", mount]);
       }
@@ -214,11 +245,24 @@ export function macHostOperations(): HostManagerOperations {
       return version;
     },
     install: async (version) => {
+      const source = macHostReleaseSource(environment);
       await verifySharedAppParent();
       await verifyHostPath(STAGING);
+      const record = await lstat(STAGED_SOURCE);
+      if (!record.isFile() || record.uid !== 0 || record.nlink !== 1 || (record.mode & 0o022) !== 0) {
+        throw new Error("Unsafe staged release source record.");
+      }
+      const stagedSource = stagedSourceSchema.parse(JSON.parse(await readFile(STAGED_SOURCE, "utf8")));
+      if (
+        stagedSource.repository !== source.repository ||
+        stagedSource.signingTeam !== source.signingTeam ||
+        stagedSource.version !== version
+      ) {
+        throw new Error("The staged release does not match the configured source. It was kept.");
+      }
       const staged = join(STAGING, "OpenBot.app");
       await verifyBundleTree(staged, true);
-      await verifySignature(staged);
+      await verifySignature(staged, source.signingTeam);
       if ((await bundleVersion(staged)) !== version) throw new Error("Staged version mismatch.");
       if ((await bundleProcesses()).length !== 0) throw new Error("OpenBot restarted during maintenance.");
       const retired = join(STAGING, "retired.app");
@@ -227,9 +271,10 @@ export function macHostOperations(): HostManagerOperations {
       await rename(SHARED_APP, retired);
       await rename(staged, SHARED_APP);
       await verifyBundleTree(SHARED_APP, true);
-      await verifySignature(SHARED_APP);
+      await verifySignature(SHARED_APP, source.signingTeam);
       if ((await bundleVersion()) !== version) throw new Error("Installed version mismatch.");
       await rm(retired, { recursive: true });
+      await rm(STAGED_SOURCE);
     },
   };
 }

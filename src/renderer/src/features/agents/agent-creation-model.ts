@@ -1,3 +1,4 @@
+import { modelSupportsProviderAccount } from "@openbot/contracts/account-scoped-models";
 import { developmentStartingModel } from "@openbot/contracts/development-defaults";
 import {
   type AgentModelId,
@@ -56,11 +57,13 @@ export function resolveCreationModel(
   status: AgentStatus | null | undefined,
   development: DevelopmentCreation | null = null,
 ): CreationModelChoice | null {
+  // A new draft starts on the provider's default account until the user selects another one.
+  const availableModels = modelOptions.filter((option) => modelSupportsProviderAccount(option, null));
   const preferred = setup?.preferredProvider ?? null;
   const developmentStart = development !== null && (preferred ?? "codex") === "codex" && !setup?.preferredModel;
   const start = developmentStartingModel({
     enabled: developmentStart,
-    models: modelOptions,
+    models: availableModels,
     providerAvailable: (provider) => development?.providerAvailable(provider) ?? false,
   });
   if (start)
@@ -75,7 +78,7 @@ export function resolveCreationModel(
   for (const provider of ordered) {
     if (developmentStart && !development?.providerAvailable(provider)) continue;
     if (provider !== preferred && !runnable(provider)) continue;
-    const options = modelOptions.filter((option) => option.provider === provider);
+    const options = availableModels.filter((option) => option.provider === provider);
     if (options.length === 0) continue;
     if (provider === preferred && setup?.preferredModel) {
       const kept = options.find((option) => option.id === setup.preferredModel);

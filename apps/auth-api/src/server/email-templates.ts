@@ -1,5 +1,7 @@
 import type { BillingCurrency, BillingPlanId } from "@openbot/contracts/billing";
 import { LICENSE_DEVICES_PER_USER, type LicensePlan, type LicenseTier } from "@openbot/contracts/license";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
+import { translateFor } from "@openbot/i18n";
 import { OPENBOT_DOWNLOAD_PAGE_LINKS, OPENBOT_LINKS } from "../lib/landing-links";
 
 // HTML and plain-text bodies for account email. Mail clients render HTML very differently, so the
@@ -84,18 +86,22 @@ export type LicenseEmailInput =
   | ({ kind: "payment_failed" } & LicensePaymentFailedEmailInput)
   | ({ kind: "ended" } & LicenseEndedEmailInput);
 
-const SITE_URL = "https://openbot.run";
-const WEB_APP_URL = `${SITE_URL}/app`;
-const DOWNLOAD_URL = `${SITE_URL}${OPENBOT_DOWNLOAD_PAGE_LINKS.hub}`;
-const PRICING_URL = `${SITE_URL}/pricing`;
+const SITE_URL = INDEPENDENT_EDITION ? OPENBOT_LINKS.repository : "https://openbot.run";
+const WEB_APP_URL = INDEPENDENT_EDITION ? OPENBOT_LINKS.documentation : `${SITE_URL}/app`;
+const DOWNLOAD_URL = INDEPENDENT_EDITION
+  ? OPENBOT_LINKS.documentation
+  : `${SITE_URL}${OPENBOT_DOWNLOAD_PAGE_LINKS.hub}`;
+const PRICING_URL = INDEPENDENT_EDITION ? OPENBOT_LINKS.documentation : `${SITE_URL}/pricing`;
 const PLAN_NAMES: Record<BillingPlanId, string> = { starter: "Starter", standard: "Standard", pro: "Pro" };
 const LICENSE_TIER_NAMES: Record<LicenseTier, string> = { starter: "Starter", team: "Team" };
 const LOGO_URL = `${SITE_URL}/icon-192x192.png`;
-const FOOTER_LINKS = [
-  { label: "openbot.run", href: SITE_URL },
-  { label: "X", href: OPENBOT_LINKS.x },
-  { label: "GitHub", href: OPENBOT_LINKS.repository },
-] as const;
+const FOOTER_LINKS = INDEPENDENT_EDITION
+  ? [{ label: "GitHub", href: OPENBOT_LINKS.repository }]
+  : [
+      { label: "openbot.run", href: SITE_URL },
+      { label: "X", href: OPENBOT_LINKS.x },
+      { label: "GitHub", href: OPENBOT_LINKS.repository },
+    ];
 const FONT_STACK = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, Helvetica, Arial, sans-serif";
 const MONO_STACK = "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace";
 // Filler after the preheader, so a client's inbox preview does not continue into the body text.
@@ -189,7 +195,9 @@ export function renderContactMessageEmail(input: ContactMessageEmailInput): Rend
   const fullSubject = `${input.topic} from ${input.name ?? input.email}`;
   const subject = fullSubject.length > 150 ? `${fullSubject.slice(0, 149)}…` : fullSubject;
   const preheader = input.message.slice(0, 120);
-  const footer = `Sent from the contact form on openbot.run. Reply to this email to answer ${input.email}.`;
+  const footer = INDEPENDENT_EDITION
+    ? translateFor("en")("webClient.independent.contactFooter", { email: input.email })
+    : `Sent from the contact form on openbot.run. Reply to this email to answer ${input.email}.`;
   return {
     subject,
     preheader,
@@ -546,7 +554,7 @@ function renderLayout(input: LayoutInput): string {
         <tr>
           <td style="padding:0 4px 20px;">
             <a href="${SITE_URL}" style="text-decoration:none;">
-              <img src="${LOGO_URL}" width="32" height="32" alt="OpenBot" style="display:block;border:0;outline:none;border-radius:8px;font-family:${FONT_STACK};font-size:15px;font-weight:600;line-height:32px;color:${COLOR.text};">
+              ${INDEPENDENT_EDITION ? "OpenBot" : `<img src="${LOGO_URL}" width="32" height="32" alt="OpenBot" style="display:block;border:0;outline:none;border-radius:8px;font-family:${FONT_STACK};font-size:15px;font-weight:600;line-height:32px;color:${COLOR.text};">`}
             </a>
           </td>
         </tr>

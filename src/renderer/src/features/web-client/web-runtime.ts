@@ -1,6 +1,7 @@
 import {
   assertSupportedAttachmentName,
   attachmentFileExtension,
+  isKnownAttachmentName,
   rasterImageMimeType,
   supportedAttachmentExtensions,
 } from "@openbot/contracts/attachment-files";
@@ -102,6 +103,7 @@ import {
   SIDEBAR_FOLDERS_CAPABILITY,
   SIDEBAR_FOLDERS_ROUTES,
 } from "@openbot/contracts/team-protocol/sidebar-folders-v1";
+import { STREAMING_ATTACHMENTS_CAPABILITY } from "@openbot/contracts/team-protocol/streaming-attachments-v1";
 import { type TeamProtocolSupportV1, teamProtocolUpdateDirection } from "@openbot/contracts/team-protocol/v1";
 import type { TeamProtocolV2Json } from "@openbot/contracts/team-protocol/v2";
 import { TEAM_PROTOCOL_V3 } from "@openbot/contracts/team-protocol/v3";
@@ -111,6 +113,7 @@ import {
   WORKSPACE_DIRECTORY_ROUTES,
 } from "@openbot/contracts/team-protocol/workspace-directory-v1";
 import { runTeamEffect } from "@openbot/team-client";
+import { uploadAttachmentStream } from "@openbot/team-client/attachment-streaming";
 import { bytesToBase64 } from "@openbot/team-client/base64";
 import { createRemoteBrowserView, type RemoteBrowserView } from "@openbot/team-client/browser-view";
 import { verifyEd25519Base64Url } from "@openbot/team-client/ed25519";
@@ -179,6 +182,7 @@ import {
   type WebHostState,
   type WebHostTabMessage,
 } from "./web-host-lock";
+import { saveStreamingWebAttachment } from "./web-stream-download";
 
 /**
  * The host controls of the connected host. The host answers the Team API routes, and the account
@@ -277,6 +281,7 @@ export interface WebWorkspaceRuntime {
   cancelUpload(): Promise<void>;
   discard(attachmentId: string): Promise<void>;
   download(attachmentId: string): Promise<WebFile>;
+  saveAttachment?(attachmentId: string): Promise<void>;
   /** A file under the host's shared folder. */
   sharedFile(path: string): Promise<WebFile>;
   /** A file in one agent's workspace on the host. */
@@ -547,6 +552,7 @@ export function createWebWorkspaceRuntime(
   });
   let connecting: Promise<unknown> | null = null;
   let connectingHostId: string | null = null;
+  const savedFileCleanups = new Set<() => Promise<void>>();
   let disposed = false;
   let generation = 0;
   let uploadGeneration = 0;
@@ -1176,25 +1182,44 @@ export function createWebWorkspaceRuntime(
       const uploadHostGeneration = generation;
       const currentUpload = ++uploadGeneration;
       assertSupportedAttachmentName(file.name);
-      const extension = attachmentFileExtension(file.name);
-      const supported = supportedAttachmentExtensions({
-        eml: capabilities.includes("eml-attachments"),
-        media: capabilities.includes("media-attachments"),
-        zip: capabilities.includes("zip-attachments"),
-        mp4: capabilities.includes("mp4-attachments"),
-        svg: capabilities.includes("svg-attachments"),
-      });
-      if (extension && !supported.includes(extension)) throw new Error(currentText().t("webClient.error.fileType"));
-      if (file.size > MOBILE_ATTACHMENT_BYTES) throw new Error(currentText().t("error.remote.attachmentTooLarge"));
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      if (currentUpload !== uploadGeneration || uploadHostGeneration !== generation)
-        throw new Error(currentText().t("webClient.error.uploadCancelled"));
-      const mimeType = file.type || "application/octet-stream";
-      const value = await Effect.runPromise(
-        uploadAttachmentDraft(teamApi, { name: file.name, mimeType, base64: bytesToBase64(bytes) }).pipe(
-          Effect.mapError((error) => error.cause),
-        ),
-      );
+      const supportsStreaming = capabilities.includes(STREAMING_ATTACHMENTS_CAPABILITY);
+      let value: AttachmentSummary;
+      if (supportsStreaming) {
+        value = await Effect.runPromise(
+          uploadAttachmentStream(
+            teamApi,
+            {
+              name: file.name,
+              mimeType: file.type || "application/octet-stream",
+              size: file.size,
+              read: async (offset, length) => new Uint8Array(await file.slice(offset, offset + length).arrayBuffer()),
+            },
+            { isCancelled: () => currentUpload !== uploadGeneration || uploadHostGeneration !== generation },
+          ).pipe(Effect.mapError((error) => error.cause)),
+        );
+      } else {
+        const extension = attachmentFileExtension(file.name);
+        const supported = supportedAttachmentExtensions({
+          eml: capabilities.includes("eml-attachments"),
+          media: capabilities.includes("media-attachments"),
+          zip: capabilities.includes("zip-attachments"),
+          mp4: capabilities.includes("mp4-attachments"),
+          svg: capabilities.includes("svg-attachments"),
+        });
+        if (!isKnownAttachmentName(file.name) || (extension && !supported.includes(extension)))
+          throw new Error(currentText().t("webClient.error.fileType"));
+        if (file.size > MOBILE_ATTACHMENT_BYTES) throw new Error(currentText().t("error.remote.attachmentTooLarge"));
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        if (currentUpload !== uploadGeneration || uploadHostGeneration !== generation)
+          throw new Error(currentText().t("webClient.error.uploadCancelled"));
+        value = await Effect.runPromise(
+          uploadAttachmentDraft(teamApi, {
+            name: file.name,
+            mimeType: file.type || "application/octet-stream",
+            base64: bytesToBase64(bytes),
+          }).pipe(Effect.mapError((error) => error.cause)),
+        );
+      }
       if (currentUpload !== uploadGeneration) {
         if (uploadHostGeneration === generation)
           await Effect.runPromise(
@@ -1216,6 +1241,27 @@ export function createWebWorkspaceRuntime(
       await Effect.runPromise(discardAttachmentDraft(teamApi, id).pipe(Effect.mapError((error) => error.cause)));
       removeCompletedDrafts([id]);
       revokeLocalDraftPreviews([id]);
+    },
+    async saveAttachment(id) {
+      if (!capabilities.includes(STREAMING_ATTACHMENTS_CAPABILITY)) {
+        const file = decodeWebFile(await request("GET", TEAM_API_ROUTES.attachment(id)));
+        const bytes = Uint8Array.from(atob(file.base64), (char) => char.charCodeAt(0));
+        const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = file.name;
+        link.click();
+        savedFileCleanups.add(async () => URL.revokeObjectURL(url));
+        return;
+      }
+      const downloadGeneration = generation;
+      const downloadRequest: TeamApiRequest = (method, path, decode, body, upload) => {
+        if (downloadGeneration !== generation || disposed)
+          throw new Error(currentText().t("webClient.error.hostChanged"));
+        return teamApi(method, path, decode, body, upload);
+      };
+      const cleanup = await saveStreamingWebAttachment(downloadRequest, id);
+      if (cleanup) savedFileCleanups.add(cleanup);
     },
     async download(id) {
       return decodeWebFile(await request("GET", TEAM_API_ROUTES.attachment(id)));
@@ -1379,6 +1425,8 @@ export function createWebWorkspaceRuntime(
       await releaseLiveView();
       browserView.disconnect();
       viewListeners.clear();
+      for (const cleanup of savedFileCleanups) await cleanup().catch(() => undefined);
+      savedFileCleanups.clear();
       disposed = true;
       generation += 1;
       connectedHost = null;

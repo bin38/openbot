@@ -66,6 +66,8 @@ export const messages = defineMessages("sidebar", {
   "sidebar.agentMenu.restore": "Restore",
   "sidebar.agentMenu.restoreTo": "Restore to {section}",
   "sidebar.agentMenu.openWindow": "Open in new window",
+  "sidebar.agentMenu.openWorkspace": "Open workspace folder",
+  "sidebar.agentMenu.openWorkspaceFailed": "Could not open the workspace folder.",
   "sidebar.agentMenu.newThread": "New thread",
   "sidebar.agentMenu.inWindow": "Open in its own window",
   "sidebar.channelMenu.label": "Channel actions",

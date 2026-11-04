@@ -1,28 +1,26 @@
-import { env, waitUntil } from "cloudflare:workers";
+import { env } from "cloudflare:workers";
 import { HOSTING_DEVELOPER_KEY_HEADER } from "@openbot/contracts/hosted-servers";
-import { isDynamicRecord, isString } from "@openbot/contracts/runtime-values";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
+import { sourceText } from "@openbot/i18n/source";
 import { Effect } from "effect";
-import { type AccountAnalytics, createAccountAnalytics } from "./account-analytics";
 import { AccountAttribution } from "./account-attribution";
 import { adminTokenMatches } from "./admin-token";
 import { AgentMarketplace, AgentMarketplaceError } from "./agent-marketplace";
 import { AgentTemplates } from "./agent-templates";
 import { type FcmRelaySender, sharedFcmSender } from "./android-notification-relay";
-import { AuthOperationError, AuthService, AuthServiceError } from "./auth-service";
+import { AuthOperationError, type AuthService } from "./auth-service";
 import { BillingError, type BillingService } from "./billing-service";
 import type { ContactMessageServices } from "./contact-message";
 import { D1AuthRepository } from "./d1-auth-repository";
 import { DiscordAppError, DiscordAppService } from "./discord-app";
-import { runApiEffect } from "./effect-runtime";
-import { createContactMessageDelivery, createEmailCodeDelivery, createTeamInviteEmailDelivery } from "./email-delivery";
+import { createContactMessageDelivery } from "./email-delivery";
 import { GitHubInstallationTokens, GitHubInstallationTokensError } from "./github-installation-tokens";
 import { createHostedBilling } from "./hosted-billing";
 import { type HostedServerService, HostedServerServiceError } from "./hosted-server-service";
 import { HostedSiteInputError } from "./hosted-site-contract";
 import { enforceHostedSiteReportRateLimit as enforceReportRateLimit } from "./hosted-site-request-policy";
-import { adoptUnlinkedHostedSites, resolveHostedSiteScope } from "./hosted-site-server";
+import { resolveHostedSiteScope } from "./hosted-site-server";
 import { HostedSiteService } from "./hosted-site-service";
-import { JsonBodyError } from "./json-body";
 import { type ApnsRelaySender, sharedApnsSender } from "./live-activity-relay";
 import { MarketplaceQueryError } from "./marketplace-pagination";
 import {
@@ -31,25 +29,18 @@ import {
   MarketplaceRateLimitError,
 } from "./marketplace-request-policy";
 import {
-  deliverPendingRemoteAuthEvents,
-  notifyAccountProfileChanged,
-  RemoteControlPlane,
-  RemoteControlPlaneError,
-  verifyRemoteServiceSignature,
-} from "./remote-control-plane";
+  accountAnalytics,
+  apiError,
+  authErrorResponse,
+  bearerToken,
+  createAccountAuthService,
+  remoteControlPlaneErrorResponse,
+  schedule,
+} from "./native-request-auth";
+import { deliverPendingRemoteAuthEvents, RemoteControlPlane, RemoteControlPlaneError } from "./remote-control-plane";
 import { SkillMarketplace, SkillMarketplaceError } from "./skill-marketplace";
 import { SlackAppError, SlackAppService } from "./slack-app";
-import { requireWorkerBindings, type TeamInviteEmailDelivery, type WorkerBindings } from "./types";
-
-function accountAnalytics(bindings: WorkerBindings): AccountAnalytics {
-  return createAccountAnalytics({
-    clientId: bindings.OPENPANEL_CLIENT_ID,
-    clientSecret: bindings.OPENPANEL_CLIENT_SECRET,
-    fetch: (input, init) => fetch(input, init),
-    schedule,
-    database: bindings.DB,
-  });
-}
+import { requireAccountWorkerBindings, requireWorkerBindings } from "./types";
 
 export function requestAccountAttribution(): AccountAttribution {
   const bindings = requireWorkerBindings(env);
@@ -57,24 +48,11 @@ export function requestAccountAttribution(): AccountAttribution {
 }
 
 export function requestAuthService(): AuthService {
-  const bindings = requireWorkerBindings(env);
-  const exposeDevelopmentCode = bindings.AUTH_EXPOSE_DEVELOPMENT_CODE === "true";
-  const analytics = accountAnalytics(bindings);
-  return new AuthService({
-    repository: new D1AuthRepository(bindings.DB),
-    delivery: exposeDevelopmentCode ? null : createEmailCodeDelivery(bindings, analytics),
-    exposeDevelopmentCode,
-    // The revocation is already written and the cron redelivers it, so the answer does not wait.
-    flushSessionRevocations: () => Effect.sync(() => schedule(deliverPendingRemoteAuthEvents(bindings, Date.now()))),
-    profileChanged: (userId) => notifyAccountProfileChanged(bindings, userId, schedule),
-    analytics,
-    attribution: new AccountAttribution({ database: bindings.DB, analytics }),
-  });
-}
-
-export function requestAvatarBucket(): R2Bucket {
-  const bindings = requireWorkerBindings(env);
-  return bindings.AVATARS;
+  const bindings = requireAccountWorkerBindings(env);
+  return createAccountAuthService(
+    bindings,
+    new AccountAttribution({ database: bindings.DB, analytics: accountAnalytics(bindings) }),
+  );
 }
 
 export function requestSkillMarketplace(): SkillMarketplace {
@@ -95,12 +73,10 @@ export function requestHostedSiteScope(request: Request, userId: string) {
   return resolveHostedSiteScope(requireWorkerBindings(env).DB, userId, request);
 }
 
-/** Moves the account's sites from before a self-hosted server registered into it. See `adoptUnlinkedHostedSites`. */
-export function requestAdoptUnlinkedHostedSites(userId: string, serverId: string) {
-  return adoptUnlinkedHostedSites(requireWorkerBindings(env).DB, userId, serverId, Date.now());
-}
-
 export function requestHostedSiteService(): HostedSiteService {
+  if (INDEPENDENT_EDITION) {
+    throw new HostedSiteInputError(404, "service_unavailable", sourceText("error.auth.independentServiceUnavailable"));
+  }
   const bindings = requireWorkerBindings(env);
   return new HostedSiteService(
     bindings.DB,
@@ -113,6 +89,7 @@ export function requestHostedSiteService(): HostedSiteService {
 
 /** The billing service, or null when this deployment has no Stripe key. */
 export function requestBillingService(): BillingService | null {
+  if (INDEPENDENT_EDITION) return null;
   return requestHostedBilling().billing;
 }
 
@@ -260,12 +237,6 @@ export function marketplaceErrorResponse(error: unknown): Response {
   return skillErrorResponse(error);
 }
 
-export function requestUser(request: Request) {
-  const token = bearerToken(request);
-  if (!token) return Effect.succeed(null);
-  return requestAuthService().authenticate(token);
-}
-
 export function skillErrorResponse(error: unknown): Response {
   if (error instanceof MarketplaceQueryError) return apiError(400, error.code, error.message);
   if (error instanceof MarketplaceRateLimitError) {
@@ -299,21 +270,15 @@ export function requestContactMessageServices(): ContactMessageServices {
   };
 }
 
-export function requestTeamInviteEmailDelivery(): TeamInviteEmailDelivery | null {
-  const bindings = requireWorkerBindings(env);
-  return createTeamInviteEmailDelivery(bindings, accountAnalytics(bindings));
-}
-
-export function requestRemoteControlPlane(): RemoteControlPlane {
-  return new RemoteControlPlane(requireWorkerBindings(env), { schedule });
-}
-
 /** Pass the request when the call checks who can create servers, so its developer key counts. */
 export function requestHostedServerService(request?: Request): HostedServerService {
   return requestHostedBilling(request?.headers.get(HOSTING_DEVELOPER_KEY_HEADER) ?? null).hosting;
 }
 
 function requestHostedBilling(developerKey: string | null = null) {
+  if (INDEPENDENT_EDITION) {
+    throw new BillingError(404, "service_unavailable", sourceText("error.auth.independentServiceUnavailable"));
+  }
   const bindings = requireWorkerBindings(env);
   const remote = new RemoteControlPlane(bindings, { schedule });
   return createHostedBilling(bindings, {
@@ -330,22 +295,6 @@ export function hostedServerErrorResponse(error: unknown): Response {
   if (error instanceof BillingError) return apiError(error.status, error.code, error.message);
   if (error instanceof HostedSiteInputError) return apiError(error.status, error.code, error.message);
   return remoteControlPlaneErrorResponse(error);
-}
-
-export function verifyRemoteServiceRequest(request: Request, body: string) {
-  const secret = requireWorkerBindings(env).REMOTE_AUTH_WEBHOOK_SECRET;
-  if (!secret) return Effect.succeed(false);
-  return verifyRemoteServiceSignature(
-    secret,
-    body,
-    request.headers.get("OpenBot-Timestamp") ?? "",
-    request.headers.get("OpenBot-Signature") ?? "",
-  );
-}
-
-export function remoteControlPlaneErrorResponse(error: unknown): Response {
-  if (error instanceof RemoteControlPlaneError) return apiError(error.status, error.code, error.message);
-  return authErrorResponse(error);
 }
 
 /** A GitHub route ticket checks the host credential and then the GitHub sign-in. */
@@ -380,23 +329,6 @@ export function discordAppErrorResponse(error: unknown): Response {
   return authErrorResponse(error);
 }
 
-export function bearerToken(request: Request): string | null {
-  const authorization = request.headers.get("Authorization");
-  if (!authorization?.startsWith("Bearer ")) return null;
-  const token = authorization.slice("Bearer ".length);
-  return token && token.length <= 512 ? token : null;
-}
-
-export function json(value: unknown, status = 200): Response {
-  return Response.json(value, {
-    status,
-    headers: {
-      "Cache-Control": "no-store",
-      "X-Content-Type-Options": "nosniff",
-    },
-  });
-}
-
 export function publicMarketplaceJson(value: unknown): Response {
   return Response.json(value, {
     headers: {
@@ -406,37 +338,18 @@ export function publicMarketplaceJson(value: unknown): Response {
   });
 }
 
-export function apiError(status: number, code: string, message: string): Response {
-  return json({ error: { code, message } }, status);
-}
-
-export function authErrorResponse(error: unknown): Response {
-  if (error instanceof JsonBodyError) {
-    return apiError(error.status, error.code, error.message);
-  }
-  if (error instanceof AuthServiceError) {
-    const response = apiError(error.status, error.code, error.message);
-    if (error.retryAfterSeconds !== undefined) {
-      response.headers.set("Retry-After", String(error.retryAfterSeconds));
-    }
-    return response;
-  }
-  // The reference is random, so it holds no user data. The log line shows the same value, so a code
-  // that a user copies identifies this log line. The log shows only the error type, not its message.
-  const reference = `auth/${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`;
-  console.error("Account service request failed:", reference, errorType(error));
-  return json(
-    { error: { code: "internal_error", message: "The account service could not complete the request.", reference } },
-    500,
-  );
-}
-
-function errorType(error: unknown): string {
-  if (isDynamicRecord(error) && isString(error._tag)) return error._tag;
-  return error instanceof Error ? error.name : typeof error;
-}
-
-/** Starts background work in the active Worker invocation. */
-export function schedule<E>(work: Effect.Effect<void, E>): void {
-  waitUntil(runApiEffect(work));
-}
+export {
+  accountAnalytics,
+  apiError,
+  authErrorResponse,
+  bearerToken,
+  json,
+  remoteControlPlaneErrorResponse,
+  requestAdoptUnlinkedHostedSites,
+  requestAvatarBucket,
+  requestRemoteControlPlane,
+  requestTeamInviteEmailDelivery,
+  requestUser,
+  schedule,
+  verifyRemoteServiceRequest,
+} from "./native-request-auth";

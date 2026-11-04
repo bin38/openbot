@@ -1,6 +1,36 @@
 import { defineMessages } from "../../message";
 
 export const messages = defineMessages("marketplace", {
+  "marketplace.local.agentTrust":
+    "A snapshot saved in your local library. It has not been reviewed by an upstream marketplace.",
+  "marketplace.local.skillTrust":
+    "A package from your local library. Review its instructions and files before using it.",
+  "marketplace.local.copyLink": "Copy local link",
+  "marketplace.plugin.x.tagline": "Search public posts with your own X access token",
+  "marketplace.plugin.x.description":
+    "Connect directly to the official X MCP endpoint with your own developer access token. An app-only bearer token provides read access; operations depend on the token scopes and your X API plan. This connection does not use an OpenBot or Codex connector account.",
+  "marketplace.plugin.x.app": "Search public posts with your own X access token",
+  "marketplace.plugin.x.prompt1": "Find recent public posts about this project.",
+  "marketplace.plugin.x.prompt2": "Summarize the public posts from this account.",
+  "marketplace.plugin.x_account.tagline": "Use your own signed-in X developer application",
+  "marketplace.plugin.x_account.description":
+    "The official xurl bridge connects the X MCP endpoint with your own user authorization. Set up your own developer application and complete xurl login on this computer before connecting. X does not support native MCP dynamic OAuth registration. Actions depend on the permissions you authorize and your X API plan.",
+  "marketplace.plugin.x_account.app": "Use your own signed-in X developer application",
+  "marketplace.plugin.x_account.prompt1": "Read the posts that my authorized account can access.",
+  "marketplace.plugin.x_account.prompt2": "Draft an X post from this document and show it to me before posting.",
+  "marketplace.plugin.feishu.tagline": "Documents, tables, and messages through your own Feishu app",
+  "marketplace.plugin.feishu.description":
+    "Use the official Lark/Feishu MCP server with your own application ID and secret. The server acts with the permissions granted to that application; it does not inherit every user document or chat. Personal-user access requires a separate user OAuth login in the official CLI.",
+  "marketplace.plugin.feishu.app": "Documents, tables, and messages through your own Feishu app",
+  "marketplace.plugin.feishu.prompt1": "List the documents and tables my Feishu application can access.",
+  "marketplace.plugin.feishu.prompt2": "Summarize this Feishu document.",
+  "marketplace.plugin.feishu.prompt3": "Prepare a message for the selected Feishu chat and ask me before sending.",
+  "marketplace.plugin.github_mcp.tagline": "Repositories and issues through your own GitHub token",
+  "marketplace.plugin.github_mcp.description":
+    "Connect directly to GitHub’s official MCP endpoint with your own personal access token. Repository access and write actions follow the token permissions. No upstream OpenBotGit application or token broker is used.",
+  "marketplace.plugin.github_mcp.app": "Repositories and issues through your own GitHub token",
+  "marketplace.plugin.github_mcp.prompt1": "List the open issues in this repository.",
+  "marketplace.plugin.github_mcp.prompt2": "Review the changes in this pull request.",
   // The listing: categories, rows, and the words for each kind of listing.
   "marketplace.category.coding": "Coding",
   "marketplace.category.design": "Design",
@@ -414,6 +444,45 @@ export const messages = defineMessages("marketplace", {
   "marketplace.plugin.huggingface.prompt.models": "Find small open models for speech recognition on Hugging Face.",
   "marketplace.plugin.huggingface.prompt.papers": "Which papers are trending on Hugging Face today?",
   "marketplace.plugin.huggingface.prompt.dataset": "Find a dataset of weather time series and show its columns.",
+  "marketplace.auth.signIn": "Sign in",
+  "marketplace.auth.mcpLink": "MCP link",
+  "marketplace.auth.airtableHint": "Airtable account page → API",
+  "marketplace.auth.braveHint": "Brave Search API dashboard → API keys",
+  "marketplace.auth.firecrawlHint": "Firecrawl dashboard → API keys",
+  "marketplace.auth.posthogHint": "PostHog Project settings → Personal API keys",
+  "marketplace.auth.renderHint": "Render Account settings → API keys",
+  "marketplace.auth.resendHint": "Resend dashboard → API keys",
+  "marketplace.auth.figmaDesktop": "Figma desktop app",
+  "marketplace.auth.figmaReadOnly":
+    "The local server can only read designs: layout, code context, variables and screenshots. It cannot draw or edit yet. We are working on write support.",
+  "marketplace.auth.figmaPrepare":
+    "Open the Figma desktop app and sign in. The server needs a Dev or Full seat on a paid plan.",
+  "marketplace.auth.figmaFile": "Open a design file from a team project, not from Drafts.",
+  "marketplace.auth.figmaEnable":
+    'Press ⌘K (Ctrl+K on Windows), search for "MCP", and turn on "Enable desktop MCP server".',
+  "marketplace.auth.figmaKeepOpen": "Keep Figma open while agents use it.",
+  "marketplace.auth.xToken": "X access token",
+  "marketplace.auth.accessToken": "Access token",
+  "marketplace.auth.xTokenHint":
+    "Use a token issued by your own X developer application. App-only tokens are read-only.",
+  "marketplace.auth.xSetup": "X MCP setup",
+  "marketplace.auth.xAccount": "Own X account",
+  "marketplace.auth.xurlSetup": "Configure xurl",
+  "marketplace.auth.xAccountNote":
+    "Your own X app and user authorization are required. OpenBot does not supply a shared OAuth client or credits.",
+  "marketplace.auth.xAccountPrepare": "Set up the official xurl CLI with your own X developer application.",
+  "marketplace.auth.xAccountAuthorize": "Complete xurl OAuth sign-in on this computer with the permissions you need.",
+  "marketplace.auth.xAccountConnect": "Return here and connect. Review any write action before you send it.",
+  "marketplace.auth.feishuApp": "Own Feishu application",
+  "marketplace.auth.feishuSetup": "Feishu MCP setup",
+  "marketplace.auth.appId": "App ID",
+  "marketplace.auth.feishuIdHint": "Application credentials from your own Feishu developer console.",
+  "marketplace.auth.appSecret": "App secret",
+  "marketplace.auth.feishuSecretHint": "The secret of that application. Grant only the API permissions you need.",
+  "marketplace.auth.personalAccessToken": "Personal access token",
+  "marketplace.auth.githubSetup": "GitHub MCP setup",
+  "marketplace.auth.githubToken": "GitHub token",
+  "marketplace.auth.githubTokenHint": "Use a fine-grained token for the repositories and permissions you need.",
   "marketplace.auth.apiKey": "API key",
   "marketplace.auth.personalApiKey": "Personal API key",
   "marketplace.auth.mcpUrl": "MCP URL",

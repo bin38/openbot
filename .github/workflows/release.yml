@@ -38,7 +38,9 @@ jobs:
     name: Validate release tag
     # Gating the one job every build and the publish depend on keeps a host signing run off the
     # release path entirely, rather than relying on each of them to opt out.
-    if: github.event_name == 'push' || inputs.mode == 'dry-run'
+    # These release jobs use the original publisher's signing and deployment services.
+    # Fork distributions use their own release process; normal CI remains available.
+    if: github.repository == 'nightly-labs/openbot' && (github.event_name == 'push' || inputs.mode == 'dry-run')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -113,7 +115,7 @@ jobs:
 
   host-signing:
     name: Check Host signing keychain
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'host-signing'
+    if: github.repository == 'nightly-labs/openbot' && github.event_name == 'workflow_dispatch' && inputs.mode == 'host-signing'
     runs-on: macos-15
     timeout-minutes: 20
     environment: release
@@ -176,7 +178,7 @@ jobs:
 
   windows-signing:
     name: Check Windows Artifact Signing
-    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'windows-signing'
+    if: github.repository == 'nightly-labs/openbot' && github.event_name == 'workflow_dispatch' && inputs.mode == 'windows-signing'
     runs-on: windows-2025
     timeout-minutes: 45
     environment: release
@@ -250,7 +252,7 @@ jobs:
   macos:
     name: Build signed macOS ${{ matrix.label }} release
     needs: validate
-    if: github.event_name == 'push'
+    if: github.repository == 'nightly-labs/openbot' && github.event_name == 'push'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     strategy:
@@ -986,7 +988,7 @@ jobs:
   publish:
     name: Publish GitHub Release
     needs: [validate, macos, windows, linux, docker]
-    if: github.event_name == 'push'
+    if: github.repository == 'nightly-labs/openbot' && github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -1083,7 +1085,7 @@ jobs:
   discord-announce:
     name: Announce the release on Discord
     needs: [validate, publish, docker-publish, hosted-release]
-    if: github.event_name == 'push'
+    if: github.repository == 'nightly-labs/openbot' && github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: release
@@ -1110,7 +1112,7 @@ jobs:
   hosted-release:
     name: Publish boat server snapshot
     needs: [validate, publish]
-    if: github.event_name == 'push'
+    if: github.repository == 'nightly-labs/openbot' && github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     environment: cloudflare-production
@@ -1147,7 +1149,7 @@ jobs:
   docker-publish:
     name: Publish Docker image
     needs: [validate, docker, publish]
-    if: github.event_name == 'push'
+    if: github.repository == 'nightly-labs/openbot' && github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -1225,7 +1227,7 @@ jobs:
   nix-sources:
     name: Open Nix sources PR
     needs: [validate, publish]
-    if: github.event_name == 'push'
+    if: github.repository == 'nightly-labs/openbot' && github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

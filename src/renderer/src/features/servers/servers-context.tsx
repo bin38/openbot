@@ -1,5 +1,6 @@
 import type { HostedServerEntryPoint } from "@openbot/contracts/hosted-servers";
 import type { HostStatus, ServerNotificationLevel, ServerSummary } from "@openbot/contracts/ipc";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import type { TeamCurrentCapability } from "@openbot/contracts/team-protocol/current";
 import { WAKE_RECONNECT_STATES } from "@openbot/team-client/hosted-server-wake";
 import { classifyFailure } from "@openbot/telemetry";
@@ -307,18 +308,20 @@ const Servers = createSimpleContext({
       void refreshHostedServersAvailable();
       // Another account can sign in after the start, so the plus button reads its access again.
       let signedInUserId: string | null = null;
-      const unsubscribeAuth = serversPort().auth.onEvent((state) => {
-        if (state.status !== "signed_in" && state.status !== "signed_out") return;
-        const userId = state.status === "signed_in" ? state.user.id : null;
-        if (userId === signedInUserId) return;
-        signedInUserId = userId;
-        if (userId) void refreshHostedServersAvailable();
-        else {
-          setHostedServersAvailable(false);
-          setHostedServerIds(new Set<string>());
-          setHostedServersLoaded(false);
-        }
-      });
+      const unsubscribeAuth = INDEPENDENT_EDITION
+        ? () => undefined
+        : serversPort().auth.onEvent((state) => {
+            if (state.status !== "signed_in" && state.status !== "signed_out") return;
+            const userId = state.status === "signed_in" ? state.user.id : null;
+            if (userId === signedInUserId) return;
+            signedInUserId = userId;
+            if (userId) void refreshHostedServersAvailable();
+            else {
+              setHostedServersAvailable(false);
+              setHostedServerIds(new Set<string>());
+              setHostedServersLoaded(false);
+            }
+          });
       return () => {
         unsubscribeServers();
         unsubscribeHost();
@@ -331,6 +334,12 @@ const Servers = createSimpleContext({
      * account can change after the start.
      */
     async function refreshHostedServersAvailable(): Promise<boolean> {
+      if (INDEPENDENT_EDITION) {
+        setHostedServersAvailable(false);
+        setHostedServerIds(new Set<string>());
+        setHostedServersLoaded(true);
+        return false;
+      }
       // A failed read keeps the last answer: a network error does not turn the plans off.
       const list = await serversPort()
         .hostedServers.list()

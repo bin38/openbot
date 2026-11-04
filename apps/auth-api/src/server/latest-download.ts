@@ -1,3 +1,5 @@
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
+import { sourceText } from "@openbot/i18n/source";
 import { Effect, Schema } from "effect";
 import { OPENBOT_LINKS } from "../lib/landing-links";
 
@@ -119,6 +121,18 @@ export function latestDownloadResponse(
   fetcher: typeof fetch = fetch,
   architecture: DownloadArchitecture = downloadArchitecture(platform, null),
 ) {
+  if (INDEPENDENT_EDITION) {
+    return Effect.succeed(
+      Response.json(
+        {
+          error: { code: "installer_unavailable", message: sourceText("error.auth.independentServiceUnavailable") },
+          source: OPENBOT_LINKS.repository,
+          instructions: OPENBOT_LINKS.documentation,
+        },
+        { status: 503, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } },
+      ),
+    );
+  }
   return latestDownload(platform, fetcher, architecture).pipe(
     Effect.catch(() => Effect.sync(() => fallbackToReleases(platform, "the manifest request failed"))),
   );

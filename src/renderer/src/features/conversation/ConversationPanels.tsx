@@ -11,6 +11,7 @@ import { VoicePanel } from "@openbot/ui/features/conversation/VoicePanel";
 import { McpSignInRelayDialog } from "@openbot/ui/features/settings/McpSignInPage";
 import { useText } from "@openbot/ui/text";
 import { actionToast } from "../../action-toast";
+import { FeaturePanelBoundary } from "../../components/FeaturePanelBoundary";
 import { type AgentTemplatePublishCalls, agentTemplatesPort } from "../agent-templates/agent-templates-port";
 import { createPublishAgent } from "../agent-templates/PublishAgent";
 import { desktopBrowserProfileCalls } from "../browser/browser-profiles-port";
@@ -256,6 +257,9 @@ export function ConversationPanels(panelProps: { onOpenUsage?: ((trigger: HTMLBu
   const sidePanelPanes = createMemo((): SidePanelPane[] => [
     // A channel turn's takeover still shows as a card; the pane belongs to one agent's browser.
     ...(props.browserEnabled !== false && !channel ? (["browser"] as const) : []),
+    ...(!props.runtime && props.agent && props.server?.kind === "local" && !channel
+      ? (["cloud-computer"] as const)
+      : []),
     ...(!props.runtime && props.agent?.threadId && serverHasStorage(props.server) ? (["files"] as const) : []),
     ...(props.agent || channel ? (["settings"] as const) : []),
     ...(props.agent && voiceConversationAvailable() ? (["voice"] as const) : []),
@@ -366,6 +370,50 @@ export function ConversationPanels(panelProps: { onOpenUsage?: ((trigger: HTMLBu
             onOpen={openSidePanelPane}
           />
         </aside>
+      </Show>
+
+      <Show
+        when={
+          activeRightPanel() === "cloud-computer" && !props.runtime && props.server?.kind === "local" && props.agent?.id
+        }
+        keyed
+      >
+        {(agentId) => (
+          <FeaturePanelBoundary
+            sidePanel
+            onClose={() => {
+              closeSidePanelPane("cloud-computer");
+            }}
+            render={() => (
+              <Loading>
+                <CloudComputerPanel
+                  agentId={agentId}
+                  suspended={Boolean(
+                    props.globalOverlayOpen ||
+                      props.remoteDesktopVisible ||
+                      props.workspaceCovered ||
+                      props.browserVisibilitySuspended,
+                  )}
+                  onConfigure={props.onManageCloudComputer}
+                  onClose={() => closeSidePanelPane("cloud-computer")}
+                  defaultWidth={() =>
+                    (conversationPanelElement()?.clientWidth || window.innerWidth) * BROWSER_PANEL_DEFAULT_RATIO
+                  }
+                  maxWidth={() =>
+                    Math.min(
+                      BROWSER_PANEL_MAX,
+                      Math.max(
+                        BROWSER_PANEL_MIN,
+                        (conversationPanelElement()?.clientWidth || window.innerWidth) - CONVERSATION_PANEL_MIN,
+                      ),
+                    )
+                  }
+                  onWidthChange={setBrowserPanelWidth}
+                />
+              </Loading>
+            )}
+          />
+        )}
       </Show>
 
       <Show when={filePreviewOpen() && sidebarFilePreview()}>
@@ -673,3 +721,4 @@ const FilePreviewPanel = lazy(() => import("./FilePreviewPanel"));
 const ChatFilesPanel = lazy(() => import("../files/ChatFilesPanel"));
 
 const BrowserPreviewSidebar = lazy(() => import("./BrowserPreviewSidebar"));
+const CloudComputerPanel = lazy(() => import("./CloudComputerPanel"));

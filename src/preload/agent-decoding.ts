@@ -1,4 +1,8 @@
 import {
+  type AccountScopedClientAgentModelOption,
+  isAccountScopedClientAgentModelOption,
+} from "@openbot/contracts/account-scoped-models";
+import {
   type AgentNotificationLevelsSnapshot,
   type AgentSessionSettings,
   type HiddenAgentsSnapshot,
@@ -167,6 +171,14 @@ export function decodeHostProviderAccountsFromMain(value: unknown): HostProvider
 export function decodeAgentModels(value: unknown): ClientAgentModelOption[] {
   if (!Array.isArray(value) || !value.every(isClientAgentModelOption)) {
     throw new Error("Invalid agent model response.");
+  }
+  return value;
+}
+
+/** The local IPC extension is decoded separately from the released host model payload. */
+export function decodeAccountScopedAgentModels(value: unknown): AccountScopedClientAgentModelOption[] {
+  if (!Array.isArray(value) || !value.every(isAccountScopedClientAgentModelOption)) {
+    throw new Error("Invalid account-scoped agent model response.");
   }
   return value;
 }

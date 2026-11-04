@@ -1,4 +1,5 @@
-import { ATTACHMENT_LIMITS, INPUT_LIMITS } from "@openbot/contracts/input-limits";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import {
   type AgentIpcRequest,
   type AttachmentImportEvent,
@@ -66,7 +67,6 @@ import {
   type EventEndpoint,
   type GroupApi,
   groupApiMethodName,
-  type ImportAttachmentsInput,
   IPC_ENDPOINTS,
   type IpcEndpointGroup,
   LOCAL_SERVER_ID,
@@ -85,13 +85,16 @@ import {
   decodeWebhookSecret,
   decodeWebhookTestResult,
 } from "@openbot/contracts/ipc-events";
+import { ATTACHMENT_CHUNK_BYTES } from "@openbot/contracts/team-protocol/streaming-attachments-v1";
+import { sourceText } from "@openbot/i18n/source";
+import { bytesToBase64 } from "@openbot/team-client/base64";
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import {
+  decodeAccountScopedAgentModels,
   decodeAccountUsageFromMain,
   decodeAgent,
   decodeAgentAnalyticsFromMain,
   decodeAgentHostSettingsFromMain,
-  decodeAgentModels,
   decodeAgentNotificationLevelsFromMain,
   decodeAgentRuntimeSnapshot,
   decodeAgentSessionSettingsFromMain,
@@ -122,6 +125,14 @@ import {
   decodeTables,
 } from "./agent-decoding";
 import { decodeScopedAgentEvent } from "./agent-event-decoding";
+import {
+  decodeApiChannelDefinition,
+  decodeApiChannelRun,
+  decodeApiChannelRunSummaries,
+  decodeApiChannelSummaries,
+  decodeApiChannelSummary,
+  decodeApiChannelTemplates,
+} from "./api-channels-decoding";
 import {
   decodeAccountSessions,
   decodeAgentDefaults,
@@ -195,6 +206,7 @@ import {
   decodeVoiceTranscriptionResult,
   decodeVoid,
 } from "./app-decoding";
+import { decodeAttachmentUploadStateFromMain } from "./attachment-streaming-decoding";
 import { decodeBackgroundProcesses } from "./background-process-decoding";
 import {
   decodeBrowserBounds,
@@ -239,14 +251,23 @@ import {
   decodeTaskConversation,
   decodeWaits,
 } from "./conversation-decoding";
+import { decodeCustomProviderModelSyncStates } from "./custom-provider-model-sync-decoding";
 import {
   decodeDynamicIslandAction,
   decodeDynamicIslandGeometry,
   decodeDynamicIslandPreference,
   decodeDynamicIslandPresentation,
 } from "./dynamic-island-decoding";
+import {
+  decodeE2bMachine,
+  decodeE2bMachines,
+  decodeE2bScreenshot,
+  decodeE2bSettings,
+  decodeE2bStatus,
+} from "./e2b-decoding";
 import { decodeHostReleaseStatusFromMain } from "./host-release-decoding";
 import { decodeMacAutomationResults } from "./mac-automation-decoding";
+import { decodeMcpRegistryPage } from "./mcp-registry-decoding";
 import {
   decodeAddOrchestratorReply,
   decodeDiscordAccessReply,
@@ -466,9 +487,7 @@ listen(IPC_ENDPOINTS.attachmentImports.importProgress, (value) => {
 async function importFiles(files: File[]): Promise<void> {
   if (files.length === 0) return;
   const serverId = selectedServerId;
-  const overLimit =
-    files.length > INPUT_LIMITS.attachments ||
-    files.reduce((sum, file) => sum + file.size, 0) > ATTACHMENT_LIMITS.totalBytes;
+  const overLimit = files.length > INPUT_LIMITS.attachments;
   // A pasted image has no name. It gets one here, so the chip and the server show the same name.
   const named = files.map((file) => ({ file, name: file.name || `pasted-${Date.now()}.png` }));
   if (overLimit) {
@@ -496,24 +515,54 @@ async function runAttachmentImport(
     files: retryable ? named.map(({ file, name }) => ({ name, size: file.size })) : [],
   });
   try {
-    const input: ImportAttachmentsInput = { paths: [], data: [], requestId };
+    if (named.length > INPUT_LIMITS.attachments)
+      throw new Error(sourceText("error.attachment.tooMany", { limit: INPUT_LIMITS.attachments }));
+    const attachments = [];
     for (const { file, name } of named) {
       const path = webUtils.getPathForFile(file);
-      if (path) input.paths.push(path);
-      else {
-        input.data.push({
-          name,
-          mimeType: file.type,
-          bytes: new Uint8Array(await file.arrayBuffer()),
-        });
+      if (path) {
+        attachments.push(
+          ...(await invokeAgentForServer(
+            serverId,
+            IPC_ENDPOINTS.attachmentImports.importAttachments,
+            { paths: [path], data: [], requestId },
+            decodeAttachments,
+          )),
+        );
+        continue;
+      }
+      const session = await openbotApi.agent.beginAttachmentUpload(
+        { name, mimeType: file.type, size: file.size },
+        serverId,
+      );
+      try {
+        const digest = sha256.create();
+        let offset = 0;
+        while (offset < file.size) {
+          const bytes = new Uint8Array(await file.slice(offset, offset + ATTACHMENT_CHUNK_BYTES).arrayBuffer());
+          const progress = await openbotApi.agent.writeAttachmentUpload(
+            { id: session.id, offset, base64: bytesToBase64(bytes) },
+            serverId,
+          );
+          if (progress.id !== session.id || progress.offset !== offset + bytes.length)
+            throw new Error(sourceText("error.attachment.uploadOffset"));
+          digest.update(bytes);
+          offset += bytes.length;
+          emitAttachmentImport({ type: "progress", requestId, serverId, sent: offset, total: file.size });
+        }
+        attachments.push(
+          await openbotApi.agent.completeAttachmentUpload(
+            {
+              id: session.id,
+              sha256: Array.from(digest.digest(), (byte) => byte.toString(16).padStart(2, "0")).join(""),
+            },
+            serverId,
+          ),
+        );
+      } finally {
+        await openbotApi.agent.cancelAttachmentUpload({ id: session.id }, serverId).catch(() => undefined);
       }
     }
-    const attachments = await invokeAgentForServer(
-      serverId,
-      IPC_ENDPOINTS.attachmentImports.importAttachments,
-      input,
-      decodeAttachments,
-    );
     attachmentImportFiles.delete(requestId);
     emitAttachmentImport({ type: "completed", requestId, serverId, attachments });
   } catch (error) {
@@ -564,7 +613,7 @@ const agentGroup = bridgeGroup(IPC_ENDPOINTS.agent, {
   getHostAnalytics: decodeHostAnalyticsFromMain,
   getAnalytics: decodeAgentAnalyticsFromMain,
   getUsage: decodeAccountUsageFromMain,
-  listModels: decodeAgentModels,
+  listModels: decodeAccountScopedAgentModels,
   listAgents: decodeAgents,
   readAgentSessionSettings: decodeAgentSessionSettingsFromMain,
   setAgentSessionSetting: decodeAgentSessionSettingsFromMain,
@@ -955,6 +1004,35 @@ const openbotApi: OpenBotDesktopApi = {
     hostConnect: decodeBitwardenConnectorStatus,
     hostDisconnect: decodeBitwardenConnectorStatus,
   }),
+  e2b: bridgeGroup(IPC_ENDPOINTS.e2b, {
+    getSettings: decodeE2bSettings,
+    saveSettings: decodeE2bSettings,
+    list: decodeE2bMachines,
+    status: decodeE2bStatus,
+    start: decodeE2bMachine,
+    pause: decodeE2bMachine,
+    delete: decodeVoid,
+    takeover: decodeE2bMachine,
+    setViewerBounds: decodeVoid,
+    closeViewer: decodeVoid,
+    handback: decodeE2bMachine,
+    screenshot: decodeE2bScreenshot,
+    preview: decodeE2bScreenshot,
+  }),
+  mcpRegistry: bridgeGroup(IPC_ENDPOINTS.mcpRegistry, { search: decodeMcpRegistryPage }),
+  apiChannels: bridgeGroup(IPC_ENDPOINTS.apiChannels, {
+    list: decodeApiChannelSummaries,
+    listRuns: decodeApiChannelRunSummaries,
+    getRun: decodeApiChannelRun,
+    templates: decodeApiChannelTemplates,
+    validate: decodeApiChannelDefinition,
+    save: decodeApiChannelSummary,
+    setEnabled: decodeApiChannelSummary,
+    delete: decodeVoid,
+    invoke: decodeApiChannelRun,
+    readRun: decodeApiChannelRun,
+    saveArtifact: decodeVoid,
+  }),
   vault: bridgeGroup(IPC_ENDPOINTS.vault, {
     list: decodeVaultState,
     save: decodeVaultState,
@@ -1021,6 +1099,12 @@ const openbotApi: OpenBotDesktopApi = {
     save: decodeCustomProviderResult,
     delete: decodeCustomProviderResult,
     update: decodeCustomProviderResult,
+  }),
+  customProviderModelSync: bridgeGroup(IPC_ENDPOINTS.customProviderModelSync, {
+    list: decodeCustomProviderModelSyncStates,
+    refresh: decodeCustomProviderModelSyncStates,
+    setEnabled: decodeCustomProviderModelSyncStates,
+    changed: decodeCustomProviderModelSyncStates,
   }),
   acpRegistry: bridgeGroup(IPC_ENDPOINTS.acpRegistry, {
     search: decodeRegistryEntries,
@@ -1263,6 +1347,10 @@ const openbotApi: OpenBotDesktopApi = {
       addTemplateAgent: decodeAddedAgent,
     }),
     ...bridgeGroup(IPC_ENDPOINTS.agentAttachments, {
+      beginAttachmentUpload: decodeAttachmentUploadStateFromMain,
+      writeAttachmentUpload: decodeAttachmentUploadStateFromMain,
+      completeAttachmentUpload: decodeAttachment,
+      cancelAttachmentUpload: decodeVoid,
       importAttachmentData: decodeAttachments,
       chooseAttachments: decodeAttachments,
       discardDraftAttachment: decodeVoid,

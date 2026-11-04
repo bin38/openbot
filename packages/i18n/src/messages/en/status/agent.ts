@@ -1,6 +1,10 @@
 import { defineMessages } from "../../../message";
 
 export const messages = defineMessages("status.agent", {
+  "status.agent.apiChannelApproval":
+    "Allow {tool} for this agent's API channels? This can send data and files to the configured service and use its quota.",
+  "status.agent.cloudComputerApproval":
+    "Allow {tool} on this agent's E2B cloud computer? This can transfer data to E2B and use billed cloud resources.",
   "status.agent.claudeWriteOutside":
     "Write {path}, outside the agent's workspace, the shared folder and the temporary folders.",
   "status.agent.contextCleared": "Context cleared. A new chat starts here.",

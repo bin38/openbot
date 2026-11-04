@@ -14,13 +14,14 @@ import { readFile, stat } from "node:fs/promises";
 import { extname, isAbsolute, relative, resolve } from "node:path";
 import { CHAT_VISUAL_PAGE_LIMIT, isChatVisualMimeType } from "@openbot/contracts/chat-visual";
 import { LOCAL_SERVER_ID } from "@openbot/contracts/ipc";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { createOpenBotLogger, toLogValue } from "@openbot/logging";
 import { app, session } from "electron";
 import type { AgentService } from "../backend/agent-service";
 import { runCauseEffect } from "../backend/effect-boundary";
 import type { MailboxStore } from "../backend/mailbox-store";
 import { attachmentCorsHeaders, attachmentDocumentHeaders, chatVisualResponse } from "./chat-visual-protocol";
-import { buildContentSecurityPolicy, readSelfHostedSignalOrigin } from "./content-security-policy";
+import { buildContentSecurityPolicy, configuredSelfHostedSignalOrigin } from "./content-security-policy";
 import { filePreviewPages } from "./file-preview-pages";
 import { fileResponse } from "./file-response";
 import type { RemoteServerManager } from "./remote-server-manager";
@@ -32,7 +33,7 @@ export function configureContentSecurityPolicy(): void {
   const policy = buildContentSecurityPolicy(
     app.isPackaged,
     process.env.REMOTE_SIGNAL_URL,
-    readSelfHostedSignalOrigin(process.env.OPENBOT_AUTH_API_URL, process.env.OPENBOT_REMOTE_SIGNAL_URL),
+    configuredSelfHostedSignalOrigin(process.env, INDEPENDENT_EDITION),
   );
 
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {

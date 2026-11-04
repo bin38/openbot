@@ -167,13 +167,23 @@ const openSocket = (address: string, port: number) => {
 };
 
 /** Allocates one UDP relay on the TURN server `host` and frees it at once. */
-export const probeTurnAllocation = Effect.fn("TurnProbe.allocate")(
-  function* (host: string, config: Pick<RemoteApiConfig, "turnPort" | "turnSecret">) {
+export const probeTurnAllocation = Effect.fn("TurnProbe.allocate")(function* (
+  host: string,
+  config: Pick<RemoteApiConfig, "turnPort" | "turnSecret">,
+) {
+  const username = `${Math.floor(Date.now() / 1_000) + CREDENTIAL_TTL_SECONDS}:${PROBE_USER}`;
+  const password = createHmac("sha1", config.turnSecret).update(username).digest("base64");
+  yield* probeTurnCredentials(host, config.turnPort, { username, password });
+});
+
+/** Checks issued credentials with a real allocation; an HTTP credential response alone is not a health check. */
+export const probeTurnCredentials = Effect.fn("TurnProbe.issuedCredentials")(
+  function* (host: string, port: number, issued: { username: string; password: string }) {
     const { address } = yield* Effect.tryPromise({
       try: () => lookup(host, { family: 4 }),
       catch: noAnswer,
     });
-    const socket = yield* openSocket(address, config.turnPort);
+    const socket = yield* openSocket(address, port);
     const transport = uint32(REQUESTED_TRANSPORT, UDP_PROTOCOL << 24);
 
     // The first request has no credentials. The 401 gives the realm and the nonce.
@@ -184,8 +194,7 @@ export const probeTurnAllocation = Effect.fn("TurnProbe.allocate")(
       return yield* new TurnProbeError({ reason: "refused" });
     }
 
-    const username = `${Math.floor(Date.now() / 1_000) + CREDENTIAL_TTL_SECONDS}:${PROBE_USER}`;
-    const password = createHmac("sha1", config.turnSecret).update(username).digest("base64");
+    const { username, password } = issued;
     const key = createHash("md5")
       .update(`${username}:${new TextDecoder().decode(realm)}:${password}`)
       .digest();

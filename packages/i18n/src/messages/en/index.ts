@@ -3,6 +3,7 @@ import { messages as account } from "./account";
 import { messages as agent } from "./agent";
 import { messages as agentSettings } from "./agentSettings";
 import { messages as agentTemplate } from "./agentTemplate";
+import { messages as apiChannels } from "./apiChannels";
 import { messages as app } from "./app";
 import { messages as attachment } from "./attachment";
 import { messages as billing } from "./billing";
@@ -90,6 +91,7 @@ export const en = {
   ...marketplace,
   ...plugin,
   ...customProvider,
+  ...apiChannels,
   ...update,
   ...server,
   ...team,

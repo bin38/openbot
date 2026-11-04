@@ -725,6 +725,20 @@ export class AcpAgentClient extends EventEmitter<ClientEvents> {
     return result;
   }
 
+  /** A copy of initialization metadata, without another ACP discovery or reasoning probe. */
+  cachedModels() {
+    if (!this.#signedIn) return null;
+    return {
+      data: this.#models.map((model) => ({
+        model: model.id,
+        displayName: model.name,
+        defaultReasoningEffort: model.defaultReasoningEffort,
+        supportedReasoningEfforts: model.supportedReasoningEfforts.map((reasoningEffort) => ({ reasoningEffort })),
+        ...(model.reasoningEffortConfigurable ? {} : { reasoningEffortConfigurable: false }),
+      })),
+    };
+  }
+
   get running(): boolean {
     return this.#transport.running;
   }

@@ -42,7 +42,8 @@ import {
   SignJWT,
 } from "jose";
 import { z } from "zod";
-import type { RemoteApiConfig } from "./config";
+import { requestCloudflareTurnCredentials, type TurnCredentialFetch } from "./cloudflare-turn";
+import type { CloudflareTurnConfig, RemoteApiConfig } from "./config";
 import {
   type IceServer,
   REMOTE_TICKET_AUDIENCE,
@@ -123,6 +124,13 @@ export class RemoteTokenError extends Schema.TaggedError<RemoteTokenError>()("Re
   message: Schema.String,
 }) {}
 
+export class RemoteTurnUnavailableError extends Schema.TaggedError<RemoteTurnUnavailableError>()(
+  "RemoteTurnUnavailableError",
+  {
+    message: Schema.String,
+  },
+) {}
+
 /** The account service did not answer, so it did not say whether the session is active. */
 export class RemoteTokenUnavailableError extends Schema.TaggedError<RemoteTokenUnavailableError>()(
   "RemoteTokenUnavailableError",
@@ -150,6 +158,8 @@ export class RemoteTokenService {
   // `SIGNAL_ID`: a ticket or resume token whose `signal` claim names another machine is refused.
   readonly #signalId: string | null;
   readonly #turnSecret: string;
+  readonly #cloudflareTurn: CloudflareTurnConfig | null;
+  readonly #turnFetch: TurnCredentialFetch | undefined;
   // The relay for a host and its clients (`TurnRelays.pick`).
   readonly #turnHost: (hostId: string) => string;
   readonly #turnPort: number;
@@ -182,6 +192,7 @@ export class RemoteTokenService {
       | "ticketJwksUrl"
       | "sessionSecret"
       | "turnSecret"
+      | "cloudflareTurn"
       | "turnHosts"
       | "turnPort"
       | "turnTlsPort"
@@ -191,6 +202,7 @@ export class RemoteTokenService {
       Effect.succeed(false),
     options: {
       fetch?: FetchImplementation;
+      turnFetch?: TurnCredentialFetch;
       // Picks the TURN relay of a host. Without it, every host gets `TURN_HOST`.
       turnHost?: (hostId: string) => string;
       // Asks the account service which links of a route are current. Without it, none is.
@@ -226,6 +238,8 @@ export class RemoteTokenService {
     this.#sessionSecret = new TextEncoder().encode(config.sessionSecret);
     this.#signalId = config.signalId;
     this.#turnSecret = config.turnSecret;
+    this.#cloudflareTurn = config.cloudflareTurn ?? null;
+    this.#turnFetch = options.turnFetch;
     const localTurnHost = config.turnHosts[0] ?? "";
     this.#turnHost = options.turnHost ?? (() => localTurnHost);
     this.#turnPort = config.turnPort;
@@ -496,25 +510,41 @@ export class RemoteTokenService {
     }),
   );
 
-  iceServers(claims: RemoteTicketClaims, nowSeconds = Math.floor(Date.now() / 1_000)): IceServer[] {
-    const expiration = Math.min(claims.sessionExpiresAt, nowSeconds + SIGNAL_TURN_CREDENTIAL_TTL_SECONDS);
-    if (expiration <= nowSeconds) throw new Error("The remote session has expired.");
-    const username = `${expiration}:${claims.sessionId}`;
-    const credential = createHmac("sha1", this.#turnSecret).update(username).digest("base64");
-    const host = this.#turnHost(claims.hostId);
-    return [
-      { urls: `stun:${host}:${this.#turnPort}` },
-      {
-        urls: [
-          `turn:${host}:${this.#turnPort}?transport=udp`,
-          `turn:${host}:${this.#turnPort}?transport=tcp`,
-          `turns:${host}:${this.#turnTlsPort}?transport=tcp`,
-        ],
-        username,
-        credential,
-      },
-    ];
-  }
+  readonly iceServers = Effect.fn("RemoteTokens.iceServers")(
+    (claims: RemoteTicketClaims, nowSeconds = Math.floor(Date.now() / 1_000)) =>
+      Effect.gen({ self: this }, function* (): Effect.fn.Return<
+        IceServer[],
+        RemoteTokenError | RemoteTurnUnavailableError
+      > {
+        const expiration = Math.min(claims.sessionExpiresAt, nowSeconds + SIGNAL_TURN_CREDENTIAL_TTL_SECONDS);
+        if (expiration <= nowSeconds)
+          return yield* new RemoteTokenError({ message: "The remote session has expired." });
+        if (this.#cloudflareTurn) {
+          return yield* requestCloudflareTurnCredentials(
+            this.#cloudflareTurn,
+            expiration - nowSeconds,
+            this.#turnFetch,
+          ).pipe(
+            Effect.mapError(() => new RemoteTurnUnavailableError({ message: "TURN credentials are unavailable." })),
+          );
+        }
+        const username = `${expiration}:${claims.sessionId}`;
+        const credential = createHmac("sha1", this.#turnSecret).update(username).digest("base64");
+        const host = this.#turnHost(claims.hostId);
+        return [
+          { urls: `stun:${host}:${this.#turnPort}` },
+          {
+            urls: [
+              `turn:${host}:${this.#turnPort}?transport=udp`,
+              `turn:${host}:${this.#turnPort}?transport=tcp`,
+              `turns:${host}:${this.#turnTlsPort}?transport=tcp`,
+            ],
+            username,
+            credential,
+          },
+        ];
+      }),
+  );
 }
 
 /**

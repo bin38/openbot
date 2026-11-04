@@ -76,6 +76,8 @@ interface CentralAuthEvents {
 type AuthFetcher = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
 interface CentralAuthManagerOptions {
+  /** A local workspace neither reads a remote session nor sends account-service requests. */
+  enabled?: boolean;
   apiUrl: string;
   mobileConnectApiUrl?: string;
   storagePath: string;
@@ -189,10 +191,20 @@ export class CentralAuthManager extends EventEmitter<CentralAuthEvents> {
 
   constructor(options: CentralAuthManagerOptions) {
     super();
-    const fetcher = detectBlockingNetwork(options.fetch ?? fetch, options.apiUrl);
+    const enabled = options.enabled ?? true;
+    const fetcher = detectBlockingNetwork(
+      enabled
+        ? (options.fetch ?? fetch)
+        : async () => {
+            throw new AuthApiError(503, "account_service_disabled", sourceText("error.auth.localWorkspace"));
+          },
+      options.apiUrl,
+    );
+    if (!enabled) this.#state = { status: "signed_out" };
     this.#transport = CentralAuthTransport.layer(fetcher);
     this.#options = {
       ...options,
+      enabled,
       mobileConnectApiUrl: options.mobileConnectApiUrl ?? options.apiUrl,
       canPersist: options.canPersist ?? (() => true),
       fetch: fetcher,
@@ -211,8 +223,15 @@ export class CentralAuthManager extends EventEmitter<CentralAuthEvents> {
   }).bind(this);
   #owned<A>(
     operation: Effect.Effect<A, CentralAuthOperationError, CentralAuthTransport>,
+    allowDisabled = false,
   ): Effect.Effect<A, CentralAuthOperationError> {
     return Effect.suspend(() => {
+      if (!this.#options.enabled && !allowDisabled)
+        return Effect.fail(
+          new CentralAuthOperationError({
+            cause: new AuthApiError(503, "account_service_disabled", sourceText("error.auth.localWorkspace")),
+          }),
+        );
       const done = Deferred.makeUnsafe<void>();
       this.#pending.add(done);
       return operation.pipe(
@@ -229,6 +248,10 @@ export class CentralAuthManager extends EventEmitter<CentralAuthEvents> {
 
   getState(): CentralAuthState {
     return structuredClone(this.#state);
+  }
+
+  isEnabled(): boolean {
+    return this.#options.enabled;
   }
 
   stopProfileRefresh(): void {
@@ -1396,7 +1419,7 @@ export class CentralAuthManager extends EventEmitter<CentralAuthEvents> {
         ),
       );
     },
-    (operation) => this.#owned(operation),
+    (operation) => this.#owned(operation, true),
   ).bind(this);
 
   retry() {
@@ -1406,6 +1429,7 @@ export class CentralAuthManager extends EventEmitter<CentralAuthEvents> {
   readonly #initialize = Effect.fn("CentralAuth.initialize")(function* (
     this: CentralAuthManager,
   ): Effect.fn.Return<CentralAuthState, CentralAuthOperationError, CentralAuthTransport> {
+    if (!this.#options.enabled) return this.#setState({ status: "signed_out" });
     this.#setState({ status: "loading" });
     // A session that cannot be read now stays on disk: a Keychain that is locked or asks for
     // permission at startup can open it at the next start, and the next sign-in replaces it.

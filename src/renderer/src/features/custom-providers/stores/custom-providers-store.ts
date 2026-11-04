@@ -1,9 +1,12 @@
 import type {
+  CustomProviderModelSyncState,
   CustomProviderRestart,
   CustomProviderSummary,
+  OpenBotDesktopApi,
   SaveCustomProviderInput,
   UpdateCustomProviderInput,
 } from "@openbot/contracts/ipc";
+import type { CustomProviderModelSyncSettings } from "@openbot/ui/features/settings/ProviderSettingsPage";
 import { currentText } from "@openbot/ui/text";
 import { createStore } from "solid-js";
 import { desktopAnalytics } from "../../../analytics";
@@ -13,6 +16,9 @@ interface CustomProvidersState {
   providers: CustomProviderSummary[];
   /** False until the first list arrives, so an empty list is not read as "none saved". */
   loaded: boolean;
+  syncStates: CustomProviderModelSyncState[];
+  syncPendingId: string | null;
+  syncError: string | null;
 }
 
 /** Runs a change of the list and records its result. The endpoint's name and address are not sent. */
@@ -45,8 +51,56 @@ async function tracked<T>(
  * `busy` and `submitError` are deliberately absent: both hosts of the dialog keep them locally, so
  * they stay prop-driven for Storybook, and two hosts never share one submit state.
  */
-export function createCustomProvidersStore(api: () => CustomProvidersEndpointApi | undefined) {
-  const [state, setState] = createStore<CustomProvidersState>({ providers: [], loaded: false });
+export function createCustomProvidersStore(
+  api: () => CustomProvidersEndpointApi | undefined,
+  syncApi?: () => OpenBotDesktopApi["customProviderModelSync"] | undefined,
+) {
+  const [state, setState] = createStore<CustomProvidersState>({
+    providers: [],
+    loaded: false,
+    syncStates: [],
+    syncPendingId: null,
+    syncError: null,
+  });
+
+  function applyModelSync(states: CustomProviderModelSyncState[]): void {
+    setState((current) => {
+      current.syncStates = states;
+    });
+  }
+
+  async function syncAction(id: string, enabled?: boolean): Promise<void> {
+    const group = syncApi?.();
+    if (!group || state.syncPendingId) return;
+    setState((current) => {
+      current.syncPendingId = id;
+      current.syncError = null;
+    });
+    try {
+      applyModelSync(await (enabled === undefined ? group.refresh({ id }) : group.setEnabled({ id, enabled })));
+      await refreshCustomProviders();
+    } catch (error) {
+      const text = currentText();
+      setState((current) => {
+        current.syncError = text.errorMessage(error, text.t("customProvider.sync.failed"));
+      });
+    } finally {
+      setState((current) => {
+        current.syncPendingId = null;
+      });
+    }
+  }
+
+  function modelSync(): CustomProviderModelSyncSettings | undefined {
+    if (!syncApi?.()) return undefined;
+    return {
+      states: state.syncStates,
+      pendingId: state.syncPendingId,
+      error: state.syncError,
+      onRefresh: (id) => syncAction(id),
+      onSetEnabled: (id, enabled) => syncAction(id, enabled),
+    };
+  }
 
   function apply(providers: CustomProviderSummary[]): void {
     setState((current) => {
@@ -67,6 +121,8 @@ export function createCustomProvidersStore(api: () => CustomProvidersEndpointApi
     const group = api();
     if (!group) return;
     apply(await group.list());
+    const sync = syncApi?.();
+    if (sync) applyModelSync(await sync.list());
   }
 
   /**
@@ -107,5 +163,7 @@ export function createCustomProvidersStore(api: () => CustomProvidersEndpointApi
     saveCustomProvider,
     updateCustomProvider,
     deleteCustomProvider,
+    modelSync,
+    applyModelSync,
   };
 }

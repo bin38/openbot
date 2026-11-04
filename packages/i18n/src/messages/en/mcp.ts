@@ -1,6 +1,40 @@
 import { defineMessages } from "../../message";
 
 export const messages = defineMessages("mcp", {
+  "mcp.registry.open": "Public MCP directory",
+  "mcp.registry.title": "Browse MCP servers",
+  "mcp.registry.description":
+    "Search the public MCP Registry without an OpenBot account. Browsing installs nothing. Review the publisher, address, command, and permissions before connecting.",
+  "mcp.registry.query": "Search public MCP servers",
+  "mcp.registry.search": "Search",
+  "mcp.registry.refresh": "Refresh",
+  "mcp.registry.more": "Load more",
+  "mcp.registry.empty": "No servers match this search.",
+  "mcp.registry.configure": "Configure",
+  "mcp.registry.manual":
+    "This entry needs manual configuration. Its transport or package arguments are not supported by this importer.",
+  "mcp.registry.website": "Publisher documentation",
+  "mcp.registry.cached": "Showing a saved public directory page because the registry is unavailable.",
+  "mcp.registry.back": "Back to results",
+  "mcp.registry.name": "Connection name",
+  "mcp.registry.method": "Connection method",
+  "mcp.registry.command": "Program and arguments",
+  "mcp.registry.address": "Server address",
+  "mcp.registry.credentials":
+    "Enter your own values. A required field cannot be left empty. HTTP servers may ask for browser sign-in after saving.",
+  "mcp.registry.headerHint": "Enter the complete header value, including a prefix such as Bearer when required.",
+  "mcp.registry.required": "Required",
+  "mcp.registry.optional": "Optional",
+  "mcp.registry.test": "Test connection",
+  "mcp.registry.save": "Save and enable",
+  "mcp.registry.saveDraft": "Save disabled",
+  "mcp.registry.saved":
+    "MCP configuration saved. An untested connection stays disabled; test or sign in from MCP settings before enabling it.",
+  "mcp.registry.failed": "The MCP connection could not be configured.",
+  "mcp.registry.testPassed": {
+    one: "Connected: {count} tool available.",
+    other: "Connected: {count} tools available.",
+  },
   "mcp.connect.unreachable": "That server could not be reached.",
   "mcp.connect.title": "Connect {name}",
   "mcp.connect.notConnected": "Not connected",
@@ -17,6 +51,10 @@ export const messages = defineMessages("mcp", {
   "mcp.connect.httpsLinkRequired": "Enter an https link from {hostname}.",
   "mcp.local.description":
     "{name} runs this server in its desktop app, on this computer. Turn it on there, then connect.",
+  "mcp.local.stdioDescription":
+    "Prepare {name}'s own local application and sign-in first. Connect starts its declared MCP command; no upstream account is used.",
+  "mcp.local.stdioStepsTitle": "Prepare {name} on this computer",
+  "mcp.local.command": "Local command",
   "mcp.local.stepsTitle": "Turn on the server in {name}",
   "mcp.local.address": "Address",
   "mcp.local.docs": "Setup guide",
@@ -56,6 +94,37 @@ export const messages = defineMessages("mcp", {
   "mcp.panel.description":
     "Model Context Protocol servers give this server’s agents extra tools. Claude and Codex agents get only the servers in this list; OpenCode and Grok agents can also start servers from their own configuration files.",
   "mcp.panel.connectCustom": "Connect a custom MCP",
+  "mcp.import.action": "Import JSON",
+  "mcp.import.title": "Import MCP servers",
+  "mcp.import.description":
+    "Choose servers from a standard mcpServers file, a Mikka servers export, or one server configuration. Review and save each server before it is added.",
+  "mcp.import.pasteLabel": "Paste configuration JSON",
+  "mcp.import.pasteHint": "The text is masked because it can contain credentials. The preview hides credential values.",
+  "mcp.import.preview": "Preview",
+  "mcp.import.chooseFile": "Choose JSON file",
+  "mcp.import.reading": "Reading configuration…",
+  "mcp.import.reviewSelected": { one: "Review {count} server", other: "Review {count} servers" },
+  "mcp.import.select": "Select {name}",
+  "mcp.import.unnamed": "Server {position}",
+  "mcp.import.credentialsMissing": "This export omits its credential. Add the required header in the next step.",
+  "mcp.import.renameNeeded":
+    "This name is already in use or repeated in this file. Choose a different name before saving.",
+  "mcp.import.progress": "Imported server {position} of {total}. Returning to the list cancels the remaining drafts.",
+  "mcp.import.skip": "Skip server",
+  "mcp.import.invalidJson": "This is not valid JSON. Check the configuration and paste it again.",
+  "mcp.import.invalidDocument":
+    "Use a mcpServers object, a servers list, or one server with a name and command or URL.",
+  "mcp.import.tooLarge": "MCP configuration JSON must be 1 MB or smaller. Split the settings into smaller files.",
+  "mcp.import.tooMany":
+    "This file has more MCP servers than the host can store. Split the settings into smaller files.",
+  "mcp.import.invalidFields":
+    "This entry has unsupported, conflicting, or invalid settings. Recreate it in the manual editor.",
+  "mcp.import.invalidName": "Give this server a name of up to 80 characters that OpenBot has not reserved.",
+  "mcp.import.invalidCommand": "A STDIO server needs a command. Keep its arguments in a separate list.",
+  "mcp.import.invalidUrl": "Use an HTTP or HTTPS address without a username, password, or fragment.",
+  "mcp.import.sseUnsupported":
+    "This server uses legacy SSE. Use its Streamable HTTP URL or add its launch command manually.",
+  "mcp.import.readFailed": "The configuration file could not be read. Choose it again.",
   "mcp.panel.empty": "No MCP servers yet.",
   "mcp.panel.enable": "Enable {name}",
   "mcp.panel.detailsTitle": "Details",

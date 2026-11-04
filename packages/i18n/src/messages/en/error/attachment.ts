@@ -17,5 +17,16 @@ export const messages = defineMessages("error.attachment", {
     "This server does not support MP4 attachments. Update OpenBot on the host and retry.",
   "error.attachment.svgUnsupported":
     "This server does not support SVG attachments. Update OpenBot on the host and retry.",
+  "error.attachment.uploadBusy": "Another operation is using this upload. Retry when it finishes.",
+  "error.attachment.uploadOffset": "The uploaded chunk does not match the expected file position. Retry the file.",
+  "error.attachment.uploadWriteFailed": "The file could not be written. Check the available disk space.",
+  "error.attachment.uploadIncomplete": "The upload ended before the whole file arrived. Retry the file.",
+  "error.attachment.uploadDigest": "The uploaded file failed its integrity check. Retry the file.",
+  "error.attachment.uploadUnavailable": "This upload expired or belongs to another session. Retry the file.",
+  "error.attachment.streamingUnsupported":
+    "This host needs an OpenBot update to accept this file type or a file larger than 100 MB.",
+  "error.attachment.downloadChanged": "The file changed during download. Download it again.",
+  "error.attachment.browserStreamingUnavailable":
+    "This browser cannot stream downloads to disk. Use a current desktop browser or the OpenBot desktop app.",
   "error.attachment.previewTooLarge": "The file exceeds the 100 MB limit.",
 });

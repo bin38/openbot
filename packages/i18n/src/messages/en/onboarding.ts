@@ -1,6 +1,11 @@
 import { defineMessages } from "../../message";
 
 export const messages = defineMessages("onboarding", {
+  "onboarding.local.title": "Set up your local workspace",
+  "onboarding.local.description":
+    "Use the Codex account already signed in on this computer, or connect your own model endpoint. Your workspace is owned by this computer.",
+  "onboarding.local.open": "Open workspace",
+  "onboarding.local.unavailable": "The local workspace identity is not ready. Restart the app to finish local setup.",
   // The saved setup could not be read. Retry, or set up again with no saved state.
   "onboarding.readFailed.title": "OpenBot could not read your setup.",
   "onboarding.readFailed.description":

@@ -374,6 +374,33 @@ const AGENT_ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
 
 // A Marketplace link began in a URL a web page chose. Only an agent id or a skill slug of the right
 // form reaches the renderer, with no other field; anything else is no link at all.
+describe("mobile pairing readiness in app info", () => {
+  const appInfo = { name: "OpenBot", version: "1", platform: "darwin", variant: "dev" };
+  it.each([
+    { state: "unconfigured", accountOrigin: null },
+    { state: "local-only", accountOrigin: "https://account.example.test" },
+    { state: "signed-out", accountOrigin: "http://127.0.0.1:3100" },
+    { state: "unpublished", accountOrigin: "https://account.example.test" },
+    { state: "ready", accountOrigin: "https://account.example.test" },
+  ])("keeps only readiness metadata for $state", (availability) => {
+    const decoded = decodeAppInfo({
+      ...appInfo,
+      mobileConnectAvailability: { ...availability, ticket: "not-a-real-ticket" },
+    });
+    expect(decoded.mobileConnectAvailability).toEqual(availability);
+  });
+  it.each([
+    { state: "connected", accountOrigin: "https://account.example.test" },
+    { state: "ready", accountOrigin: null },
+    { state: "unconfigured", accountOrigin: "https://account.example.test" },
+    { state: "ready", accountOrigin: "https://user:password@account.example.test" },
+    { state: "ready", accountOrigin: "https://account.example.test/private?ticket=fixture" },
+    { state: "ready", accountOrigin: "file:///tmp/account" },
+  ])("refuses malformed readiness metadata", (availability) => {
+    expect(() => decodeAppInfo({ ...appInfo, mobileConnectAvailability: availability })).toThrow();
+  });
+});
+
 describe("pending Marketplace listing", () => {
   it.each([
     ["an agent", { kind: "agent", id: AGENT_ID }],

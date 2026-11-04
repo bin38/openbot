@@ -1,4 +1,5 @@
 import { ProviderLogo } from "@openbot/brand";
+import { modelSupportsProviderAccount } from "@openbot/contracts/account-scoped-models";
 import { agentProviderName, isKnownAgentProvider } from "@openbot/contracts/agent-providers";
 import {
   AGENT_BACKUP_MODEL_LIMIT,
@@ -64,7 +65,12 @@ export function backupModelOption(choice: AgentModelChoice, source: BackupModelS
   const provider = source.providers?.find((status) => status.id === choice.provider);
   const accounts = provider?.accounts;
   const account = accounts?.find((candidate) => candidate.id === accountId);
-  const model = source.modelOptions.find((option) => option.provider === choice.provider && option.id === choice.model);
+  const model = source.modelOptions.find(
+    (option) =>
+      option.provider === choice.provider &&
+      option.id === choice.model &&
+      modelSupportsProviderAccount(option, accountId),
+  );
   const usable =
     provider !== undefined &&
     provider.off !== true &&
@@ -92,6 +98,7 @@ export function backupModelOptions(
     const provider = source.providers?.find((status) => status.id === modelProvider);
     const accountIds = provider?.accounts?.map((account) => account.id) ?? [DEFAULT_PROVIDER_ACCOUNT_ID];
     return accountIds.flatMap((accountId) => {
+      if (!modelSupportsProviderAccount(model, accountId)) return [];
       const choice: AgentModelChoice = {
         provider: modelProvider,
         model: model.id,

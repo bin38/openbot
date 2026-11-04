@@ -54,7 +54,7 @@ export function WorkflowsPage(props: { serverId: string }) {
 /** `admin`: an owner or admin of the server, who may make a webhook secret. The host checks it again. */
 function WorkflowsCanvas(props: { host: WorkflowHost; admin: boolean }) {
   const { agentList, agentStatus, modelOptions } = useAgents();
-  const { signedInAccount } = useAuth();
+  const { workspaceAccount } = useAuth();
   // The keyed parent mounts a new canvas for each server, so the host does not change.
   const workflows = createWorkflowsController(
     untrack(() => props.host),
@@ -79,7 +79,7 @@ function WorkflowsCanvas(props: { host: WorkflowHost; admin: boolean }) {
     imageModels: [],
     files: [],
     get self() {
-      return signedInAccount()?.name ?? undefined;
+      return workspaceAccount()?.name ?? undefined;
     },
   };
   // A channel output needs a messaging place. Without one, a new output posts a notification. Only an

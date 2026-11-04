@@ -1,0 +1,49 @@
+{
+  "slug": "github-mcp",
+  "name": "GitHub MCP",
+  "tagline": "Repositories and issues through your own GitHub token",
+  "description": "Connect directly to GitHub’s official MCP endpoint with your own personal access token. Repository access and write actions follow the token permissions. No upstream OpenBotGit application or token broker is used.",
+  "category": "coding",
+  "creatorName": "GitHub",
+  "iconUrl": null,
+  "version": "1.0.0",
+  "prompts": [
+    { "id": "prompt-1", "text": "List the open issues in this repository." },
+    { "id": "prompt-2", "text": "Review the changes in this pull request." }
+  ],
+  "apps": [
+    {
+      "id": "app-github-mcp-mcp",
+      "name": "GitHub MCP",
+      "description": "Repositories and issues through your own GitHub token",
+      "iconUrl": null,
+      "server": {
+        "name": "github-mcp",
+        "transport": "http",
+        "url": "https://api.githubcopilot.com/mcp/",
+        "auth": [
+          {
+            "id": "github-pat",
+            "kind": "key",
+            "label": "Personal access token",
+            "fields": [
+              {
+                "id": "token",
+                "label": "GitHub token",
+                "header": "Authorization",
+                "prefix": "Bearer ",
+                "hint": "Use a fine-grained token for the repositories and permissions you need."
+              }
+            ],
+            "docsUrl": "https://github.com/github/github-mcp-server",
+            "docsLabel": "GitHub MCP setup"
+          }
+        ]
+      }
+    }
+  ],
+  "websiteUrl": "https://github.com/github/github-mcp-server",
+  "privacyPolicyUrl": null,
+  "termsUrl": null,
+  "skills": []
+}

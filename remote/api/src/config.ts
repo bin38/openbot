@@ -15,6 +15,7 @@ export interface RemoteApiConfig {
   sessionSecret: string;
   authWebhookSecret: string;
   turnSecret: string;
+  cloudflareTurn?: CloudflareTurnConfig | null;
   // The coturn servers that share `TURN_SHARED_SECRET` and the TURN ports: `TURN_HOST` first, then
   // `TURN_EXTRA_HOSTS`. Each host gets one of them for itself and its clients (`turn-relays.ts`).
   turnHosts: string[];
@@ -45,6 +46,11 @@ export interface RemoteApiConfig {
   signalId: string | null;
   // The entry rule (`entry.ts`). Null: this machine is always the entry.
   entry: SignalEntryConfig | null;
+}
+
+export interface CloudflareTurnConfig {
+  keyId: string;
+  apiToken: string;
 }
 
 export interface SignalEntryConfig {
@@ -170,6 +176,18 @@ export function readRemoteApiConfig(environment: Record<string, string | undefin
   const ticketJwksUrl = optional(environment.REMOTE_TICKET_JWKS_URL);
   if (!ticketJwks && !ticketJwksUrl)
     throw new Error("REMOTE_TICKET_PUBLIC_KEYS or REMOTE_TICKET_JWKS_URL is required.");
+  const turnProvider = environment.TURN_PROVIDER?.trim() || "coturn";
+  if (turnProvider !== "coturn" && turnProvider !== "cloudflare")
+    throw new Error("TURN_PROVIDER must be coturn or cloudflare.");
+  const cloudflareTurn =
+    turnProvider === "cloudflare"
+      ? {
+          keyId: required(environment.TURN_CLOUDFLARE_KEY_ID, "TURN_CLOUDFLARE_KEY_ID"),
+          apiToken: required(environment.TURN_CLOUDFLARE_API_TOKEN, "TURN_CLOUDFLARE_API_TOKEN"),
+        }
+      : null;
+  if (cloudflareTurn && !/^[A-Za-z0-9_-]{1,128}$/u.test(cloudflareTurn.keyId))
+    throw new Error("TURN_CLOUDFLARE_KEY_ID is invalid.");
   return {
     host: environment.REMOTE_SIGNAL_HOST ?? "0.0.0.0",
     port: positiveInteger(environment.REMOTE_SIGNAL_PORT, tlsDisabled ? 8081 : 8443),
@@ -182,10 +200,13 @@ export function readRemoteApiConfig(environment: Record<string, string | undefin
     controlPlaneUrl: required(environment.REMOTE_CONTROL_PLANE_URL, "REMOTE_CONTROL_PLANE_URL"),
     sessionSecret: strongSecret(environment.REMOTE_SESSION_SECRET, "REMOTE_SESSION_SECRET"),
     authWebhookSecret: strongSecret(environment.REMOTE_AUTH_WEBHOOK_SECRET, "REMOTE_AUTH_WEBHOOK_SECRET"),
-    turnSecret: strongSecret(environment.TURN_SHARED_SECRET, "TURN_SHARED_SECRET"),
-    turnHosts: readTurnHosts(required(environment.TURN_HOST, "TURN_HOST"), environment.TURN_EXTRA_HOSTS),
-    turnPort: positiveInteger(environment.TURN_PORT, 3478),
-    turnTlsPort: positiveInteger(environment.TURN_TLS_PORT, 5349),
+    turnSecret: cloudflareTurn ? "" : strongSecret(environment.TURN_SHARED_SECRET, "TURN_SHARED_SECRET"),
+    cloudflareTurn,
+    turnHosts: cloudflareTurn
+      ? ["turn.cloudflare.com"]
+      : readTurnHosts(required(environment.TURN_HOST, "TURN_HOST"), environment.TURN_EXTRA_HOSTS),
+    turnPort: cloudflareTurn ? 3478 : positiveInteger(environment.TURN_PORT, 3478),
+    turnTlsPort: cloudflareTurn ? 5349 : positiveInteger(environment.TURN_TLS_PORT, 5349),
     metricsToken: optional(environment.REMOTE_METRICS_TOKEN),
     maximumConnectionsPerUser: positiveInteger(environment.REMOTE_MAX_CONNECTIONS_PER_USER, 32),
     maximumConnectionsPerIp: positiveInteger(environment.REMOTE_MAX_CONNECTIONS_PER_IP, 32),

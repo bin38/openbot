@@ -114,6 +114,44 @@ Its main jobs are:
 | API | `ubuntu-latest` | `bun run check:api`, then, for a pull request from this repository, upload `apps/auth-api/dist` |
 | Storybook build | `ubuntu-latest` | `bun run build-storybook` |
 
+The existing `Team API and reverse actions E2E` job also runs the independent-edition checks below,
+each in its own serial step. It uses the same `desktop` selection, pinned Bun/Node setup, and
+`ignore-scripts` dependency installation. These scripts need no service credentials or display:
+
+```sh
+bun scripts/e2b-desktop-e2e.ts
+bun scripts/e2b-download-attachment-e2e.ts
+bun scripts/attachment-streaming-e2e.ts
+bun scripts/mcp-config-import-e2e.ts
+bun scripts/custom-provider-model-sync-e2e.ts
+bun scripts/api-channels-e2e.ts
+bun scripts/api-channel-tools-e2e.ts
+bun scripts/independent-workspace-e2e.ts
+bun scripts/independent-network-e2e.ts
+bun scripts/independent-runtime-source-e2e.ts
+bun scripts/independent-dev-launch-e2e.ts
+bun scripts/independent-marketplace-e2e.ts
+bun scripts/independent-account-api-e2e.ts
+bun scripts/independent-deployment-e2e.ts
+```
+
+Ubuntu supplies Python 3, `ps`, `/proc`, and Bash for the command supervisor and deployment refusal
+checks. The Darwin runtime fixture only checks files and hashes; the macOS deployment cases stop
+at source validation and do not run signing or installation tools. All fourteen scripts fit this
+runner. The account API check uses local HTTP and SQLite, not a deployed Worker. E2B uses its test
+adapter without `--live`. Live cloud, authenticated GUI, native installer, and signed-release
+checks remain manual. The model synchronization check uses a loopback model-list endpoint and a
+temporary encrypted store. It checks 70-model discovery, the retained 64-model legacy save bound,
+manual and periodic synchronization, failure recovery, disabled synchronization, and shutdown
+cancellation without calling a model or using a real account. The job uploads only the fourteen `report.json` files as
+`independent-edition-e2e`, including reports from failed runs, without uploading fixture databases
+or credentials. Existing jobs and deployment conditions do not change.
+
+新增的 API 端点检查也只使用本地 HTTP 和临时加密存储。`api-channels-e2e.ts` 覆盖模板解析、鉴权 origin 绑定、
+JSON 与 multipart、工作区文件编码、业务错误、重定向拒绝、产物缓存、任务归属与恢复；
+`api-channel-tools-e2e.ts` 覆盖真实工作区文件句柄、越界和符号链接拒绝、助手停用草稿、SQLite 对话附件与取消清理。
+两项检查不使用真实 MiniMax 密钥、不调用计费模型；实机 UI、云端生成和账号权益验证仍由明确命名的手动流程执行。
+
 CI uses native GitHub Actions `parallel` groups. Each group waits for all its steps and fails
 if a step fails. The steps have separate logs. The groups run in this order:
 

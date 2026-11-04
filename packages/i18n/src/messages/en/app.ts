@@ -58,6 +58,7 @@ export const messages = defineMessages("app", {
   "app.rail.usage": "Usage",
   "app.rail.marketplace": "Marketplace",
   "app.rail.settings": "Settings",
+  "app.rail.computerUse": "Computer Use",
   "app.rail.settingsNotice": "Settings. {notice}",
   "app.rail.more": "More",
   "app.rail.pinPage": "Pin {name} to the rail",

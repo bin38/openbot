@@ -1,9 +1,11 @@
 #!/bin/bash
 # Installs OpenBot as a self-hosted server on a Linux computer with no screen:
 #
-#   curl -fsSL https://raw.githubusercontent.com/nightly-labs/openbot/main/scripts/install-server.sh | sudo bash
+#   sudo bash scripts/install-server.sh --release-repository YOUR-OWNER/YOUR-REPOSITORY
 #
-# Options (after `sudo bash -s --`):
+# Options:
+#   --release-repository <owner/repo>  Your own GitHub release repository. Required, or set
+#                                      OPENBOT_RELEASE_REPOSITORY. No upstream default is used.
 #   --user <name>             The user that runs OpenBot and its agents. Default: the user of the
 #                             installed server, else openbot, which the install makes when it does
 #                             not exist.
@@ -11,6 +13,7 @@
 #                             installed server, else the one in the build.
 #   --display-size <W>x<H>    The size of the virtual display that computer use reads, from 640x480
 #                             to 2576x2576. Default: the one of the installed server, else 1280x800.
+#   --dry-run                Validate the release source without downloads or system changes.
 #
 # This file only downloads the latest release and checks it against the release manifest, the
 # manifest that the Linux desktop updater reads. The install steps come from that release
@@ -19,7 +22,8 @@
 set -euo pipefail
 export LC_ALL=C DEBIAN_FRONTEND=noninteractive
 
-RELEASES=https://github.com/nightly-labs/openbot/releases
+release_repository=${OPENBOT_RELEASE_REPOSITORY:-}
+dry_run=0
 service_user=""
 auth_api_url=""
 display_size=""
@@ -35,6 +39,15 @@ fetch() {
 
 while [ "$#" -gt 0 ]; do
   case $1 in
+    --release-repository)
+      [ "$#" -ge 2 ] || fail "Add owner/repo after --release-repository."
+      release_repository=$2
+      shift 2
+      ;;
+    --dry-run)
+      dry_run=1
+      shift
+      ;;
     --user)
       [ "$#" -ge 2 ] || fail "Add a user name after --user."
       service_user=$2
@@ -51,14 +64,28 @@ while [ "$#" -gt 0 ]; do
       shift 2
       ;;
     -h | --help)
-      sed -n '2,18p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//'
+      sed -n '2,/^set -euo pipefail/p' "$0" 2>/dev/null | sed '$d;s/^# \{0,1\}//'
       exit 0
       ;;
     *) fail "Unknown option: $1" ;;
   esac
 done
 
-[ "$(uname -s)" = Linux ] || fail "This install is for Linux. Download the desktop app at https://openbot.run."
+[[ $release_repository =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] ||
+  fail "Set OPENBOT_RELEASE_REPOSITORY or --release-repository to your own owner/repo before installation."
+release_repository=$(printf '%s' "$release_repository" | tr '[:upper:]' '[:lower:]')
+case $release_repository in
+  nightly-labs/openbot | nightly-labs/openbot.git) fail "The original release repository is not permitted." ;;
+esac
+export OPENBOT_RELEASE_REPOSITORY=$release_repository
+RELEASES=https://github.com/$release_repository/releases
+if [ "$dry_run" -eq 1 ]; then
+  printf 'Release manifests: %s/latest/download/latest-linux[-arm64].yml\n' "$RELEASES"
+  printf 'Release artifacts: %s/download/v<VERSION>/OpenBot-<VERSION>-<ARCH>.AppImage\n' "$RELEASES"
+  exit 0
+fi
+
+[ "$(uname -s)" = Linux ] || fail "This install is for Linux. Use your own desktop build on this computer."
 [ "$(id -u)" -eq 0 ] || fail "Run this with sudo."
 [ -d /run/systemd/system ] || fail "OpenBot needs systemd."
 command -v apt-get >/dev/null || fail "OpenBot needs Ubuntu 24.04 or a newer Ubuntu or Debian."

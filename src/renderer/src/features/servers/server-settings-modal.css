@@ -419,6 +419,14 @@
   padding: var(--openbot-space-4);
 }
 
+.server-cloud-computer-screenshot {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--openbot-border);
+  border-radius: var(--openbot-radius-md);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .server-settings-invite-share > .ui-button:last-child {
     animation: none;

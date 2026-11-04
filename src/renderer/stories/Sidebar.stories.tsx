@@ -155,6 +155,7 @@ const args: Parameters<typeof Sidebar>[0] = {
   onSelectPerson: fn(),
   onCreateAgent: fn(),
   onEditAgent: fn(),
+  onOpenAgentWorkspace: fn(),
   onDeleteAgent: async () => undefined,
   compact: false,
   onExpand: fn(),

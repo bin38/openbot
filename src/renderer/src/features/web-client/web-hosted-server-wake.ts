@@ -1,4 +1,5 @@
 import { parseHostedServerStatus } from "@openbot/contracts/hosted-servers";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { createHostedServerStatusCheck, createHostedServerWake } from "@openbot/team-client/hosted-server-wake";
 import { Effect } from "effect";
 
@@ -8,6 +9,16 @@ import { Effect } from "effect";
  * reads the state of a server that starts, or null when the account server does not answer.
  */
 export function createWebHostedServerWake(accountFetch: typeof fetch, now: () => number = Date.now) {
+  if (INDEPENDENT_EDITION) {
+    return {
+      wake: () => Effect.succeed(false),
+      status: () => Effect.succeed(null),
+      unavailable: () => Effect.succeed("not_hosted" as const),
+      wakeForInput: () => Effect.succeed(false),
+      forget: () => undefined,
+      dispose: () => undefined,
+    };
+  }
   const controller = new AbortController();
   const accountRequest = (hostId: string, action: "status" | "wake") =>
     Effect.tryPromise((signal) =>

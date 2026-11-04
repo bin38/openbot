@@ -90,6 +90,7 @@ import {
   isVoiceServerProbe,
   isVoiceServerSettings,
   type LinkAccountStatus,
+  type MobileConnectAvailability,
   type MobileConnectedDevice,
   type MobileConnectLink,
   type MobileConnectTicket,
@@ -157,14 +158,45 @@ export function decodeAppInfo(value: unknown): AppInfo {
     throw new Error("Invalid analytics capture URL.");
   if (analyticsInstallId !== undefined && !isString(analyticsInstallId))
     throw new Error("Invalid analytics install ID.");
+  const local = info.localWorkspace === undefined ? null : decodeRecord(info.localWorkspace, "local workspace");
+  const localWorkspace = local ? { id: requiredString(local, "id"), name: requiredString(local, "name") } : null;
+  if (
+    localWorkspace &&
+    (!localWorkspace.id || localWorkspace.id.length > 128 || !localWorkspace.name || localWorkspace.name.length > 256)
+  ) {
+    throw new Error("Invalid local workspace identity.");
+  }
+  const mobileConnectAvailability =
+    info.mobileConnectAvailability === undefined
+      ? undefined
+      : decodeMobileConnectAvailability(info.mobileConnectAvailability);
   return {
     name: requiredString(info, "name"),
     version: requiredString(info, "version"),
     platform,
     variant,
+    ...(localWorkspace ? { localWorkspace } : {}),
+    ...(mobileConnectAvailability ? { mobileConnectAvailability } : {}),
     ...(analyticsCaptureUrl === undefined ? {} : { analyticsCaptureUrl }),
     ...(analyticsInstallId === undefined ? {} : { analyticsInstallId }),
   };
+}
+
+function decodeMobileConnectAvailability(value: unknown): MobileConnectAvailability {
+  const info = decodeRecord(value, "mobile connection availability");
+  const state = requiredString(info, "state");
+  if (!isOneOf(["unconfigured", "local-only", "signed-out", "unpublished", "ready"] as const, state))
+    throw new Error("Invalid mobile connection availability.");
+  const accountOrigin = info.accountOrigin;
+  if (accountOrigin !== null) {
+    if (!isString(accountOrigin) || accountOrigin.length > 2048 || !URL.canParse(accountOrigin))
+      throw new Error("Invalid mobile account origin.");
+    const url = new URL(accountOrigin);
+    if (!["http:", "https:"].includes(url.protocol) || url.origin !== accountOrigin)
+      throw new Error("Invalid mobile account origin.");
+  }
+  if ((state === "unconfigured") !== (accountOrigin === null)) throw new Error("Invalid mobile account availability.");
+  return { state, accountOrigin };
 }
 
 export function decodeAppSetupState(value: unknown): AppSetupState {

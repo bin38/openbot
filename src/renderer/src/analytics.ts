@@ -24,7 +24,7 @@ import {
 } from "@openbot/contracts/ipc";
 import { isBoolean, isDynamicRecord, isFunction, isNumber, isOneOf, isString } from "@openbot/contracts/runtime-values";
 import { normalizeEmailAddress } from "@openbot/contracts/validation";
-import { ANALYTICS_GENERATIONS } from "@openbot/telemetry";
+import { ANALYTICS_GENERATIONS, telemetryEndpoint } from "@openbot/telemetry";
 import { OpenPanelBase, type OpenPanelOptions } from "@openpanel/web";
 import {
   ANALYTICS_SCHEMA_VERSION,
@@ -34,8 +34,7 @@ import {
 } from "./error-reports";
 import { MARKETPLACE_PLUGINS } from "./features/settings/marketplace-plugin-catalog";
 
-const OPENPANEL_API_URL = "https://analytics.openbot.run/api";
-const OPENPANEL_CLIENT_ID = "6c989975-87ef-4f0c-857e-ab449a65b5c2";
+const LOCAL_CAPTURE_CLIENT_ID = "independent-local-capture";
 const MAX_PENDING_EVENTS = 100;
 const CURATED_LISTING_PATTERN = /^openbot-curated-(?:skill|agent)-([a-z0-9][a-z0-9-]{0,63})$/u;
 const PLUGIN_SLUGS = new Set(MARKETPLACE_PLUGINS.map((plugin) => plugin.slug));
@@ -728,10 +727,6 @@ const UPDATE_PHASES = new Set([
   "unsupported",
 ]);
 
-function shouldEnableDesktopAnalytics(appInfo: AppInfo, productionBuild: boolean): boolean {
-  return appInfo.analyticsCaptureUrl !== undefined || (productionBuild && appInfo.variant === "production");
-}
-
 function sanitizeDesktopAnalyticsEvent(
   name: AnalyticsEventName,
   properties: DesktopAnalyticsEvents[AnalyticsEventName],
@@ -859,15 +854,16 @@ class DesktopAnalytics {
   configure(appInfo: AppInfo): boolean {
     configureDesktopReports(appInfo, this.#trackingEnabled, this.#identity);
     if (this.#client) return true;
-    if (!shouldEnableDesktopAnalytics(appInfo, this.#productionBuild)) {
+    const apiUrl = telemetryEndpoint(appInfo.analyticsCaptureUrl);
+    if (!apiUrl) {
       this.#disabled = true;
       this.#pending = [];
       return false;
     }
     try {
       const clientOptions = {
-        apiUrl: appInfo.analyticsCaptureUrl ?? OPENPANEL_API_URL,
-        clientId: OPENPANEL_CLIENT_ID,
+        apiUrl,
+        clientId: LOCAL_CAPTURE_CLIENT_ID,
       };
       const client = this.#createClient(clientOptions);
       const anonymousClient = this.#createClient(clientOptions);
@@ -884,6 +880,7 @@ class DesktopAnalytics {
       anonymousClient.setGlobalProperties(globalProperties);
       this.#client = client;
       this.#anonymousClient = anonymousClient;
+      this.#disabled = false;
       if (this.#trackingEnabled && this.#identity) this.#identifyClient(this.#identity);
       this.#flush();
       return true;
@@ -893,11 +890,18 @@ class DesktopAnalytics {
   }
 
   /**
-   * Starts product analytics in the web client. It sends only from the production site, like the web
-   * failure reports, and the web preference controls both.
+   * A self-hosted web client can opt into its own collector. No endpoint or client ID is inherited
+   * from the upstream service.
    */
-  configureWeb(options: { version: string; user: AnalyticsIdentity | null; enabled: boolean }): boolean {
-    if (!this.#client && (!this.#productionBuild || window.location.origin !== "https://openbot.run")) {
+  configureWeb(options: {
+    version: string;
+    user: AnalyticsIdentity | null;
+    enabled: boolean;
+    apiUrl?: string;
+    clientId?: string;
+  }): boolean {
+    const apiUrl = telemetryEndpoint(options.apiUrl);
+    if (!this.#productionBuild || !apiUrl || !options.clientId?.trim()) {
       this.#disabled = true;
       this.#pending = [];
       return false;
@@ -905,7 +909,7 @@ class DesktopAnalytics {
     this.setTrackingEnabled(options.enabled);
     if (!this.#client) {
       try {
-        const clientOptions = { apiUrl: OPENPANEL_API_URL, clientId: OPENPANEL_CLIENT_ID };
+        const clientOptions = { apiUrl, clientId: options.clientId };
         const client = this.#createClient(clientOptions);
         const anonymousClient = this.#createClient(clientOptions);
         this.#installId = webAnalyticsInstallId();
@@ -921,6 +925,7 @@ class DesktopAnalytics {
         anonymousClient.setGlobalProperties(globalProperties);
         this.#client = client;
         this.#anonymousClient = anonymousClient;
+        this.#disabled = false;
         if (this.#trackingEnabled && this.#identity) this.#identifyClient(this.#identity);
         this.#flush();
       } catch {

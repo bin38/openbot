@@ -8,6 +8,7 @@ import { AgentApiKeys } from "../backend/agent-api-keys";
 import { AgentDatabaseSupervisor } from "../backend/agent-data/agent-database-supervisor";
 import { AgentTables } from "../backend/agent-data/agent-tables";
 import { AgentRoutineStore } from "../backend/agent-routine-store";
+import { AttachmentUploadSessions } from "../backend/attachment-upload-sessions";
 import { DiscordConnectFailed, toDiscordConnectFailed } from "../backend/messaging/discord/discord-connect";
 import { SlackConnectFailed, toSlackConnectFailed } from "../backend/messaging/slack/slack-connect";
 import { routineFlowRoutines } from "../backend/routine-flows/routine-flow-routines";
@@ -28,6 +29,10 @@ import { type AgentFolders, createAgentFolders } from "./agent-folders";
 import { type AgentHostSettingsService, createAgentHostSettings } from "./agent-host-settings";
 import { type AgentInstructionsFiles, createAgentInstructionsFiles } from "./agent-instructions-files";
 import { type BrowserProfileService, createBrowserProfileService } from "./browser-profile-service";
+import { type CustomProviderModelSync, createCustomProviderModelSync } from "./custom-provider-model-sync";
+import { E2bDesktopAdapter } from "./e2b-desktop-adapter";
+import { E2bDesktopService } from "./e2b-desktop-service";
+import { E2bDesktopStore } from "./e2b-desktop-store";
 import { HostReleaseService, readInstallationMode } from "./host-release-service";
 import {
   CONTAINER_UPDATE_PATHS,
@@ -36,10 +41,13 @@ import {
   HostedUpdateAdapter,
 } from "./hosted-update-adapter";
 import { LicenseDesktopService } from "./license-service";
+import { LocalMarketplaceCatalog } from "./local-marketplace-catalog";
+import { createLocalMobileConsentStore, LOCAL_MOBILE_CONSENT_FILE } from "./local-mobile-consent-store";
 import { LocalSignInWindows } from "./local-sign-in-window";
 import { LocalSkillLibrary } from "./local-skill-library";
 import { localSkillTools } from "./local-skill-tools";
 import { MAC_PERMISSION_URLS } from "./mac-permission-urls";
+import { McpRegistryService } from "./mcp-registry-service";
 import { PushNotificationStore } from "./push-notification-store";
 import { DESKTOP_USE_MS } from "./push-notifications";
 import { RemoteWorkflowError, toRemoteWorkflowError } from "./remote-service-effects";
@@ -66,7 +74,7 @@ import { RemoteWorkflowError, toRemoteWorkflowError } from "./remote-service-eff
 
 import { existsSync } from "node:fs";
 import { readdir, rm } from "node:fs/promises";
-import { homedir, hostname, tmpdir } from "node:os";
+import { homedir, hostname, tmpdir, userInfo } from "node:os";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { selfHostedApiOrigin } from "@openbot/contracts/invite-links";
@@ -92,6 +100,7 @@ import {
   latestTurnAnswer,
 } from "@openbot/contracts/ipc";
 import { decodeRecord, requiredString } from "@openbot/contracts/ipc-decoding";
+import { INDEPENDENT_EDITION, type LocalWorkspaceProfile } from "@openbot/contracts/product-edition";
 import { sourceText } from "@openbot/i18n/source";
 import { createOpenBotLogger, registerSecretValue, toLogValue } from "@openbot/logging";
 import { REMOTE_ACCOUNT_CHECK_INTERVAL_MS } from "@openbot/team-client";
@@ -103,6 +112,7 @@ import {
   desktopCapturer,
   Notification,
   nativeImage,
+  net,
   powerMonitor,
   safeStorage,
   screen,
@@ -152,6 +162,9 @@ import { catalogPluginSlug, isReportedMcpServerName, loadCatalogPluginServers } 
 import { AnalyticsPreferenceService } from "./analytics-preference-service";
 import { readAnalyticsPreference, saveAnalyticsDefault } from "./analytics-preference-store";
 import { providerAuthKind } from "./analytics-provider-auth";
+import { apiChannelNativeFetch } from "./api-channel-native-fetch";
+import { ApiChannelService } from "./api-channel-service";
+import { ApiChannelStore } from "./api-channel-store";
 import { AppBehaviorService } from "./app-behavior-service";
 import { AppearanceService } from "./appearance-service";
 import { ApprovalAutomation, readApprovalAutomation } from "./approval-automation-store";
@@ -203,7 +216,7 @@ import {
   ExternalLinkOpener,
   type ExternalLinkPreferenceStore,
 } from "./external-link-opener";
-import { githubAppConfig } from "./github-connector-config";
+import { githubAppConfig, githubAppStorageFile } from "./github-connector-config";
 import { GitHubConnectorService } from "./github-connector-service";
 import { GitHubConnectorStore } from "./github-connector-store";
 import { GitHubRelay, receiveGitHubDelivery } from "./github-relay";
@@ -230,6 +243,12 @@ import { localRoutineFeedDocument } from "./local-routine-calendar";
 import { type LocalServerChildEnvironment, startLocalServerChild } from "./local-server-child";
 import { LOCAL_SERVERS_FILE } from "./local-servers/local-server-registry";
 import { LocalServers } from "./local-servers/local-servers";
+import {
+  independentAccountService,
+  initializeLocalWorkspace,
+  LOCAL_REMOTE_SERVERS_FILE,
+  LOCAL_TEAM_FILE,
+} from "./local-workspace";
 import { createLoginItem } from "./login-item";
 import { LogoColorService } from "./logo-color-service";
 import type { MacHapticFeedback } from "./mac-haptic-feedback";
@@ -243,6 +262,7 @@ import {
   createComputerUseHighlightWindow,
   createComputerUsePermissionHelpWindow,
   createDynamicIslandWindow,
+  createE2bViewerWindows,
   loadBrowserDockRenderer,
   loadComputerUseHighlightRenderer,
   loadComputerUsePermissionHelpRenderer,
@@ -262,6 +282,7 @@ import {
 import { McpOAuthStore } from "./mcp-oauth-store";
 import { MemoryReviewPreferenceStore } from "./memory-review-preference-store";
 import { MessagingCredentialStore } from "./messaging-credential-store";
+import { probeModels } from "./model-server-probe";
 import { NotificationPreferenceStore } from "./notification-preference-store";
 import { OnePasswordConnectorService } from "./onepassword-connector-service";
 import { OnePasswordConnectorStore } from "./onepassword-connector-store";
@@ -403,7 +424,6 @@ const INGRESS_QUEUE_KEY_FILE = "openbot-ingress-queue-key-v1.json";
 const MCP_OAUTH_FILE = "openbot-mcp-oauth-v1.json";
 const MCP_OAUTH_PROXY_FILE = "openbot-mcp-oauth-proxy-v1.json";
 /** The one GitHub sign-in of this computer, with the same cipher as the MCP sign-ins. */
-const GITHUB_CONNECTOR_FILE = "openbot-github-connector-v1.json";
 const LINK_ACCOUNT_FILE = "openbot-link-account-v1.json";
 /** The 1Password service account token of this computer, with the same cipher. */
 const ONEPASSWORD_CONNECTOR_FILE = "openbot-onepassword-connector-v1.json";
@@ -491,6 +511,8 @@ const TEARDOWN_ORDER = {
   automation: 108,
   storageUsage: 109,
   service: 110,
+  e2b: 110.5,
+  attachmentUploads: 110.75,
   mcpOAuth: 111,
   analytics: 112,
   // After all account consumers have stopped.
@@ -546,6 +568,8 @@ export interface ApplicationServiceContext {
 
 /** Everything the entry point wires up, registers IPC handlers against, and shuts down. */
 export interface ApplicationServices {
+  localWorkspace: LocalWorkspaceProfile | null;
+  mcpRegistry: McpRegistryService;
   service: AgentService;
   routineFlows: RoutineFlowsHandle;
   workflows: WorkflowsHandle;
@@ -570,6 +594,10 @@ export interface ApplicationServices {
   onePasswordConnector: OnePasswordConnectorService;
   bitwardenConnector: BitwardenConnectorService;
   vault: VaultService;
+  e2b: E2bDesktopService;
+  apiChannels: ApiChannelService;
+  e2bViewers: ReturnType<typeof createE2bViewerWindows>;
+  attachmentUploads: AttachmentUploadSessions;
   mailbox: MailboxStore;
   storageUsage: StorageUsageService;
   browser: BrowserHost;
@@ -642,6 +670,7 @@ export interface ApplicationServices {
   serverMode: ServerMode | null;
   customProviders: CustomProviderStore;
   customProviderChanges: CustomProviderChanges;
+  customProviderModelSync: CustomProviderModelSync;
   customAgentChanges: CustomAgentChanges;
   acpRegistry: AcpRegistry;
   providerDetection: ProviderDetection;
@@ -988,14 +1017,33 @@ export async function createApplicationServices({
       }),
   });
   teardown.push(TEARDOWN_ORDER.dynamicIsland, "the Dynamic Island", () => dynamicIsland.destroy());
-  const centralAuthApiUrl = readCentralAuthApiUrl(
-    process.env.OPENBOT_AUTH_API_URL,
-    app.isPackaged ? "https://api.openbot.run" : "http://127.0.0.1:3100",
+  const independentAccount = independentAccountService(
+    app.getPath("userData"),
+    process.env.OPENBOT_SELF_HOSTED_API_URL,
   );
+  const centralAuthApiUrl = INDEPENDENT_EDITION
+    ? independentAccount.apiUrl
+    : readCentralAuthApiUrl(
+        process.env.OPENBOT_AUTH_API_URL,
+        app.isPackaged ? "https://api.openbot.run" : "http://127.0.0.1:3100",
+      );
   const centralAuth = new CentralAuthManager({
+    enabled: INDEPENDENT_EDITION ? independentAccount.enabled : true,
     apiUrl: centralAuthApiUrl,
-    mobileConnectApiUrl: readMobileConnectApiUrl(process.env.OPENBOT_MOBILE_AUTH_API_URL, centralAuthApiUrl),
-    storagePath: join(app.getPath("userData"), CENTRAL_AUTH_FILE),
+    mobileConnectApiUrl: INDEPENDENT_EDITION
+      ? centralAuthApiUrl
+      : readMobileConnectApiUrl(process.env.OPENBOT_MOBILE_AUTH_API_URL, centralAuthApiUrl),
+    storagePath: INDEPENDENT_EDITION
+      ? independentAccount.storagePath
+      : join(app.getPath("userData"), CENTRAL_AUTH_FILE),
+    // Use the desktop network stack and its system proxy. Account authentication uses bearer
+    // tokens, so it must not borrow cookies from an embedded browser session.
+    ...(INDEPENDENT_EDITION
+      ? {
+          fetch: (input: string | URL | Request, init?: RequestInit) =>
+            net.fetch(input instanceof URL ? input.href : input, { ...init, credentials: "omit" }),
+        }
+      : {}),
     ...safeStorageCipher("error.app.macSecureStorageUnavailable"),
   });
   // Registered before `initialize()`, which publishes `{ status: "loading" }` synchronously: the
@@ -1032,6 +1080,7 @@ export async function createApplicationServices({
     profileTimer = null;
   };
   const startProfileTimer = () => {
+    if (INDEPENDENT_EDITION && !independentAccount.enabled) return;
     stopProfileTimer();
     profileTimer = setInterval(() => void refreshAccountProfile(), REMOTE_ACCOUNT_CHECK_INTERVAL_MS);
     profileTimer.unref();
@@ -1087,7 +1136,7 @@ export async function createApplicationServices({
     undefined,
     DATA_SKILL_SLUG,
   );
-  await Effect.runPromise(managedSkills.syncAll(store.list()));
+  if (!INDEPENDENT_EDITION) await Effect.runPromise(managedSkills.syncAll(store.list()));
   await Effect.runPromise(skillCreator.syncAll(store.list()));
   await Effect.runPromise(dataSkill.syncAll(store.list()));
   performance.mark("openbot:services.skills");
@@ -1369,6 +1418,24 @@ export async function createApplicationServices({
   // Before `new AgentService`, which reads every `executablePath` eagerly.
   await runCauseEffect(providerRuntimes.initialize());
   const secretCipher = safeStorageCipher("error.app.secretStorageUnavailable");
+  const e2bStore = new E2bDesktopStore(join(app.getPath("userData"), "e2b-desktops.json"), secretCipher);
+  await Effect.runPromise(e2bStore.load());
+  const e2b = new E2bDesktopService({
+    store: e2bStore,
+    adapter: new E2bDesktopAdapter(),
+    downloadDirectory: join(app.getPath("userData"), "e2b-downloads"),
+    agentExists: (agentId) => store.list().some((agent) => agent.id === agentId),
+    workspaceForAgent: (agentId) => store.list().find((agent) => agent.id === agentId)?.workspacePath ?? null,
+  });
+  const e2bViewers = createE2bViewerWindows(windows.getMainWindow, language.translate);
+  teardown.push(TEARDOWN_ORDER.e2b, "cloud computer viewers", async () => {
+    e2bViewers.dispose();
+    await Effect.runPromise(e2b.dispose());
+  });
+  const attachmentUploads = new AttachmentUploadSessions(join(app.getPath("userData"), "attachment-uploads"));
+  teardown.push(TEARDOWN_ORDER.attachmentUploads, "attachment uploads", () =>
+    Effect.runPromise(attachmentUploads.dispose()),
+  );
   const customProviders = new CustomProviderStore({
     path: join(app.getPath("userData"), CUSTOM_PROVIDERS_FILE),
     cipher: secretCipher,
@@ -1376,6 +1443,14 @@ export async function createApplicationServices({
   // Before the service, which reads the endpoints at its first provider spawn. A file this build
   // cannot read leaves the list empty and every write refused; it does not stop the app.
   await runCauseEffect(customProviders.load());
+  const apiChannelStore = new ApiChannelStore(join(app.getPath("userData"), "api-channels.json"), secretCipher);
+  await Effect.runPromise(apiChannelStore.load());
+  const apiChannels = new ApiChannelService(
+    apiChannelStore,
+    join(app.getPath("userData"), "api-channel-artifacts"),
+    apiChannelNativeFetch,
+  );
+  teardown.push(TEARDOWN_ORDER.providerDetection - 2, "API channels", () => Effect.runPromise(apiChannels.close()));
   // The same reasons as the endpoints: before the service, and a file this build cannot read only
   // refuses the writes.
   const customAgents = new CustomAgentStore({
@@ -1393,6 +1468,8 @@ export async function createApplicationServices({
       settings: providerDetectionSettings,
       customProviders,
       customAgents,
+      // Use the desktop network stack so model discovery follows the user's system proxy.
+      probe: (target, timeoutMs) => probeModels(target, timeoutMs, (url, init) => net.fetch(url.href, init)),
     }),
   );
   teardown.push(TEARDOWN_ORDER.providerDetection, "model server discovery", () =>
@@ -1501,9 +1578,10 @@ export async function createApplicationServices({
    * its MCP server and its `gh` and `git` files. An unreadable file is logged by the service and
    * treated as no sign-in.
    */
+  const githubApp = githubAppConfig();
   const githubConnector = new GitHubConnectorService({
-    app: githubAppConfig(),
-    store: new GitHubConnectorStore(join(app.getPath("userData"), GITHUB_CONNECTOR_FILE), secretCipher),
+    app: githubApp,
+    store: new GitHubConnectorStore(join(app.getPath("userData"), githubAppStorageFile(githubApp)), secretCipher),
     toolDirectory: join(app.getPath("userData"), "provider-state", "github"),
     apiUrl: centralAuthApiUrl,
     openExternal: openLink,
@@ -1514,7 +1592,10 @@ export async function createApplicationServices({
   );
   /* The Link account. Agents ask it for one-time cards that the user approves in Link. */
   const linkAccount = new LinkAccountService({
-    store: new LinkAccountStore(join(app.getPath("userData"), LINK_ACCOUNT_FILE), secretCipher),
+    store: new LinkAccountStore(
+      join(app.getPath("userData"), INDEPENDENT_EDITION ? "independent-link-disabled.json" : LINK_ACCOUNT_FILE),
+      secretCipher,
+    ),
     openExternal: openLink,
   });
   await Effect.runPromise(linkAccount.load());
@@ -1739,6 +1820,8 @@ export async function createApplicationServices({
   );
   const service: AgentService = new AgentService({
     store,
+    e2bTools: e2b,
+    apiChannelTools: apiChannels,
     mailbox,
     browser,
     visualPreview: new ChatVisualPreviewer(),
@@ -1781,7 +1864,7 @@ export async function createApplicationServices({
     bundledExecutables: providerRuntimes.bundledExecutables(),
     prepareAgentWorkspace: (agent) =>
       Effect.gen(function* () {
-        yield* managedSkills.syncAgent(agent);
+        if (!INDEPENDENT_EDITION) yield* managedSkills.syncAgent(agent);
         yield* skillCreator.syncAgent(agent);
         yield* dataSkill.syncAgent(agent);
       }),
@@ -2199,19 +2282,41 @@ export async function createApplicationServices({
         .refreshAgentRuntime(agentId)
         .pipe(Effect.ensuring(Effect.sync(() => service.notifySkillsChanged(agentId)))),
     new LocalSkillLibrary(join(app.getPath("userData"), "local-skills"), () => service.listAgents()),
+    INDEPENDENT_EDITION,
   );
-  const marketplaceAgents = new AgentMarketplaceService(centralAuth, service, skills);
-  const agentTemplates = new AgentTemplateService(centralAuth, service, {
-    listTemplateSkills: (agentId) => skills.listTemplateSkills(agentId),
-    installVersion: (input) => skills.installVersion(input),
-    library: () => skills.requireLocalLibrary(),
-    installLocal: (input) => skills.installLocal(input),
-  });
+  const localCatalog = INDEPENDENT_EDITION
+    ? new LocalMarketplaceCatalog(join(app.getPath("userData"), "local-marketplace.json"))
+    : undefined;
+  const mcpRegistry = new McpRegistryService(join(app.getPath("userData"), "mcp-registry-cache"));
+  const marketplaceAgents = new AgentMarketplaceService(centralAuth, service, skills, localCatalog);
+  const agentTemplates = new AgentTemplateService(
+    centralAuth,
+    service,
+    {
+      listTemplateSkills: (agentId) => skills.listTemplateSkills(agentId),
+      installVersion: (input) => skills.installVersion(input),
+      library: () => skills.requireLocalLibrary(),
+      installLocal: (input) => skills.installLocal(input),
+    },
+    localCatalog,
+  );
   const teamStore = new TeamStore(
-    join(app.getPath("userData"), TEAM_FILE_V2),
-    join(app.getPath("userData"), TEAM_FILE),
+    INDEPENDENT_EDITION && serverModeEnvironment
+      ? independentAccount.teamStoragePath
+      : join(app.getPath("userData"), INDEPENDENT_EDITION && !localServerChild ? LOCAL_TEAM_FILE : TEAM_FILE_V2),
+    INDEPENDENT_EDITION && !localServerChild ? null : join(app.getPath("userData"), TEAM_FILE),
   );
   await runCauseEffect(teamStore.initialize());
+  const localWorkspace =
+    INDEPENDENT_EDITION && !serverModeEnvironment
+      ? await runCauseEffect(
+          initializeLocalWorkspace(teamStore, {
+            serverName: localServerChild?.serverName ?? `${hostname()} Local`,
+            ownerName: localServerChild?.serverName ?? userInfo().username,
+            ...(localServerChild ? { ownerUsername: "owner", ownerSecret: localServerChild.ownerSecret } : {}),
+          }),
+        )
+      : null;
   performance.mark("openbot:services.team");
   const machineAlertStore = new MachineAlertPreferenceStore(
     join(app.getPath("userData"), MACHINE_ALERTS_PREFERENCE_FILE),
@@ -2305,7 +2410,7 @@ export async function createApplicationServices({
         }),
       ),
     );
-  if (hostedServer) {
+  if (hostedServer && !INDEPENDENT_EDITION) {
     await runCauseEffect(signInHostedServer(hostedServer, centralAuthInitialization)).catch((error) =>
       logger.error("The hosted server could not sign in:", toLogValue(error)),
     );
@@ -2335,7 +2440,18 @@ export async function createApplicationServices({
     browser,
     onChanged: () => service.notifyBrowserProfilesChanged(),
   });
-  const customProviderChanges = createCustomProviderChanges({ service, customProviders, providerRuntimes });
+  const customProviderChanges = createCustomProviderChanges({
+    service,
+    customProviders,
+    providerRuntimes,
+    discovery: providerDetection,
+  });
+  const customProviderModelSync = await Effect.runPromise(
+    createCustomProviderModelSync({ store: customProviders, changes: customProviderChanges }),
+  );
+  teardown.push(TEARDOWN_ORDER.providerDetection - 1, "custom provider model synchronization", () =>
+    Effect.runPromise(customProviderModelSync.close()),
+  );
   const customAgentChanges = createCustomAgentChanges({ service, customAgents });
   const acpRegistry = createAcpRegistry({
     directory: app.getPath("userData"),
@@ -2472,8 +2588,20 @@ export async function createApplicationServices({
         ? Effect.succeed(localServersForTeam)
         : Effect.fail(new RemoteWorkflowError({ cause: new Error(sourceText("error.team.localServersUnsupported")) })),
     );
+  const localMobileConsent =
+    localWorkspace && !localServerChild
+      ? createLocalMobileConsentStore(join(app.getPath("userData"), LOCAL_MOBILE_CONSENT_FILE))
+      : undefined;
+  if (localMobileConsent)
+    await runCauseEffect(localMobileConsent.load()).catch((error) => {
+      logger.warn("Unable to load the saved phone publication consent:", toLogValue(error));
+    });
   const host = new HostService({
+    independentServices: INDEPENDENT_EDITION,
+    localWorkspace,
+    ...(localMobileConsent ? { localMobileConsent } : {}),
     appVersion: app.getVersion(),
+    attachmentUploads,
     store: teamStore,
     agents: service,
     // Defined below with the startup it waits for; a request runs only after this returns.
@@ -2762,7 +2890,7 @@ export async function createApplicationServices({
   });
   teardown.push(TEARDOWN_ORDER.host, "the local host", () => runCauseEffect(host.shutdown()));
   const signedInState = centralAuth.getState();
-  if (localServerChild) {
+  if (localWorkspace || localServerChild) {
     // A local server has no account. Its owner is a password member, and binding an account here
     // would unbind that host.
   } else if (signedInState.status === "signed_in") {
@@ -2775,12 +2903,14 @@ export async function createApplicationServices({
     // service keeps its host, and the event listener settles it.
     await runCauseEffect(host.applySignedInAccount(null));
   }
+  if (localWorkspace && !localServerChild) await runCauseEffect(host.startLoopbackOnly());
   const analyticsPlatform = process.platform;
   if (analyticsPlatform !== "darwin" && analyticsPlatform !== "win32" && analyticsPlatform !== "linux") {
     throw new Error(`Unsupported analytics platform: ${analyticsPlatform}`);
   }
   performance.mark("openbot:services.remote-desktop");
-  const analyticsEnabled = (app.isPackaged && appVariant === "production") || analyticsCaptureUrl !== null;
+  const analyticsEnabled =
+    (!INDEPENDENT_EDITION && app.isPackaged && appVariant === "production") || analyticsCaptureUrl !== null;
   const analyticsInstallId = analyticsEnabled
     ? await Effect.runPromise(
         readAnalyticsInstallId(join(app.getPath("userData"), ANALYTICS_INSTALL_ID_FILE), Date.now()),
@@ -2882,7 +3012,7 @@ export async function createApplicationServices({
   });
   // Immediately after construction: this attributes buffered events to the current owner rather
   // than flushing a queue, so a later call would attribute them to nobody.
-  analytics.flushPending();
+  if (analyticsEnabled) analytics.flushPending();
   service.on("failure", (failure) => analytics.handleFailure(failure));
   resourceMonitor.start(() => analytics.checkResources());
   const connectTrace = new RemoteConnectTrace((span) => trace.record(span));
@@ -2897,7 +3027,7 @@ export async function createApplicationServices({
     }),
   );
   const remoteServers = new RemoteServerManager(
-    join(app.getPath("userData"), REMOTE_SERVERS_FILE),
+    join(app.getPath("userData"), INDEPENDENT_EDITION ? LOCAL_REMOTE_SERVERS_FILE : REMOTE_SERVERS_FILE),
     safeStorageCipher("error.app.macSecureStorageUnavailable"),
     {
       createTeamAuthTicket: (serverId) => centralAuth.createTeamAuthTicket(serverId),
@@ -2964,6 +3094,7 @@ export async function createApplicationServices({
     localServerChild || serverModeEnvironment || hostedServer
       ? null
       : new LocalServers({
+          // Existing children have password owners, not upstream sessions. Preserve their pins and data.
           registryPath: join(app.getPath("userData"), LOCAL_SERVERS_FILE),
           userDataRoot: join(app.getPath("userData"), "local-servers"),
           agentRoot: join(homedir(), "OpenBot", "Servers"),
@@ -2974,6 +3105,7 @@ export async function createApplicationServices({
           trash: (path) => shell.trashItem(path),
           account: {
             accountId: () => {
+              if (INDEPENDENT_EDITION) return null;
               const state = centralAuth.getState();
               return state.status === "signed_in" ? state.user.id : null;
             },
@@ -3014,12 +3146,14 @@ export async function createApplicationServices({
   // throws when it never appears, before any window is shown - see the module it lives in. It reads
   // the joined servers to choose between WebRTC and HTTP, so it waits for the account's host list.
   if (developmentRemoteRole) {
-    await runCauseEffect(remoteServers.awaitHostDirectory());
+    if (!INDEPENDENT_EDITION) await runCauseEffect(remoteServers.awaitHostDirectory());
     await runCauseEffect(
       startDevelopmentRemoteRole({
         role: developmentRemoteRole,
         testClientEnabled: developmentTestClientEnabled,
-        clientTransport: readDevelopmentClientTransport(process.env.OPENBOT_DEV_CLIENT_TRANSPORT),
+        clientTransport: readDevelopmentClientTransport(
+          process.env.OPENBOT_DEV_CLIENT_TRANSPORT ?? (INDEPENDENT_EDITION ? "http" : undefined),
+        ),
         host,
         remoteServers,
       }),
@@ -3028,7 +3162,7 @@ export async function createApplicationServices({
   if (localServers) {
     await Effect.runPromise(localServers.initialize());
     // Removes the servers deleted while signed out. Each start registers its own server.
-    Effect.runFork(localServers.accountChanged());
+    if (!INDEPENDENT_EDITION) Effect.runFork(localServers.accountChanged());
   }
   if (localServerChild) {
     await runCauseEffect(
@@ -3172,6 +3306,7 @@ export async function createApplicationServices({
       existsSync(HOSTED_UPDATE_TRIGGER));
   // A local server is the same application as its parent, which installs the update for both.
   const updatesEnabled =
+    !INDEPENDENT_EDITION &&
     !localServerChild &&
     app.isPackaged &&
     !isNixStoreInstall() &&
@@ -3335,7 +3470,7 @@ export async function createApplicationServices({
     log: (message) => logger.info(message),
   });
   teardown.push(TEARDOWN_ORDER.idleRestart, "the restart when idle", () => idleRestart.dispose());
-  if (hostedServer) {
+  if (hostedServer && !INDEPENDENT_EDITION) {
     const hostedServerStartRetry = new HostedServerStartRetry({
       hostPhase: () => host.getStatus().phase,
       startHost: () =>
@@ -3381,7 +3516,7 @@ export async function createApplicationServices({
     teardown.push(TEARDOWN_ORDER.hostedServerActivity, "the hosted server activity report", () =>
       Effect.runPromise(hostedServerActivity.stop()),
     );
-  } else if (!serverModeEnvironment && !localServerChild) {
+  } else if (!INDEPENDENT_EDITION && !serverModeEnvironment && !localServerChild) {
     // A server that was published at the last quit is published again at launch, once (`index.ts`).
     // That start can fail when the network is not ready yet, such as at login after an update, and
     // the server then stayed private until the user published it again. A published server that a
@@ -3447,6 +3582,8 @@ export async function createApplicationServices({
 
   return {
     service,
+    localWorkspace,
+    mcpRegistry,
     routineFlows: routineFlowRuntime,
     workflows: workflowRuntime,
     workflowGitHub,
@@ -3464,6 +3601,10 @@ export async function createApplicationServices({
     bitwardenConnector,
     vault,
     mailbox,
+    e2b,
+    apiChannels,
+    e2bViewers,
+    attachmentUploads,
     storageUsage,
     browser,
     browserPictureInPicture,
@@ -3525,6 +3666,7 @@ export async function createApplicationServices({
     serverMode,
     customProviders,
     customProviderChanges,
+    customProviderModelSync,
     customAgentChanges,
     acpRegistry,
     providerDetection,

@@ -4,6 +4,7 @@
  */
 
 import type { ProviderLogoVariant } from "@openbot/brand";
+import { modelSupportsProviderAccount } from "@openbot/contracts/account-scoped-models";
 import { isKnownAgentProvider } from "@openbot/contracts/agent-providers";
 import {
   type AgentProviderRef,
@@ -92,8 +93,23 @@ export interface WorkflowCatalogs {
  * this build does not know comes from a newer host with its models, so it stays. When no provider is
  * left, the list offers all of them.
  */
-export function workflowModelProviders(catalogs: WorkflowCatalogs, current?: AgentProviderRef): AgentProviderRef[] {
-  const all = [...new Set(catalogs.models.map((option) => option.provider))];
+export function workflowModelProviders(
+  catalogs: WorkflowCatalogs,
+  current?: AgentProviderRef,
+  account?: { provider: AgentProviderRef; providerAccountId?: string },
+): AgentProviderRef[] {
+  const all = [
+    ...new Set(
+      catalogs.models
+        .filter((option) =>
+          modelSupportsProviderAccount(
+            option,
+            account && option.provider === account.provider ? account.providerAccountId : null,
+          ),
+        )
+        .map((option) => option.provider),
+    ),
+  ];
   const offered = all.filter(
     (provider) =>
       provider === current ||
@@ -106,5 +122,5 @@ export function workflowModelProviders(catalogs: WorkflowCatalogs, current?: Age
 /** The model that a new step takes: the first one of a provider that the host can run. */
 export function defaultWorkflowModel(catalogs: WorkflowCatalogs): ClientAgentModelOption | undefined {
   const [provider] = workflowModelProviders(catalogs);
-  return catalogs.models.find((option) => option.provider === provider);
+  return catalogs.models.find((option) => option.provider === provider && modelSupportsProviderAccount(option, null));
 }

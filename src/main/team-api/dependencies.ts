@@ -1,4 +1,5 @@
 import type { Effect } from "effect";
+import type { AttachmentUploadSessions } from "../../backend/attachment-upload-sessions";
 import type { ChannelService } from "../../backend/channel-service";
 import type { AcpRegistry } from "../acp-registry";
 import type { AgentAccessStore } from "../agent-access-store";
@@ -617,6 +618,7 @@ export interface TeamApiOptions {
   agentsReady?: (() => Effect.Effect<void>) | undefined;
   skills?: Pick<SkillMarketplaceService, "listInstalledForChatTags"> | undefined;
   sidebarLayout?: TeamApiSidebarLayout | undefined;
+  attachmentUploads?: AttachmentUploadSessions;
   mailbox: TeamApiMailbox;
   browser: TeamApiBrowser;
   browserView?: TeamApiBrowserView | undefined;

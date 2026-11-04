@@ -33,8 +33,9 @@ export interface GitHubBotToken {
 }
 
 export interface GitHubBotTokensOptions {
-  /** The origin of the OpenBot API, such as `https://api.openbot.run`. */
+  /** An explicitly configured, user-owned installation-token broker. */
   apiUrl: string;
+  enabled?: boolean;
   fetch: GitHubFetch;
   now: () => number;
 }
@@ -48,6 +49,7 @@ export interface GitHubBotTokensOptions {
  * reached, agents keep working as the user.
  */
 export class GitHubBotTokens {
+  readonly #enabled: boolean;
   readonly #apiUrl: string;
   readonly #fetch: GitHubFetch;
   readonly #now: () => number;
@@ -61,6 +63,7 @@ export class GitHubBotTokens {
 
   constructor(options: GitHubBotTokensOptions) {
     this.#apiUrl = options.apiUrl;
+    this.#enabled = options.enabled === true && ownBrokerOrigin(options.apiUrl);
     this.#fetch = options.fetch;
     this.#now = options.now;
   }
@@ -81,7 +84,7 @@ export class GitHubBotTokens {
 
   /** Whether a request is due: a token is near its end, or the last failure was long enough ago. */
   due(): boolean {
-    return this.#now() >= this.#nextAt;
+    return this.#enabled && this.#now() >= this.#nextAt;
   }
 
   /** Asks for a new set at the next check, as after an install that added repositories. */
@@ -105,11 +108,13 @@ export class GitHubBotTokens {
     userToken: string,
     signal?: AbortSignal,
   ): Effect.fn.Return<void, GitHubOperationError> {
+    if (!this.#enabled) return;
     const epoch = this.#epoch;
     yield* Effect.gen({ self: this }, function* () {
       const response = yield* githubCall((fiberSignal) =>
         this.#fetch(new URL("/v1/github/installation-tokens", this.#apiUrl).toString(), {
           method: "POST",
+          redirect: "error",
           headers: { Authorization: `Bearer ${userToken}`, Accept: "application/json" },
           signal: signal
             ? AbortSignal.any([signal, fiberSignal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)])
@@ -161,4 +166,22 @@ export class GitHubBotTokens {
       ),
     );
   });
+}
+
+function ownBrokerOrigin(value: string): boolean {
+  try {
+    const url = new URL(value);
+    const loopback = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
+    return (
+      (url.protocol === "https:" || (url.protocol === "http:" && loopback)) &&
+      !url.username &&
+      !url.password &&
+      url.hostname !== "openbot.run" &&
+      !url.hostname.endsWith(".openbot.run") &&
+      url.hostname !== "openbot.site" &&
+      !url.hostname.endsWith(".openbot.site")
+    );
+  } catch {
+    return false;
+  }
 }

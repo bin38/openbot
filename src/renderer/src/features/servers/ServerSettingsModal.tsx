@@ -8,6 +8,7 @@ import type {
   TeamPresenceMember,
   UpdateTeamMemberInput,
 } from "@openbot/contracts/ipc";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import type { AppTextKey } from "@openbot/i18n";
 import { classifyFailure } from "@openbot/telemetry";
 import {
@@ -58,7 +59,9 @@ import { type HostProviderSettings, HostProviderSettingsPanel } from "../setting
 import type { HostPromptCacheTtlOptions, ProviderPromptCacheSource } from "../settings/provider-prompt-cache";
 import { type ServerVaultOptions, ServerVaultPanel } from "../vault/ServerVaultPanel";
 import type { McpServerConfig, McpTestResult } from "./mcp-servers";
+import { type ServerApiChannelsOptions, ServerApiChannelsPanel } from "./ServerApiChannelsPanel";
 import { createServerAuditSection, type ServerAuditOptions } from "./ServerAuditSection";
+import { type ServerCloudComputerOptions, ServerCloudComputerPanel } from "./ServerCloudComputerPanel";
 import { ServerDesktopPanel } from "./ServerDesktopPanel";
 import { createServerGeneralSection } from "./ServerGeneralSection";
 import { type ServerImportDetail, type ServerImportOptions, ServerImportPanel } from "./ServerImportPanel";
@@ -79,9 +82,15 @@ export interface ServerSettingsModalProps {
   platform: "darwin" | "win32" | "linux";
   /** False where no remote desktop can start, such as the browser client. The section is then absent. */
   remoteDesktopSupported?: boolean;
+  /** Local E2B credentials and machines. Remote hosts do not expose this settings surface. */
+  cloudComputer?: ServerCloudComputerOptions;
+  /** Arbitrary HTTP endpoint credentials are local-only; they never use a released Team API route. */
+  apiChannels?: ServerApiChannelsOptions;
   server: ServerSummary;
   hostStatus?: HostStatus | null;
   members: TeamPresenceMember[];
+  /** Enables membership controls for a signed-in self-hosted account. Local-only workspaces omit this. */
+  membersEnabled?: boolean;
   invites: TeamInviteSummary[];
   loading?: boolean;
   loadError?: string | null;
@@ -251,6 +260,8 @@ export type ServerSettingsSection =
   | "roles"
   | "audit"
   | "desktop"
+  | "cloud-computer"
+  | "api-channels"
   | "mcp"
   | "storage"
   | "sites"
@@ -269,6 +280,8 @@ const sections = {
   roles: { title: "server.settings.rolesTitle", description: "server.settings.rolesDescription" },
   audit: { title: "server.settings.auditTitle", description: "server.settings.auditDescription" },
   desktop: { title: "server.settings.desktopTitle", description: "server.settings.desktopDescription" },
+  "cloud-computer": { title: "server.cloudComputer.title", description: "server.cloudComputer.description" },
+  "api-channels": { title: "apiChannels.title", description: "apiChannels.description" },
   mcp: { title: "server.settings.mcpTitle", description: "server.settings.mcpDescription" },
   storage: { title: "server.settings.storageTitle", description: "server.settings.storageDescription" },
   sites: { title: "server.settings.hostedSitesTitle", description: "server.settings.hostedSitesDescription" },
@@ -307,6 +320,7 @@ export function ServerSettingsModal(props: ServerSettingsModalProps) {
   let syncedServerId = "";
 
   const local = () => props.server.kind === "local";
+  const membersEnabled = () => props.membersEnabled ?? !INDEPENDENT_EDITION;
   const remoteDesktopSection = () => props.remoteDesktopSupported !== false && props.platform === "darwin";
   const configured = () => (local() ? Boolean(props.hostStatus?.configured) : true);
   /**
@@ -320,8 +334,15 @@ export function ServerSettingsModal(props: ServerSettingsModalProps) {
     if (!options || !actionsAvailable() || !serverCanAdminister(props.server, "prompt-cache-ttl-v1")) return undefined;
     return { ...options, serverId: props.server.id };
   }
-  const availableInitialSection = (): Section | null =>
-    props.initialSection === "updates" && !props.hostUpdate ? null : (props.initialSection ?? null);
+  const availableInitialSection = (): Section | null => {
+    if (
+      (!membersEnabled() && props.initialSection === "members") ||
+      (!props.apiChannels && props.initialSection === "api-channels") ||
+      (INDEPENDENT_EDITION && props.initialSection === "sites")
+    )
+      return "general";
+    return props.initialSection === "updates" && !props.hostUpdate ? null : (props.initialSection ?? null);
+  };
   const published = () => (local() ? props.hostStatus?.phase === "online" : props.server.state === "online");
 
   async function run(key: string, action: () => Promise<void>): Promise<boolean> {
@@ -379,13 +400,13 @@ export function ServerSettingsModal(props: ServerSettingsModalProps) {
         return props.server.id;
       },
       get hostedSitesApi() {
-        return props.hostedSites?.api;
+        return INDEPENDENT_EDITION ? undefined : props.hostedSites?.api;
       },
       get trackDelete() {
         return props.hostedSites?.trackDelete;
       },
     },
-    () => section() === "sites",
+    () => !INDEPENDENT_EDITION && section() === "sites",
   );
 
   /** Publishes the reserve to the shell stylesheet, which spends it as the panel's end padding. */
@@ -417,12 +438,15 @@ export function ServerSettingsModal(props: ServerSettingsModalProps) {
       name: props.server.kind === "local" && !props.hostStatus?.configured ? "" : props.server.name,
       logoUrl: props.server.logoUrl,
       editing: general.editing(),
+      // Conditional props can create compiler memos on their first read. Read them with
+      // this compute's owner, never inside the ownerless effect callback below.
+      initialSection: untrack(availableInitialSection),
     }),
-    ({ open, id, name, logoUrl, editing }) => {
+    ({ open, id, name, logoUrl, editing, initialSection }) => {
       if (!open) return;
       if (syncedServerId !== id) {
         syncedServerId = id;
-        setSection(untrack(availableInitialSection) ?? "general");
+        setSection(initialSection ?? "general");
         general.resetForServer();
         members.resetForServer();
         roles.resetForServer();
@@ -434,17 +458,23 @@ export function ServerSettingsModal(props: ServerSettingsModalProps) {
 
   /** Roles leaves with the access that gives it: a host that goes offline or a role that changes. */
   createEffect(
-    () => section() === "roles" && !roles.available(),
-    (gone) => {
-      if (gone) setSection("members");
+    () => ({
+      gone: section() === "roles" && !roles.available(),
+      fallback: membersEnabled() ? ("members" as const) : ("general" as const),
+    }),
+    ({ gone, fallback }) => {
+      if (gone) setSection(fallback);
     },
   );
 
   /** The audit log leaves with the access that gives it, as Roles does. */
   createEffect(
-    () => section() === "audit" && !audit.available(),
-    (gone) => {
-      if (gone) setSection("members");
+    () => ({
+      gone: section() === "audit" && !audit.available(),
+      fallback: membersEnabled() ? ("members" as const) : ("general" as const),
+    }),
+    ({ gone, fallback }) => {
+      if (gone) setSection(fallback);
     },
   );
 
@@ -492,13 +522,15 @@ export function ServerSettingsModal(props: ServerSettingsModalProps) {
       if (
         value === "general" ||
         value === "vault" ||
-        value === "members" ||
+        (membersEnabled() && value === "members") ||
         value === "roles" ||
         value === "audit" ||
         value === "desktop" ||
+        value === "cloud-computer" ||
+        value === "api-channels" ||
         value === "mcp" ||
         value === "storage" ||
-        value === "sites" ||
+        (!INDEPENDENT_EDITION && value === "sites") ||
         value === "providers" ||
         value === "updates" ||
         value === "import" ||
@@ -660,10 +692,12 @@ export function ServerSettingsModal(props: ServerSettingsModalProps) {
                 <span>{t(sections.vault.title)}</span>
               </Tabs.Trigger>
             </Show>
-            <Tabs.Trigger class="settings-modal-nav-item" value="members">
-              <UsersRound aria-hidden="true" />
-              <span>{t(sections.members.title)}</span>
-            </Tabs.Trigger>
+            <Show when={membersEnabled()}>
+              <Tabs.Trigger class="settings-modal-nav-item" value="members">
+                <UsersRound aria-hidden="true" />
+                <span>{t(sections.members.title)}</span>
+              </Tabs.Trigger>
+            </Show>
             <Show when={roles.available()}>
               <Tabs.Trigger class="settings-modal-nav-item" value="roles">
                 <ShieldCheck aria-hidden="true" />
@@ -682,10 +716,22 @@ export function ServerSettingsModal(props: ServerSettingsModalProps) {
                 <span>{t(sections.desktop.title)}</span>
               </Tabs.Trigger>
             </Show>
+            <Show when={props.cloudComputer}>
+              <Tabs.Trigger class="settings-modal-nav-item" value="cloud-computer">
+                <Monitor aria-hidden="true" />
+                <span>{t(sections["cloud-computer"].title)}</span>
+              </Tabs.Trigger>
+            </Show>
             <Show when={props.mcpServers}>
               <Tabs.Trigger class="settings-modal-nav-item" value="mcp">
                 <Blocks aria-hidden="true" />
                 <span>{t(sections.mcp.title)}</span>
+              </Tabs.Trigger>
+            </Show>
+            <Show when={props.apiChannels}>
+              <Tabs.Trigger class="settings-modal-nav-item" value="api-channels">
+                <Globe2 aria-hidden="true" />
+                <span>{t(sections["api-channels"].title)}</span>
               </Tabs.Trigger>
             </Show>
             <Show when={props.storage}>
@@ -694,7 +740,7 @@ export function ServerSettingsModal(props: ServerSettingsModalProps) {
                 <span>{t(sections.storage.title)}</span>
               </Tabs.Trigger>
             </Show>
-            <Show when={props.hostedSites}>
+            <Show when={!INDEPENDENT_EDITION && props.hostedSites}>
               <Tabs.Trigger class="settings-modal-nav-item" value="sites">
                 <Globe2 aria-hidden="true" />
                 <span>{t(sections.sites.title)}</span>
@@ -749,9 +795,11 @@ export function ServerSettingsModal(props: ServerSettingsModalProps) {
             </Tabs.Content>
           )}
         </Show>
-        <Tabs.Content value="members" class="settings-modal-tab-panel server-settings-panel" data-tab="members">
-          <members.Panel />
-        </Tabs.Content>
+        <Show when={membersEnabled()}>
+          <Tabs.Content value="members" class="settings-modal-tab-panel server-settings-panel" data-tab="members">
+            <members.Panel />
+          </Tabs.Content>
+        </Show>
         <Show when={roles.available()}>
           <Tabs.Content value="roles" class="settings-modal-tab-panel server-settings-panel" data-tab="roles">
             <roles.Panel />
@@ -766,6 +814,32 @@ export function ServerSettingsModal(props: ServerSettingsModalProps) {
           <Tabs.Content value="desktop" class="settings-modal-tab-panel server-settings-panel" data-tab="desktop">
             <ServerDesktopPanel server={props.server} platform={props.platform} hostStatus={props.hostStatus} />
           </Tabs.Content>
+        </Show>
+        <Show when={props.cloudComputer}>
+          {(options) => (
+            <Tabs.Content
+              value="cloud-computer"
+              class="settings-modal-tab-panel server-settings-panel"
+              data-tab="cloud-computer"
+            >
+              <Show when={section() === "cloud-computer" && props.open}>
+                <ServerCloudComputerPanel {...options()} />
+              </Show>
+            </Tabs.Content>
+          )}
+        </Show>
+        <Show when={props.apiChannels}>
+          {(options) => (
+            <Tabs.Content
+              value="api-channels"
+              class="settings-modal-tab-panel server-settings-panel"
+              data-tab="api-channels"
+            >
+              <Show when={section() === "api-channels" && props.open}>
+                <ServerApiChannelsPanel {...options()} />
+              </Show>
+            </Tabs.Content>
+          )}
         </Show>
         <Show when={props.mcpServers}>
           {(servers) => (
@@ -802,18 +876,20 @@ export function ServerSettingsModal(props: ServerSettingsModalProps) {
             </Tabs.Content>
           )}
         </Show>
-        <Show when={props.hostedSites}>
-          {(sites) => (
-            <Tabs.Content value="sites" class="settings-modal-tab-panel server-settings-panel" data-tab="sites">
-              <SettingsHostedSitesTab
-                store={hostedSites}
-                available
-                canDelete={serverRoleCanAdminister(props.server)}
-                onOpenSite={sites().onOpenSite}
-                onSeePlans={sites().onSeePlans}
-              />
-            </Tabs.Content>
-          )}
+        <Show when={!INDEPENDENT_EDITION}>
+          <Show when={props.hostedSites}>
+            {(sites) => (
+              <Tabs.Content value="sites" class="settings-modal-tab-panel server-settings-panel" data-tab="sites">
+                <SettingsHostedSitesTab
+                  store={hostedSites}
+                  available
+                  canDelete={serverRoleCanAdminister(props.server)}
+                  onOpenSite={sites().onOpenSite}
+                  onSeePlans={sites().onSeePlans}
+                />
+              </Tabs.Content>
+            )}
+          </Show>
         </Show>
         <Show when={props.providers || props.onSwitchToManageProviders}>
           <Tabs.Content value="providers" class="settings-modal-tab-panel server-settings-panel" data-tab="providers">
@@ -915,7 +991,9 @@ export function ServerSettingsModal(props: ServerSettingsModalProps) {
         </Show>
       </SettingsDialogShell>
 
-      <members.ConfirmDialogs />
+      <Show when={membersEnabled()}>
+        <members.ConfirmDialogs />
+      </Show>
       <general.LeaveDialog />
       <general.RotateKeyDialog />
     </Tabs.Root>

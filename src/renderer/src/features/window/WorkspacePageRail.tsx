@@ -1,4 +1,5 @@
 import { isUpdateActivePhase } from "@openbot/contracts/ipc";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { AGENT_TASKS_CAPABILITY } from "@openbot/contracts/team-protocol/agent-tasks-v1";
 import type { SidebarView } from "@openbot/ui/features/sidebar/sidebar-types";
 import { PageRail, type PageRailPage } from "@openbot/ui/features/window/PageRail";
@@ -49,6 +50,7 @@ export function WorkspacePageRail(props: { hidden: boolean }) {
   const localAgentUsage = () => (activeServer()?.kind === "local" ? customAgentUsage() : []);
   /** The compact sidebar has no footer, so the update island does not show. The Settings button then marks the update. */
   const updateNotice = () => {
+    if (INDEPENDENT_EDITION) return undefined;
     const phase = updates.status().phase;
     if (!layout.leftPanelCompact() || !isUpdateActivePhase(phase)) return undefined;
     return text.t(phase === "ready" || phase === "installing" ? "account.update.ready" : "account.update.available");
@@ -80,14 +82,17 @@ export function WorkspacePageRail(props: { hidden: boolean }) {
       onUsage={windowPage.openUsage}
       onMarketplace={() => setSkillsMarketplaceOpen(true)}
       onSettings={(button) => (updateNotice() ? openAppSettings(button, "updates") : windowPage.openSettings(button))}
+      onComputerUse={(button) => openAppSettings(button, "computer-use")}
       settingsNotice={updateNotice()}
       logo={logo()}
       help={
-        <RailHelpMenu
-          version={whatsNew.state.version}
-          onOpenWhatsNew={whatsNew.reopen}
-          onOpenLink={(destination) => void appPort().openExternal(destination)}
-        />
+        INDEPENDENT_EDITION ? undefined : (
+          <RailHelpMenu
+            version={whatsNew.state.version}
+            onOpenWhatsNew={whatsNew.reopen}
+            onOpenLink={(destination) => void appPort().openExternal(destination)}
+          />
+        )
       }
     />
   );

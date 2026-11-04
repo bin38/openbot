@@ -1,6 +1,13 @@
 import { defineMessages } from "../../message";
 
 export const messages = defineMessages("settings", {
+  "settings.panelError.title": "Panel unavailable",
+  "settings.panelError.description": "This panel encountered an error. Other features remain available.",
+  "settings.panelError.retry": "Reload panel",
+  "settings.panelError.close": "Close panel",
+  "settings.localWorkspace.title": "Local workspace",
+  "settings.localWorkspace.description":
+    "This workspace uses the identity on this computer. Manage your model accounts and API keys in Server settings, Providers.",
   // The language setting itself.
   "settings.language.title": "Language",
   "settings.language.description": "OpenBot shows menus, buttons and messages in this language.",
@@ -207,6 +214,37 @@ export const messages = defineMessages("settings", {
   "settings.disconnect.action": "Disconnect",
   "settings.disconnect.pending": "Disconnecting…",
   // The Mobile Connect tab.
+  "settings.mobileConnect.selfHosted.title": "Self-hosted phone connection",
+  "settings.mobileConnect.selfHosted.description":
+    "Connect the original OpenBot phone app through your own service. Sign in here, then add a phone to publish this computer.",
+  "settings.mobileConnect.selfHosted.unconfigured": "Configure your own connection services first",
+  "settings.mobileConnect.selfHosted.localOnly": "This workspace still uses a local owner",
+  "settings.mobileConnect.selfHosted.signedOut": "Sign in to your own account service first",
+  "settings.mobileConnect.selfHosted.unpublished": "Signed in. Add a phone to publish this computer",
+  "settings.mobileConnect.selfHosted.ready": "Your account host is ready to pair a phone",
+  "settings.mobileConnect.selfHosted.checking": "Checking phone connection setup",
+  "settings.mobileConnect.selfHosted.requirements":
+    "Use an account on your own connection service. Your Codex account continues to run AI chats.",
+  "settings.mobileConnect.selfHosted.origin": "Account service: {origin}",
+  "settings.mobileConnect.selfHosted.signedInAs": "Signed in as {email}",
+  "settings.mobileConnect.selfHosted.publishHelp":
+    "Add phone publishes this computer to this account and waits for a connection before showing the QR code. Keep this Mac awake for phone access.",
+  "settings.mobileConnect.selfHosted.signOutTitle": "Disconnect this computer from the account?",
+  "settings.mobileConnect.selfHosted.signOutDescription":
+    "Phone connections to this computer will stop. Local chats, files, and Codex access stay available. Sign in and add a phone to connect again.",
+  "settings.mobileConnect.selfHosted.refresh": "Check setup again",
+  "settings.mobileConnect.selfHosted.guide": "Deployment and phone setup",
+  "settings.mobileConnect.selfHosted.stepServices":
+    "1. Deploy your account service, Signal, and TURN relay with trusted HTTPS addresses. These services let the phone find this computer outside your home network.",
+  "settings.mobileConnect.selfHosted.stepHost":
+    "2. Sign in on this page, then choose Add phone. The app publishes this computer to your account and creates a short-lived pairing code after the connection is ready.",
+  "settings.mobileConnect.selfHosted.stepPhone":
+    "3. In the original OpenBot phone app, sign out of any previous account and scan this computer's QR code. Use the QR entry; email sign-in on the phone uses the original account service.",
+  "settings.mobileConnect.selfHosted.localIdentity":
+    "The local owner, agents, conversations, and files stay on this computer. Sign-in alone does not publish the computer. Add phone enables access through your own connection service.",
+  "settings.mobileConnect.selfHosted.openAccount": "Open my account service",
+  "settings.mobileConnect.selfHosted.checkFailed": "Could not read phone connection setup. Try again.",
+  "settings.mobileConnect.selfHosted.openFailed": "Could not open the account service.",
   "settings.mobileConnect.phones.title": "Your phones",
   "settings.mobileConnect.phones.description": "Phones that use OpenBot with this account.",
   "settings.mobileConnect.phones.add": "Add phone",

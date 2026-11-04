@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./account-scoped-models": "./src/account-scoped-models.ts",
+    "./product-edition": "./src/product-edition.ts",
+    "./ipc-mcp-registry": "./src/ipc-mcp-registry.ts",
     "./live-activity-relay": "./src/live-activity-relay.ts",
     "./notification-relay": "./src/notification-relay.ts",
     "./agent-mention-rank": "./src/agent-mention-rank.ts",
@@ -155,6 +158,7 @@
     "./team-protocol/vault-import-v1": "./src/team-protocol/vault-import-v1.ts",
     "./team-protocol/vault-v1": "./src/team-protocol/vault-v1.ts",
     "./team-protocol/vault-v2": "./src/team-protocol/vault-v2.ts",
+    "./team-protocol/streaming-attachments-v1": "./src/team-protocol/streaming-attachments-v1.ts",
     "./team-protocol/live-activity-push-v1": "./src/team-protocol/live-activity-push-v1.ts",
     "./team-protocol/push-notifications-v1": "./src/team-protocol/push-notifications-v1.ts",
     "./team-protocol/push-notifications-android-v1": "./src/team-protocol/push-notifications-android-v1.ts",

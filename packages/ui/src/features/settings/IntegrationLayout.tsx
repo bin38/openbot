@@ -375,10 +375,13 @@ export function WizardDialog(
     closeDisabled?: boolean | undefined;
     nested?: boolean | undefined;
     wide?: boolean | undefined;
+    /** Mount nested popups inside this dialog's focus and accessibility boundary. */
+    contentRef?: ((element: HTMLElement) => void) | undefined;
     onClose: () => void;
   },
 ) {
   let content: HTMLElement | undefined;
+  const contentRef = props.contentRef;
   return (
     <Dialog.Root
       open={props.open}
@@ -395,6 +398,7 @@ export function WizardDialog(
           as="section"
           ref={(element) => {
             content = element;
+            contentRef?.(element);
           }}
           onOpenAutoFocus={(event) => {
             // A form opens on what it asks for: its first field, or its submit when it asks for nothing.

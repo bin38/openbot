@@ -3,6 +3,7 @@ import {
   AudioLines,
   Button,
   buttonVariants,
+  Cloud,
   DropdownMenu,
   Folder,
   Maximize2,
@@ -34,10 +35,11 @@ const THREAD_VALUE = "thread:";
  * from the composer only, and a subagent from its row in the chat, so the launcher and Add do not
  * list them.
  */
-export type SidePanelPane = "browser" | "files" | "settings" | "question" | "voice" | "subagent";
+export type SidePanelPane = "browser" | "cloud-computer" | "files" | "settings" | "question" | "voice" | "subagent";
 
 const PANE_LABELS: Record<SidePanelPane, AppTextKey> = {
   browser: "conversation.sidePanel.pane.browser",
+  "cloud-computer": "conversation.sidePanel.pane.cloudComputer",
   files: "conversation.sidePanel.pane.files",
   settings: "conversation.sidePanel.pane.settings",
   question: "conversation.sidePanel.pane.question",
@@ -50,6 +52,8 @@ function PaneIcon(props: { pane: SidePanelPane }): JSX.Element {
   switch (props.pane) {
     case "browser":
       return <ComputerIcon />;
+    case "cloud-computer":
+      return <Cloud aria-hidden="true" />;
     case "files":
       return <Folder aria-hidden="true" />;
     case "settings":

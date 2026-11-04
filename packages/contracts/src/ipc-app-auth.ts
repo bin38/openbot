@@ -2,16 +2,27 @@ import type { ManagedProviderId, ManagedToolRuntimeId } from "./agent-providers"
 import type { AgentModelId } from "./ipc-agent-identity";
 import type { AgentProviderId } from "./ipc-agent-status";
 import { integerInRange, isFiniteNumber, isIdentifier } from "./ipc-bounded-values";
+import type { LocalWorkspaceProfile } from "./product-edition";
 import { isDynamicRecord, isString } from "./runtime-values";
 
 export type DesktopPlatform = "darwin" | "win32" | "linux";
 export type AppVariant = "production" | "dev" | "preview";
+
+/** Read-only pairing readiness. A local owner is never a remote account credential. */
+export interface MobileConnectAvailability {
+  state: "unconfigured" | "local-only" | "signed-out" | "unpublished" | "ready";
+  accountOrigin: string | null;
+}
 
 export interface AppInfo {
   name: string;
   version: string;
   platform: DesktopPlatform;
   variant: AppVariant;
+  /** Present when the host uses its own local owner instead of a central account. */
+  localWorkspace?: LocalWorkspaceProfile;
+  /** Present in the independent edition; no pairing or publication is started by this read. */
+  mobileConnectAvailability?: MobileConnectAvailability;
   /** Set only in an unpackaged build that a local analytics capture server reads. */
   analyticsCaptureUrl?: string;
   /** The random analytics ID of this install, for events that do not go with the account. */

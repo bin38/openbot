@@ -60,10 +60,9 @@ function DesktopChannelConversation(props: { channelId: string; account: () => C
   const { activeRemoteDesktopSession, remoteDesktopWorkspaceVisible, openRemoteDesktopWorkspace } = useRemoteDesktop();
   const windowPage = useWindowPage();
   const isOwnSender = (senderId: string) => {
-    const state = auth.centralAuth();
     return isReaderAuthor(senderId, {
       memberId: currentTeamMember()?.id ?? null,
-      accountUserId: state.status === "signed_in" ? state.user.id : null,
+      accountUserId: auth.currentWorkspaceUserId(activeServer()),
       onOwnComputer: activeServer()?.kind === "local",
     });
   };

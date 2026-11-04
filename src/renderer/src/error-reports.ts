@@ -10,6 +10,7 @@ import {
   openPanelTransport,
   ReportQueue,
   safeProperties,
+  telemetryEndpoint,
 } from "@openbot/telemetry";
 import { indexedReportStorage } from "@openbot/telemetry/browser";
 import { Effect } from "effect";
@@ -21,6 +22,7 @@ export const ANALYTICS_SCHEMA_VERSION = ANALYTICS_GENERATIONS.desktop;
 let queue: ReportQueue | undefined;
 let enabled = false;
 let configured = false;
+let transportConfigured = false;
 const startup: { properties: FailureProperties; timestamp: number }[] = [];
 let profileId: string | null = null;
 /** The random install ID. Reports go with it when the user does not share analytics. */
@@ -41,13 +43,19 @@ export function configureDesktopReports(
   tracking: boolean,
   user: Pick<CentralAuthUser, "id" | "email"> | null,
 ): void {
-  const capture = info.analyticsCaptureUrl;
-  if (capture === undefined && (!import.meta.env.PROD || info.variant !== "production")) return;
+  const capture = telemetryEndpoint(info.analyticsCaptureUrl);
+  if (!capture) {
+    transportConfigured = false;
+    configured = true;
+    startup.splice(0);
+    configureErrorReports(false, null);
+    return;
+  }
   queue ??= new ReportQueue(
     indexedReportStorage("openbot-desktop-error-reports-v1"),
     openPanelTransport({
-      clientId: "6c989975-87ef-4f0c-857e-ab449a65b5c2",
-      ...(capture === undefined ? {} : { endpoint: `${capture}/track` }),
+      clientId: "independent-local-capture",
+      endpoint: `${capture}/track`,
     }),
     {
       surface: "desktop",
@@ -56,6 +64,7 @@ export function configureDesktopReports(
       event_schema_version: ANALYTICS_SCHEMA_VERSION,
     },
   );
+  transportConfigured = true;
   installId = info.analyticsInstallId ?? null;
   configureErrorReports(tracking, user?.id ?? null);
 }
@@ -65,14 +74,14 @@ export function configureDesktopReports(
  * Off: they go with the install ID only, and not at all without one.
  */
 export function configureErrorReports(tracking: boolean, accountId: string | null = profileId): void {
-  enabled = tracking;
+  enabled = transportConfigured && tracking;
   profileId = accountId;
   if (queue) {
     const initial = !configured;
     configured = true;
     const account = tracking ? accountId : null;
     const subject = tracking ? accountId : installId;
-    const sending = tracking || subject !== null;
+    const sending = transportConfigured && (tracking || subject !== null);
     Effect.runFork(
       queue.configure(sending, subject).pipe(
         Effect.andThen(() => {
@@ -127,14 +136,25 @@ function webAnalyticsDefault(): boolean {
   }
 }
 
-export function configureWebReports(user: Pick<CentralAuthUser, "id" | "email"> | null): void {
+export function configureWebReports(
+  user: Pick<CentralAuthUser, "id" | "email"> | null,
+  collector?: { endpoint: string; clientId: string },
+): void {
   webSignedIn = user !== null;
-  if (!import.meta.env.PROD || window.location.origin !== "https://openbot.run") return;
+  const endpoint = telemetryEndpoint(collector?.endpoint);
+  if (!import.meta.env.PROD || !endpoint || !collector?.clientId.trim()) {
+    transportConfigured = false;
+    configured = true;
+    startup.splice(0);
+    configureErrorReports(false, null);
+    return;
+  }
   queue ??= new ReportQueue(
     indexedReportStorage("openbot-web-error-reports-v1"),
-    openPanelTransport({ clientId: "6c989975-87ef-4f0c-857e-ab449a65b5c2" }),
+    openPanelTransport({ clientId: collector.clientId, endpoint }),
     { surface: "web", platform: "web", app_version: version, event_schema_version: ANALYTICS_GENERATIONS.web },
   );
+  transportConfigured = true;
   installId = webAnalyticsInstallId();
   configureErrorReports(webReportsEnabled(), user?.id ?? null);
 }

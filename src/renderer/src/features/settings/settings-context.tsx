@@ -6,6 +6,7 @@ import {
   type ExternalLinkTarget,
 } from "@openbot/contracts/ipc";
 import type { MarketplaceListingLink } from "@openbot/contracts/marketplace-links";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { DEFAULT_GENERAL_SETTINGS, type GeneralSettingsValue } from "@openbot/ui/features/settings/app-settings";
 import { currentText } from "@openbot/ui/text";
 import { createEffect, createSignal, flush, onSettled } from "solid-js";
@@ -170,6 +171,11 @@ const Settings = createSimpleContext({
         analyticsEnabled: analyticsPreferenceLoaded(),
       }),
       ({ info, setup, auth, analyticsEnabled }) => {
+        if (INDEPENDENT_EDITION) {
+          desktopAnalytics.setTrackingEnabled(false);
+          desktopAnalytics.setUser(null);
+          return;
+        }
         if (analyticsEnabled === null) return;
         if (landingPreview) return;
         desktopAnalytics.setTrackingEnabled(analyticsEnabled);

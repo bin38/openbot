@@ -13,6 +13,7 @@ import type {
 } from "@openbot/contracts/ipc";
 import {
   CUSTOM_PROVIDER_LIMITS,
+  CUSTOM_PROVIDER_LOCAL_MODEL_LIMIT,
   composedCustomModelId,
   isAgentModel,
   isCustomProviderContextWindow,
@@ -62,9 +63,18 @@ export function parseBaseUrl(value: unknown): string {
   return text;
 }
 
-function parseModels(providerId: string, value: unknown): CustomProviderModel[] {
+function parseModels(
+  providerId: string,
+  value: unknown,
+  limit: number = CUSTOM_PROVIDER_LOCAL_MODEL_LIMIT,
+): CustomProviderModel[] {
   if (!Array.isArray(value) || value.length === 0) throw new Error(sourceText("error.provider.modelsRequired"));
-  if (value.length > CUSTOM_PROVIDER_LIMITS.models) throw new Error(sourceText("error.provider.modelsTooMany"));
+  if (value.length > limit)
+    throw new Error(
+      limit === CUSTOM_PROVIDER_LIMITS.models
+        ? sourceText("error.provider.modelsTooMany")
+        : sourceText("error.provider.localModelsTooMany", { max: limit }),
+    );
   const models: CustomProviderModel[] = [];
   const seen = new Set<string>();
   for (const entry of value) {
@@ -164,7 +174,10 @@ function parseHarness(value: unknown): CustomProviderHarness | undefined {
   return value;
 }
 
-export function parseSaveCustomProvider(input: unknown): SaveCustomProviderInput {
+export function parseSaveCustomProvider(
+  input: unknown,
+  modelLimit: number = CUSTOM_PROVIDER_LOCAL_MODEL_LIMIT,
+): SaveCustomProviderInput {
   if (!isObject(input)) throw new Error("Invalid endpoint.");
   const id = parseProviderId(input.id);
   const harness = parseHarness(input.harness);
@@ -173,7 +186,7 @@ export function parseSaveCustomProvider(input: unknown): SaveCustomProviderInput
     name: requireString(input.name, "Display name", INPUT_LIMITS.agentName),
     baseUrl: parseBaseUrl(input.baseUrl),
     apiKey: parseApiKey(input.apiKey),
-    models: parseModels(id, input.models),
+    models: parseModels(id, input.models, modelLimit),
     headers: parseHeaders(input.headers),
     ...(harness ? { harness } : {}),
   };

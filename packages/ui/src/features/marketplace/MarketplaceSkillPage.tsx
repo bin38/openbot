@@ -4,6 +4,7 @@ import {
   type MarketplaceSkillDetail,
   type MarketplaceSkillSummary,
 } from "@openbot/contracts/ipc";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import {
   Button,
   Input,
@@ -201,9 +202,11 @@ function SkillInformation(props: { skill: MarketplaceSkillSummary }) {
   const { t, format } = useText();
   const installs = useInstalls();
   const source = () =>
-    props.skill.verified === true
-      ? t("marketplace.skills.source.verifiedLong")
-      : t("marketplace.skills.source.publicLong");
+    INDEPENDENT_EDITION
+      ? t("marketplace.local.skillTrust")
+      : props.skill.verified === true
+        ? t("marketplace.skills.source.verifiedLong")
+        : t("marketplace.skills.source.publicLong");
   const facts = () => [
     { label: t("marketplace.properties.creator"), value: props.skill.creatorName },
     { label: t("marketplace.skills.sourceLabel"), value: source() },

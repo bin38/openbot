@@ -80,6 +80,7 @@ function RailPreview(props: {
           onUsage={() => setCurrent("usage")}
           onMarketplace={fn()}
           onSettings={() => setCurrent("settings")}
+          onComputerUse={() => setCurrent("settings")}
           settingsNotice={props.updateReady ? t("account.update.ready") : undefined}
           logo={props.logo}
           help={

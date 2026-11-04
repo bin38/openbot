@@ -46,11 +46,13 @@ import {
   SIGNED_OUT_CHANNEL_MEMBER_ID,
 } from "@openbot/contracts/ipc";
 import type { LiveActivityRelayPush } from "@openbot/contracts/live-activity-relay";
+import type { LocalWorkspaceProfile } from "@openbot/contracts/product-edition";
 import type { HostRestartState } from "@openbot/contracts/team-protocol/host-update-v1";
 import { sourceText } from "@openbot/i18n/source";
 import { createOpenBotLogger, toLogValue } from "@openbot/logging";
 import { Cause, Context, Deferred, Effect, Fiber, Layer, ManagedRuntime, Result, Semaphore } from "effect";
 import type { AgentService } from "../backend/agent-service";
+import type { AttachmentUploadSessions } from "../backend/attachment-upload-sessions";
 import type { ChannelService } from "../backend/channel-service";
 import type { TeamChatStore } from "../backend/team-chat-store";
 import type { AgentAccessStore } from "./agent-access-store";
@@ -58,6 +60,8 @@ import { type AgentNotificationLevelStore, OWNER_NOTIFICATION_KEY } from "./agen
 import { BrowserViewGateway } from "./browser-view-gateway";
 import type { RemoteHostTicketHome, VerifiedRemoteSessionTicket } from "./central-auth-manager";
 import { LiveActivityPushService, LiveActivitySendFailure } from "./live-activity-push";
+import type { LocalMobileConsentStore } from "./local-mobile-consent-store";
+import { createLocalMobilePublication, type LocalMobilePublication } from "./local-mobile-publication";
 import type { PushNotificationStore } from "./push-notification-store";
 import {
   type NotificationRelayRequest,
@@ -102,6 +106,11 @@ interface MemberAuditActor {
 type ForwardedApiOptions = ConstructorParameters<typeof TeamApiServer>[0];
 
 interface HostServiceOptions {
+  /** Omit upstream cloud products without changing the frozen protocols that remain available. */
+  independentServices?: boolean;
+  localWorkspace?: LocalWorkspaceProfile | null;
+  localMobileConsent?: LocalMobileConsentStore;
+  attachmentUploads?: AttachmentUploadSessions;
   channels?: ChannelService;
   mcpServers?: ForwardedApiOptions["mcpServers"];
   mcpSignIns?: ForwardedApiOptions["mcpSignIns"];
@@ -269,6 +278,7 @@ export class HostService extends EventEmitter<HostEvents> {
   readonly #browserView: BrowserViewGateway;
   #lastBrowserViewInputAt: number | null = null;
   readonly #webrtcGateway: TeamWebRtcHostGateway | null;
+  readonly #localMobilePublication: LocalMobilePublication | null;
   readonly #liveActivityPush: LiveActivityPushService | undefined;
   readonly #pushNotifications: PushNotificationService | undefined;
   #status: HostStatus;
@@ -358,7 +368,7 @@ export class HostService extends EventEmitter<HostEvents> {
         this.#lastBrowserViewInputAt = Date.now();
       },
     });
-    const sendLiveActivityPush = options.sendLiveActivityPush;
+    const sendLiveActivityPush = options.localWorkspace ? undefined : options.sendLiveActivityPush;
     this.#liveActivityPush = sendLiveActivityPush
       ? new LiveActivityPushService({
           agents: options.agents,
@@ -380,7 +390,7 @@ export class HostService extends EventEmitter<HostEvents> {
           logger,
         })
       : undefined;
-    const sendPushNotification = options.sendPushNotification;
+    const sendPushNotification = options.localWorkspace ? undefined : options.sendPushNotification;
     const pushNotificationStore = options.pushNotificationStore;
     this.#pushNotifications =
       sendPushNotification && pushNotificationStore
@@ -424,7 +434,14 @@ export class HostService extends EventEmitter<HostEvents> {
             logger,
           })
         : undefined;
+    const localAdmin = { ...options.admin };
+    if (options.independentServices) {
+      // Native local templates are not the released cloud-publication or update API.
+      delete localAdmin.agentTemplates;
+      delete localAdmin.update;
+    }
     this.#api = new TeamApiServer({
+      attachmentUploads: options.attachmentUploads,
       appVersion: options.appVersion,
       store: options.store,
       agents: options.agents,
@@ -446,7 +463,7 @@ export class HostService extends EventEmitter<HostEvents> {
         : { mcpToolRuntimePreparation: options.mcpToolRuntimePreparation }),
       ...(options.storage === undefined ? {} : { storage: options.storage }),
       ...(options.machine === undefined ? {} : { machine: options.machine }),
-      ...(options.hostedSites === undefined ? {} : { hostedSites: options.hostedSites }),
+      ...(options.hostedSites === undefined || options.independentServices ? {} : { hostedSites: options.hostedSites }),
       ...(options.events === undefined ? {} : { events: options.events }),
       ...(options.agentImport === undefined ? {} : { agentImport: options.agentImport }),
       ...(options.instanceTransfer === undefined ? {} : { instanceTransfer: options.instanceTransfer }),
@@ -466,9 +483,9 @@ export class HostService extends EventEmitter<HostEvents> {
       // settings on this computer, and only where they can run: a host with no account service has
       // nothing to accept the handover.
       admin: {
-        ...options.admin,
+        ...localAdmin,
         identity: { updateIdentity: (input) => this.updateIdentity(input).pipe(Effect.asVoid) },
-        ...(options.handOverRemoteHostKey && options.registerRemoteHost
+        ...(!options.localWorkspace && options.handOverRemoteHostKey && options.registerRemoteHost
           ? { hostKey: { rotate: () => this.#rotateIdentityKeyForOwner() } }
           : {}),
       },
@@ -507,15 +524,22 @@ export class HostService extends EventEmitter<HostEvents> {
           appVersion: options.appVersion,
           transferDirectory: join(options.logDirectory ?? ".openbot-remote", "transfers"),
           renewSignal: (hostId, failedSignalUrl) =>
-            Effect.gen(function* () {
+            Effect.gen({ self: this }, function* () {
               const issueTicket = options.issueRemoteHostTicket;
               if (!issueTicket)
                 return yield* new RemoteWorkflowError({
                   cause: new Error(sourceText("error.host.webRtcNotConfigured")),
                 });
-              return yield* issueTicket(hostId, failedSignalUrl === undefined ? {} : { failedSignalUrl });
+              const request = issueTicket(hostId, failedSignalUrl === undefined ? {} : { failedSignalUrl });
+              return yield* this.#localMobilePublication?.withAccount(request) ?? request;
             }),
           onSignalRecoveryFailure: (error, reason) => {
+            if (options.localWorkspace) {
+              logger.warn(`Local host Signal recovery failed: ${reason}.`);
+              this.#webRtcOnline = false;
+              this.#localMobilePublication?.signalFailed();
+              return;
+            }
             logger.warn(`Host phase ${this.#status.phase} -> error: Signal ${reason}.`);
             this.#setStatus({
               phase: "error",
@@ -542,10 +566,56 @@ export class HostService extends EventEmitter<HostEvents> {
               this.#pushNotifications?.reconnected(sessionId);
             }
           },
-          ...(options.verifyRemoteSessionTicket ? { verifyClientTicket: options.verifyRemoteSessionTicket } : {}),
+          ...(options.verifyRemoteSessionTicket
+            ? {
+                verifyClientTicket: (ticket: string) => {
+                  const verify = options.verifyRemoteSessionTicket;
+                  if (!verify)
+                    return Effect.fail(
+                      new RemoteWorkflowError({ cause: new Error(sourceText("error.host.webRtcNotConfigured")) }),
+                    );
+                  const request = verify(ticket);
+                  const publication = this.#localMobilePublication;
+                  return publication
+                    ? publication
+                        .withAccount(request)
+                        .pipe(Effect.tap((session) => Effect.sync(() => publication.rememberSession(session))))
+                    : request;
+                },
+              }
+            : {}),
           ...(options.privateNetwork ? { privateNetwork: options.privateNetwork } : {}),
         })
       : null;
+    this.#localMobilePublication =
+      options.localWorkspace && options.remoteControlPlaneUrl
+        ? createLocalMobilePublication({
+            accountOrigin: new URL(options.remoteControlPlaneUrl).origin,
+            consent: options.localMobileConsent,
+            getAccountId: () => this.#signedInAccountId(),
+            getHost: () => this.getMobileConnectHost(),
+            startLoopback: () => this.startLoopbackOnly(),
+            register: () =>
+              Effect.gen({ self: this }, function* () {
+                const register = this.#options.registerRemoteHost;
+                if (!register)
+                  return yield* new RemoteWorkflowError({
+                    cause: new Error(sourceText("error.host.webRtcNotConfigured")),
+                  });
+                yield* this.#registerRemoteHost(register, yield* remoteDecode(() => this.#requiredOwnerMemberId()));
+              }),
+            publish: () => this.publishLocalServer(),
+            stop: () => {
+              this.#webRtcOnline = false;
+              return this.#webrtcGateway?.stop() ?? Effect.void;
+            },
+            closeRemoteSessions: () => {
+              for (const session of this.#options.store.listSessions())
+                this.#options.store.closeRemoteSession(session.id);
+            },
+            changed: () => this.emit("changed", this.getStatus()),
+          })
+        : null;
   }
 
   /** Applies a changed network route to the devices that are connected now. */
@@ -733,6 +803,36 @@ export class HostService extends EventEmitter<HostEvents> {
     return identity ? { hostId: identity.serverId, fingerprint: identity.fingerprint } : null;
   }
 
+  isMobileConnectPublished(): boolean {
+    if (this.#localMobilePublication) return this.#localMobilePublication.isPublished();
+    return this.#status.phase === "online" && this.#status.apiOnline && this.#webRtcOnline;
+  }
+
+  readonly publishForMobileConnect = Effect.fn("HostService.publishForMobileConnect")(
+    function* (this: HostService): Effect.fn.Return<HostStatus, RemoteWorkflowError> {
+      if (this.#shutdown) return yield* new RemoteWorkflowError({ cause: new Error(sourceText("error.app.notReady")) });
+      if (!this.#localMobilePublication) return yield* this.start();
+      yield* this.#localMobilePublication.publish();
+      return this.getStatus();
+    },
+    (operation) => this.#provide(operation),
+  ).bind(this);
+
+  /** Account events revoke only external access. They never rebind the local owner or stop loopback. */
+  localMobileAccountChanged(accountId: string | null, signedOut: boolean): Effect.Effect<void, RemoteWorkflowError> {
+    const change = this.#localMobilePublication?.accountChanged(accountId, signedOut) ?? Effect.void;
+    return this.#provide(change);
+  }
+
+  /** Startup may restore only the exact account, origin and host binding that was explicitly saved. */
+  readonly restoreLocalMobilePublication = Effect.fn("HostService.restoreLocalMobilePublication")(
+    function* (this: HostService): Effect.fn.Return<void, RemoteWorkflowError> {
+      if (this.#shutdown) return;
+      if (this.#localMobilePublication) yield* this.#localMobilePublication.restore();
+    },
+    (operation) => this.#provide(operation),
+  ).bind(this);
+
   readonly configure = Effect.fn("HostService.configure")(
     function* (this: HostService, input: ConfigureHostInput): Effect.fn.Return<HostStatus, RemoteWorkflowError> {
       const optionalRegisterRemoteHost = this.#options.registerRemoteHost;
@@ -801,7 +901,8 @@ export class HostService extends EventEmitter<HostEvents> {
     function* (this: HostService, input: UpdateHostIdentityInput): Effect.fn.Return<HostStatus, RemoteWorkflowError> {
       const optionalRegisterRemoteHost = this.#options.registerRemoteHost;
       const optionalUpdateRemoteHostLogo = this.#options.updateRemoteHostLogo;
-      yield* remoteDecode(() => this.#options.store.assertOwnerAccount(this.#options.getSignedInUser()));
+      if (!this.#options.localWorkspace)
+        yield* remoteDecode(() => this.#options.store.assertOwnerAccount(this.#options.getSignedInUser()));
       const identity = yield* this.#options.store.updateIdentity(input);
       // Before anything is published: the store checked the account before it resolved, and a
       // switch landing in this gap would show the previous account's name and logo.
@@ -812,6 +913,7 @@ export class HostService extends EventEmitter<HostEvents> {
         message: sourceText("status.host.identityUpdated"),
       });
       this.#api.refreshIdentity();
+      if (this.#options.localWorkspace) return this.getStatus();
       const ownerMembershipId = yield* remoteDecode(() => this.#requiredOwnerMemberId());
       if (optionalRegisterRemoteHost) yield* this.#registerRemoteHost(optionalRegisterRemoteHost, ownerMembershipId);
       if (input.logo !== undefined && this.#isActiveHost(identity.serverId)) {
@@ -894,12 +996,13 @@ export class HostService extends EventEmitter<HostEvents> {
       yield* this.#resolvePendingKeyRotation();
       const identity = this.#options.store.getIdentity();
       if (!identity) return;
-      yield* register({
+      const registration = register({
         hostId: identity.serverId,
         name: identity.serverName,
         ownerMembershipId,
         devicePublicKey: identity.publicKey,
       });
+      yield* this.#localMobilePublication?.withAccount(registration) ?? registration;
     },
     (operation) => this.#hostKeyLock.withPermit(operation),
   );
@@ -929,6 +1032,7 @@ export class HostService extends EventEmitter<HostEvents> {
   }
 
   readonly start = Effect.fn("HostService.start")(function* (this: HostService) {
+    if (this.#options.localWorkspace) return yield* this.startLoopbackOnly();
     if (this.#startOperation) return yield* Fiber.join(this.#startOperation);
     const operation = yield* Effect.forkIn(this.#provide(this.#startRuntimeOperation()), this.#runtime.scope, {
       startImmediately: false,
@@ -1074,8 +1178,9 @@ export class HostService extends EventEmitter<HostEvents> {
         yield* gateway.stop();
       }
       const failedSignalUrl = this.#unreachedSignalUrl;
-      const bootstrap = yield* issueTicket(identity.serverId, failedSignalUrl === null ? {} : { failedSignalUrl });
-      yield* gateway
+      const request = issueTicket(identity.serverId, failedSignalUrl === null ? {} : { failedSignalUrl });
+      const bootstrap = yield* this.#localMobilePublication?.withAccount(request) ?? request;
+      const connection = gateway
         .start({
           hostId: identity.serverId,
           signalUrl: bootstrap.signalUrl,
@@ -1089,6 +1194,7 @@ export class HostService extends EventEmitter<HostEvents> {
             }),
           ),
         );
+      yield* this.#localMobilePublication?.withAccount(connection) ?? connection;
       this.#unreachedSignalUrl = null;
       this.#webRtcOnline = true;
       if (this.#status.phase === "error") this.#setStatus({ phase: "online", apiOnline: true, message: null });
@@ -1099,7 +1205,7 @@ export class HostService extends EventEmitter<HostEvents> {
   /** The desktop app signed out: devices no longer meet this server. The desktop app still reaches it on loopback. */
   readonly unpublishLocalServer = Effect.fn("HostService.unpublishLocalServer")(
     function* (this: HostService): Effect.fn.Return<void, RemoteWorkflowError> {
-      if (!this.#webRtcOnline) return;
+      if (this.#localMobilePublication) return yield* this.#localMobilePublication.revoke();
       this.#webRtcOnline = false;
       yield* this.#webrtcGateway?.stop() ?? Effect.void;
     },
@@ -1166,10 +1272,11 @@ export class HostService extends EventEmitter<HostEvents> {
 
   readonly stop = Effect.fn("HostService.stop")(
     function* (this: HostService, persistPreference = true): Effect.fn.Return<HostStatus, RemoteWorkflowError> {
+      if (persistPreference && this.#localMobilePublication) yield* this.#localMobilePublication.revoke();
       if (this.#status.phase === "unconfigured") return this.getStatus();
       const serverId = this.#options.store.getIdentity()?.serverId;
       this.#runtimeGeneration += 1;
-      if (persistPreference)
+      if (persistPreference && !this.#options.localWorkspace)
         yield* remoteDecode(() => this.#options.store.assertOwnerAccount(this.#options.getSignedInUser()));
       this.#setStatus({ phase: "stopping", message: sourceText("status.host.stopping") });
       yield* this.#stopRuntime();
@@ -1654,7 +1761,9 @@ export class HostService extends EventEmitter<HostEvents> {
   ): Effect.fn.Return<void, RemoteWorkflowError> {
     this.#liveActivityPush?.remove(sessionId);
     this.#pushNotifications?.remove(sessionId);
-    const end = this.#options.endRemoteSession;
+    // A local workspace may also have genuine sessions from its explicit mobile publication.
+    const remoteSession = this.#localMobilePublication?.hasSession(sessionId) ?? !this.#options.localWorkspace;
+    const end = remoteSession ? this.#options.endRemoteSession : undefined;
     const gateway = this.#webrtcGateway;
     yield* Effect.all([end ? end(sessionId) : Effect.void, gateway ? gateway.revokeSession(sessionId) : Effect.void], {
       concurrency: "unbounded",
@@ -1662,11 +1771,11 @@ export class HostService extends EventEmitter<HostEvents> {
   });
 
   /**
-   * Whether members and invitations live in the account directory. A local development host keeps
-   * them in its own team file, so every read and write of them goes where the others went.
+   * Whether members and invitations live in the account directory. Independent local workspaces
+   * and local development hosts keep them in their own team file, including all reads and writes.
    */
   #usesAccountDirectory(): boolean {
-    return !this.#options.localDevelopmentHost;
+    return !this.#options.localWorkspace && !this.#options.localDevelopmentHost;
   }
 
   /** The account directory that holds invitations, or `null` for this machine's own team file. */
@@ -1854,6 +1963,7 @@ export class HostService extends EventEmitter<HostEvents> {
   }
 
   readonly #stopRuntime = Effect.fn("HostService.stopRuntime")(function* (this: HostService) {
+    this.#localMobilePublication?.reset();
     this.#webRtcOnline = false;
     // The phones register again when they connect to the next runtime. The saved notification
     // phones are read again when it starts.
@@ -1888,6 +1998,7 @@ export class HostService extends EventEmitter<HostEvents> {
   }
 
   channelActor(): { id: string; name: string } {
+    if (this.#options.localWorkspace) return { ...this.#options.localWorkspace };
     let user: CentralAuthUser;
     try {
       user = this.#options.getSignedInUser();
@@ -1941,6 +2052,8 @@ export class HostService extends EventEmitter<HostEvents> {
    * members of a team they host later.
    */
   conversationSender(): ConversationMessageSender | undefined {
+    const local = this.#options.localWorkspace;
+    if (local) return conversationMessageSender(local.id, local.name);
     let user: CentralAuthUser;
     try {
       user = this.#options.getSignedInUser();
@@ -1951,6 +2064,11 @@ export class HostService extends EventEmitter<HostEvents> {
   }
 
   #currentAgentReaderId(): string {
+    const local = this.#options.localWorkspace;
+    if (local) {
+      this.#options.channels?.store.adoptReads(SIGNED_OUT_CHANNEL_MEMBER_ID, local.id);
+      return local.id;
+    }
     const accountReaderId = `local-user:${this.#options.getSignedInUser().id}`;
     const memberId = this.#findCurrentMemberId();
     // Channel reads are keyed by the reader id this method answers, so they adopt with it.
@@ -1965,6 +2083,7 @@ export class HostService extends EventEmitter<HostEvents> {
   }
 
   #findCurrentMemberId(): string | null {
+    if (this.#options.localWorkspace) return this.#options.store.getOwnerMemberId();
     try {
       const email = this.#options.getSignedInUser().email.trim().toLowerCase();
       const member = this.#options.store

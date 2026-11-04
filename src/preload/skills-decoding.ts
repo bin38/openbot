@@ -5,6 +5,7 @@
 
 import {
   createAgentTemplateShareUrl,
+  createOpenBotAgentTemplateUrl,
   isAgentTemplateId,
   isAgentTemplateShareOrigin,
 } from "@openbot/contracts/agent-template-links";
@@ -309,6 +310,9 @@ export function decodeAgentTemplatePublication(value: unknown): AgentTemplatePub
   const item = decodeRecord(value, "agent template publication");
   const templateId = requiredString(item, "templateId");
   if (!isAgentTemplateId(templateId)) throw new Error("Invalid templateId.");
+  if (item.shareUrl === createOpenBotAgentTemplateUrl(templateId)) {
+    return { templateId, shareUrl: item.shareUrl, publishedAt: requiredString(item, "publishedAt") };
+  }
   // Rebuilt from the id on the origin main names, which must be `openbot.run` or the local Worker, so
   // main cannot put a foreign address behind the link the dialog copies.
   let origin: string;

@@ -10,7 +10,7 @@ export interface SidebarPort {
     OpenBotDesktopApi["agent"],
     "getSidebarLayout" | "mutateSidebarLayout" | "getSidebarPins" | "setSidebarPins" | "seedSidebarPins"
   >;
-  storage: Pick<OpenBotDesktopApi["storage"], "getDisk" | "getMachineMetrics">;
+  storage: Pick<OpenBotDesktopApi["storage"], "getDisk" | "getMachineMetrics" | "openLocation">;
   hostAdmin: Pick<OpenBotDesktopApi["hostAdmin"], "getMachineAlerts">;
 }
 

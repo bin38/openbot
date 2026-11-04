@@ -673,4 +673,50 @@ export const messages = defineMessages("server", {
   "server.restartNotice.restartingTitle": "{name} is restarting to install an update",
   "server.restartNotice.restartingDescription": "OpenBot connects again automatically when {name} is back.",
   "server.restartNotice.backTitle": "{name} is back online",
+  "server.cloudComputer.title": "Cloud computer",
+  "server.cloudComputer.description": "Give each agent an E2B desktop that keeps its files between tasks.",
+  "server.cloudComputer.connection": "Connect E2B",
+  "server.cloudComputer.apiKey": "E2B API key",
+  "server.cloudComputer.keySaved": "A key is saved securely on this computer. Leave this field empty to keep it.",
+  "server.cloudComputer.keyMissing": "Enter your own E2B key. E2B charges your account for cloud use.",
+  "server.cloudComputer.keyUnreadable": "The saved key cannot be decrypted. Enter a working key to reconnect.",
+  "server.cloudComputer.template": "Desktop template",
+  "server.cloudComputer.templateDescription":
+    "The default desktop template includes a browser and terminal. Changes apply to new computers.",
+  "server.cloudComputer.timeout": "Automatic pause period (minutes)",
+  "server.cloudComputer.timeoutDescription":
+    "Choose 1–60 minutes. Starting, resuming, and tool actions renew this period. Human control also expires. Pausing keeps files; closing OpenBot does not delete the computer.",
+  "server.cloudComputer.privacy":
+    "Commands, desktop activity, and files you transfer are sent to your E2B account. The key stays on this computer.",
+  "server.cloudComputer.clearKey": "Remove key",
+  "server.cloudComputer.replaceKey": "Replace the E2B key?",
+  "server.cloudComputer.replaceDescription":
+    "Existing computers stay linked. A key from another E2B account cannot access them. Use a replacement key from the same account to keep access.",
+  "server.cloudComputer.clearDescription":
+    "Cloud computers stay in E2B and may keep running until their automatic pause. You will need the key again to manage them.",
+  "server.cloudComputer.machines": "Agent computers",
+  "server.cloudComputer.agent": "Agent",
+  "server.cloudComputer.noMachine": "This agent has no cloud computer yet. Creating one starts E2B usage.",
+  "server.cloudComputer.pending":
+    "The previous creation result is not confirmed. Start again to recover the same request; do not create a replacement in another account.",
+  "server.cloudComputer.runtimeNote":
+    "The agent still runs on this OpenBot host. For tasks to continue with your laptop off, run OpenBot on an always-on server.",
+  "server.cloudComputer.running": "Running",
+  "server.cloudComputer.paused": "Paused",
+  "server.cloudComputer.unknown": "Status unknown — refresh to check",
+  "server.cloudComputer.missing": "Computer not found — the saved link is preserved",
+  "server.cloudComputer.humanControl": "You have control — agent actions are paused",
+  "server.cloudComputer.create": "Create computer",
+  "server.cloudComputer.resume": "Start or resume",
+  "server.cloudComputer.refresh": "Refresh status",
+  "server.cloudComputer.screenshot": "View screenshot",
+  "server.cloudComputer.screenshotAlt": "Screenshot of this agent's cloud computer",
+  "server.cloudComputer.takeover": "Take control",
+  "server.cloudComputer.handback": "Return to agent",
+  "server.cloudComputer.pause": "Pause computer",
+  "server.cloudComputer.deleteTitle": "Delete this cloud computer?",
+  "server.cloudComputer.deleteDescription":
+    "This permanently deletes the E2B computer and the files on it. Download any files you need first. Local OpenBot conversations stay on this computer.",
+  "server.cloudComputer.confirm": "Continue",
+  "server.cloudComputer.failed": "The cloud computer action failed. Your saved connection has been kept.",
 });

@@ -7,6 +7,7 @@ import {
   parseHostedServerSummary,
 } from "@openbot/contracts/hosted-servers";
 import type { HostedServersDesktopApi } from "@openbot/contracts/ipc";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { isDynamicRecord, isString } from "@openbot/contracts/runtime-values";
 import { currentText } from "@openbot/ui/text";
 import type { AddServerResume } from "../servers/AddServerOverlay";
@@ -22,6 +23,20 @@ export function createWebHostedServerCalls(
   accountFetch: typeof fetch,
   navigate: (url: string) => void = (url) => window.location.assign(url),
 ): HostedServersDesktopApi {
+  if (INDEPENDENT_EDITION) {
+    const unavailable = (): Promise<never> =>
+      Promise.reject(new Error(currentText().t("webClient.error.commerceUnavailable")));
+    return {
+      list: async () => ({ available: false, lifecycleAvailable: false, servers: [], maxServers: null }),
+      plans: async () => ({ plans: [] }),
+      create: unavailable,
+      openCheckout: unavailable,
+      wake: unavailable,
+      restart: unavailable,
+      lifecycle: unavailable,
+      delete: unavailable,
+    };
+  }
   async function send(
     path: string,
     init: { method?: "POST" | "DELETE"; body?: string; headers?: Record<string, string> } = {},
@@ -106,5 +121,6 @@ export function takeHostingReturn(): AddServerResume | null {
   const paid = url.searchParams.get("cancelled") !== "1";
   for (const name of [WEB_APP_HOSTING_PARAM, WEB_APP_HOSTED_SERVER_PARAM, "cancelled"]) url.searchParams.delete(name);
   window.history.replaceState(window.history.state, "", url);
+  if (INDEPENDENT_EDITION) return null;
   return serverId ? { serverId, paid } : null;
 }

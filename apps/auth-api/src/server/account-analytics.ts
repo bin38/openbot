@@ -16,6 +16,7 @@ import {
   type HostedServerError,
   type HostedServerSize,
 } from "@openbot/contracts/hosted-servers";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { isOneOf } from "@openbot/contracts/runtime-values";
 import { normalizeEmailAddress } from "@openbot/contracts/validation";
 import { Effect, Schema } from "effect";
@@ -188,6 +189,7 @@ export async function readAccountEmail(database: D1Database, accountId: string):
 }
 
 export function createAccountAnalytics(options: AccountAnalyticsOptions): AccountAnalytics {
+  if (INDEPENDENT_EDITION) return NO_ACCOUNT_ANALYTICS;
   const clientId = options.clientId?.trim();
   const clientSecret = options.clientSecret?.trim();
   if (!clientId || !clientSecret) return NO_ACCOUNT_ANALYTICS;

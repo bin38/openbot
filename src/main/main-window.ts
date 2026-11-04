@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+
 /**
  * Every `BrowserWindow` the desktop app opens, the renderer URLs they load, and the application
  * menu. It is the one surface that legitimately keeps a mutable window handle: macOS destroys the
@@ -10,16 +11,21 @@ import { Effect } from "effect";
  * `createApplicationServices` has built anything. Every other dependency arrives as a value.
  */
 
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import {
   type AppVariant,
   type ChatWindowTarget,
   type ComputerUseHighlightPlacement,
+  type E2bViewerBounds,
   IPC_ENDPOINTS,
   LOCAL_SERVER_ID,
   type MacPermissionId,
 } from "@openbot/contracts/ipc";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import type { AppTextKey, AppTranslate } from "@openbot/i18n";
+import { sourceText } from "@openbot/i18n/source";
+import { createOpenBotLogger, registerSecretValue } from "@openbot/logging";
 import {
   app,
   BrowserWindow,
@@ -34,6 +40,7 @@ import {
   screen,
   session,
   type WebContents,
+  WebContentsView,
   webContents,
 } from "electron";
 import type { AgentService } from "../backend/agent-service";
@@ -48,6 +55,8 @@ import {
 import type { HighlightDisplay } from "./computer-use-highlight-window";
 import { shouldShowDevelopmentWindow } from "./development-profile";
 import { dynamicIslandNotchSizeForDisplay } from "./dynamic-island-window";
+import type { E2bDesktopStream } from "./e2b-desktop-adapter";
+import { e2bViewerHeaders, e2bViewerOrigin, e2bViewerRectangle, isE2bViewerResource } from "./e2b-viewer-policy";
 import { type InterfaceSizeService, type InterfaceSizeStep, interfaceSizeShortcut } from "./interface-size-service";
 import { preventPanelActivation } from "./mac-panel-activation";
 import {
@@ -67,6 +76,197 @@ import { followAppearance, followWindowGlass, windowBackgroundColor } from "./wi
 
 /** The dark background of the main and setup windows, under the page's own canvas. */
 const MAIN_WINDOW_DARK_BACKGROUND = "#0b0d0e";
+
+export interface E2bViewerRequest extends E2bDesktopStream {
+  agentId: string;
+  bounds?: E2bViewerBounds;
+  onClosed: () => Promise<void>;
+}
+
+/** An unprivileged, temporary session for the authenticated E2B viewer. No app preload is installed. */
+export function createE2bViewerWindows(getParent: () => BrowserWindow | null, translate: AppTranslate) {
+  const logger = createOpenBotLogger("cloud-computer-window");
+  type Surface =
+    | { kind: "window"; window: BrowserWindow }
+    | { kind: "pane"; view: WebContentsView; parent: BrowserWindow; bounds: E2bViewerBounds | null };
+  interface Entry {
+    surface: Surface;
+    contents: WebContents;
+    detach: () => void;
+    finish: () => void;
+    notifyClosed: boolean;
+  }
+  const windows = new Map<string, Entry>();
+  const close = (agentId: string) => {
+    const entry = windows.get(agentId);
+    if (!entry) return;
+    entry.notifyClosed = false;
+    windows.delete(agentId);
+    const surface = entry.surface;
+    if (surface.kind === "window") {
+      if (!surface.window.isDestroyed()) surface.window.destroy();
+    } else {
+      entry.detach();
+      if (!entry.contents.isDestroyed()) entry.contents.close({ waitForBeforeUnload: false });
+    }
+    entry.finish();
+  };
+  const place = (entry: Entry) => {
+    const surface = entry.surface;
+    if (surface.kind !== "pane" || surface.parent.isDestroyed() || entry.contents.isDestroyed()) return;
+    const [width = 0, height = 0] = surface.parent.getContentSize();
+    const rectangle = e2bViewerRectangle(surface.bounds, surface.parent.webContents.getZoomFactor(), width, height);
+    surface.view.setVisible(rectangle !== null);
+    if (rectangle) surface.view.setBounds(rectangle);
+  };
+  return {
+    mainRendererId: () => {
+      const parent = getParent();
+      return parent && !parent.isDestroyed() ? parent.webContents.id : null;
+    },
+    hasEmbedded: (agentId: string) => windows.get(agentId)?.surface.kind === "pane",
+    setBounds(agentId: string, bounds: E2bViewerBounds | null) {
+      const entry = windows.get(agentId);
+      if (entry?.surface.kind !== "pane") return;
+      entry.surface.bounds = bounds;
+      place(entry);
+    },
+    async open({ agentId, url, trafficAccessToken, bounds, onClosed }: E2bViewerRequest): Promise<void> {
+      const origin = e2bViewerOrigin(url);
+      // Validate the credential before installing request callbacks or opening a window.
+      const authentication = e2bViewerHeaders(url, origin, trafficAccessToken, {});
+      registerSecretValue(url);
+      const password = new URL(url).searchParams.get("password");
+      if (password) registerSecretValue(password, { allowShort: true });
+      if (trafficAccessToken) registerSecretValue(trafficAccessToken);
+      close(agentId);
+      const viewerSession = session.fromPartition(`e2b-viewer-${randomUUID()}`);
+      viewerSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+      viewerSession.setPermissionCheckHandler(() => false);
+      viewerSession.on("will-download", (event) => event.preventDefault());
+      viewerSession.webRequest.onBeforeRequest((details, callback) => {
+        callback({ cancel: !isE2bViewerResource(details.url, origin) });
+      });
+      viewerSession.webRequest.onBeforeSendHeaders((details, callback) => {
+        callback({
+          requestHeaders: e2bViewerHeaders(
+            details.url,
+            origin,
+            authentication["e2b-traffic-access-token"],
+            details.requestHeaders,
+          ),
+        });
+      });
+      const parent = getParent();
+      const webPreferences = {
+        session: viewerSession,
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+        webSecurity: true,
+        allowRunningInsecureContent: false,
+        webviewTag: false,
+        devTools: false,
+      };
+      let surface: Surface;
+      if (bounds) {
+        if (!parent || parent.isDestroyed()) throw new Error(sourceText("error.e2b.viewerFailed"));
+        const view = new WebContentsView({ webPreferences });
+        view.setVisible(false);
+        parent.contentView.addChildView(view);
+        surface = { kind: "pane", view, parent, bounds: null };
+      } else {
+        const window = new BrowserWindow({
+          width: 1280,
+          height: 820,
+          title: translate("server.cloudComputer.title"),
+          show: false,
+          ...(parent && !parent.isDestroyed() ? { parent } : {}),
+          webPreferences,
+        });
+        window.removeMenu();
+        window.on("page-title-updated", (event) => event.preventDefault());
+        surface = { kind: "window", window };
+      }
+      const contents = surface.kind === "window" ? surface.window.webContents : surface.view.webContents;
+      let finished = false;
+      let detached = false;
+      const listeners: (() => void)[] = [];
+      const detach = () => {
+        if (detached || surface.kind !== "pane") return;
+        detached = true;
+        try {
+          surface.view.setVisible(false);
+          if (!surface.parent.isDestroyed()) surface.parent.contentView.removeChildView(surface.view);
+        } catch {
+          logger.warn("Cloud viewer surface cleanup failed.");
+        }
+      };
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        detach();
+        for (const remove of listeners) remove();
+        if (windows.get(agentId) === entry) windows.delete(agentId);
+        if (entry.notifyClosed)
+          void onClosed().catch(() => {
+            logger.warn("Cloud computer control could not be returned. Retry from settings.");
+          });
+        void viewerSession.clearStorageData().catch(() => logger.warn("Cloud viewer session cleanup failed."));
+      };
+      const entry: Entry = { surface, contents, notifyClosed: true, finish, detach };
+      windows.set(agentId, entry);
+      contents.setWindowOpenHandler(() => ({ action: "deny" }));
+      contents.on("will-navigate", (event, next) => {
+        if (!isE2bViewerResource(next, origin)) event.preventDefault();
+      });
+      contents.on("will-attach-webview", (event) => event.preventDefault());
+      contents.once("destroyed", finish);
+      contents.once("render-process-gone", () => {
+        if (windows.get(agentId) !== entry) return;
+        const notify = entry.notifyClosed;
+        close(agentId);
+        if (notify) void onClosed().catch(() => logger.warn("Cloud computer handback needs attention."));
+      });
+      if (surface.kind === "pane") {
+        const owner = surface.parent;
+        const ownerContents = owner.webContents;
+        const hideAndReturn = () => {
+          const notify = entry.notifyClosed;
+          close(agentId);
+          if (notify) void onClosed().catch(() => logger.warn("Cloud computer handback needs attention."));
+        };
+        const resize = () => place(entry);
+        owner.on("resize", resize);
+        owner.once("closed", hideAndReturn);
+        ownerContents.on("did-start-loading", hideAndReturn);
+        ownerContents.once("render-process-gone", hideAndReturn);
+        listeners.push(() => {
+          owner.removeListener("resize", resize);
+          owner.removeListener("closed", hideAndReturn);
+          if (!ownerContents.isDestroyed()) {
+            ownerContents.removeListener("did-start-loading", hideAndReturn);
+            ownerContents.removeListener("render-process-gone", hideAndReturn);
+          }
+        });
+      }
+      try {
+        await contents.loadURL(url);
+        if (windows.get(agentId) !== entry || contents.isDestroyed()) return;
+        if (surface.kind === "window") surface.window.show();
+        // The renderer can open a dialog or resize while cloud connection is pending. It sends
+        // freshly measured bounds after takeover resolves; keep the view hidden until then.
+      } catch {
+        close(agentId);
+        throw new Error(sourceText("error.e2b.viewerFailed"));
+      }
+    },
+    close,
+    dispose() {
+      for (const agentId of windows.keys()) close(agentId);
+    },
+  };
+}
 
 /**
  * What the window surface reads off the running application. Deliberately narrower than
@@ -912,9 +1112,8 @@ function macQuitItem(translate: AppTranslate, quit: (source: MenuQuitSource) => 
 /**
  * The native application menu.
  *
- * Electron gives no way to relabel a built-in role, so the roles below stay in the system language
- * macOS and Windows draw them in, and only the custom items follow the app language. The caller
- * builds the menu again on a language change, because a `MenuItem` label cannot be changed in place.
+ * Explicit labels follow the app language while roles keep Electron's native actions and shortcuts.
+ * The caller builds the menu again on a language change. System-added items still use the OS language.
  *
  * The custom `appMenu` replaces the default one, so the standard Preferences item with `Cmd + ,`
  * must be declared here: without it macOS has no Settings shortcut. The View menu is the default
@@ -931,10 +1130,81 @@ export function configureApplicationMenu(
   getMainWindow: () => BrowserWindow | null,
   quit: (source: MenuQuitSource) => void,
 ): void {
+  const mac = process.platform === "darwin";
+  // Keep Electron 44's default Edit operations, including macOS substitutions and speech.
+  const editItems: MenuItemConstructorOptions[] = [
+    { role: "undo", label: translate("menu.undo") },
+    { role: "redo", label: translate("menu.redo") },
+    { type: "separator" },
+    { role: "cut", label: translate("menu.cut") },
+    { role: "copy", label: translate("menu.copy") },
+    { role: "paste", label: translate("menu.paste") },
+  ];
+  if (mac) {
+    editItems.push(
+      { role: "pasteAndMatchStyle", label: translate("menu.pasteAndMatchStyle") },
+      { role: "delete", label: translate("menu.delete") },
+      { role: "selectAll", label: translate("menu.selectAll") },
+      { type: "separator" },
+      {
+        label: translate("menu.substitutions"),
+        submenu: [
+          { role: "showSubstitutions", label: translate("menu.showSubstitutions") },
+          { type: "separator" },
+          { role: "toggleSmartQuotes", label: translate("menu.smartQuotes") },
+          { role: "toggleSmartDashes", label: translate("menu.smartDashes") },
+          { role: "toggleTextReplacement", label: translate("menu.textReplacement") },
+        ],
+      },
+      {
+        label: translate("menu.speech"),
+        submenu: [
+          { role: "startSpeaking", label: translate("menu.startSpeaking") },
+          { role: "stopSpeaking", label: translate("menu.stopSpeaking") },
+        ],
+      },
+    );
+  } else {
+    editItems.push(
+      { role: "delete", label: translate("menu.delete") },
+      { type: "separator" },
+      { role: "selectAll", label: translate("menu.selectAll") },
+    );
+  }
+  const updateItems: MenuItemConstructorOptions[] = INDEPENDENT_EDITION
+    ? []
+    : [
+        {
+          label: translate("menu.checkForUpdates"),
+          click: (_item, focusedWindow) => {
+            // A closed macOS window only hides; the check and its result are visible in Settings.
+            const focused = focusedWindow ?? BrowserWindow.getFocusedWindow();
+            const target = focused instanceof BrowserWindow ? focused : getMainWindow();
+            if (target && !target.isDestroyed()) {
+              if (target !== focused) showMainWindow(target);
+              sendToRenderer(target, IPC_ENDPOINTS.app.openUpdateSettings);
+            }
+            Effect.runFork(updater.checkForUpdates());
+          },
+        },
+        { type: "separator" },
+      ];
+  const windowItems: MenuItemConstructorOptions[] = [{ role: "minimize", label: translate("menu.minimize") }];
+  if (mac) {
+    windowItems.push(
+      { role: "zoom", label: translate("menu.windowZoom") },
+      { type: "separator" },
+      { role: "front", label: translate("menu.bringAllToFront") },
+    );
+  } else {
+    // Keep Alt+F4; Ctrl+W belongs to browser tabs and must not quit the main window.
+    windowItems.push({ role: "close", label: translate("menu.closeWindow"), accelerator: "Alt+F4" });
+  }
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       {
         role: "appMenu",
+        label: translate("menu.application"),
         submenu: [
           {
             label: translate("menu.stopAllAgents"),
@@ -944,21 +1214,7 @@ export function configureApplicationMenu(
             },
           },
           { type: "separator" },
-          {
-            label: translate("menu.checkForUpdates"),
-            click: (_item, focusedWindow) => {
-              // On macOS a closed main window only hides and the menu stays, so show it again: the
-              // check and its result are visible only in Settings.
-              const focused = focusedWindow ?? BrowserWindow.getFocusedWindow();
-              const target = focused instanceof BrowserWindow ? focused : getMainWindow();
-              if (target && !target.isDestroyed()) {
-                if (target !== focused) showMainWindow(target);
-                sendToRenderer(target, IPC_ENDPOINTS.app.openUpdateSettings);
-              }
-              Effect.runFork(updater.checkForUpdates());
-            },
-          },
-          { type: "separator" },
+          ...updateItems,
           {
             label: translate("menu.preferences"),
             accelerator: "CommandOrControl+,",
@@ -969,21 +1225,21 @@ export function configureApplicationMenu(
             },
           },
           { type: "separator" },
-          { role: "hide" },
-          { role: "hideOthers" },
-          { role: "unhide" },
+          { role: "hide", label: translate("menu.hide") },
+          { role: "hideOthers", label: translate("menu.hideOthers") },
+          { role: "unhide", label: translate("menu.showAll") },
           { type: "separator" },
-          process.platform === "darwin" ? macQuitItem(translate, quit) : { role: "quit" },
+          mac ? macQuitItem(translate, quit) : { role: "quit", label: translate("menu.quit") },
         ],
       },
-      { role: "editMenu" },
+      { role: "editMenu", label: translate("menu.edit"), submenu: editItems },
       {
-        // The role keeps the system "View" title. The submenu replaces its default items.
         role: "viewMenu",
+        label: translate("menu.view"),
         submenu: [
-          { role: "reload" },
-          { role: "forceReload" },
-          { role: "toggleDevTools" },
+          { role: "reload", label: translate("menu.reload") },
+          { role: "forceReload", label: translate("menu.forceReload") },
+          { role: "toggleDevTools", label: translate("menu.developerTools") },
           { type: "separator" },
           {
             label: translate("menu.actualSize"),
@@ -1001,15 +1257,13 @@ export function configureApplicationMenu(
             click: () => zoomFocusedContents(interfaceSize, "smaller"),
           },
           { type: "separator" },
-          { role: "togglefullscreen" },
+          { role: "togglefullscreen", label: translate("menu.toggleFullscreen") },
         ],
       },
       // Windows and Linux: the default Close item takes Ctrl+W. With "Keep OpenBot running in the
       // background" off, closing the main window quits OpenBot, so a Ctrl+W that no browser tab took
       // ended the app with no question (#2675). The item keeps the key the system closes with.
-      process.platform === "darwin"
-        ? { role: "windowMenu" }
-        : { role: "windowMenu", submenu: [{ role: "minimize" }, { role: "close", accelerator: "Alt+F4" }] },
+      { role: "windowMenu", label: translate("menu.window"), submenu: windowItems },
     ]),
   );
 }

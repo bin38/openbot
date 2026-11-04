@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { createOpenBotLogger } from "@openbot/logging";
 
 const logger = createOpenBotLogger("runtime-install");
+export type RuntimeFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
 export async function isCurrentInstallation(verify: () => Promise<void>): Promise<boolean> {
   try {
@@ -18,7 +19,7 @@ export async function isCurrentInstallation(verify: () => Promise<void>): Promis
  * release runner can lose its connection (v0.40.0 timed out on the Grok runtime). Callers check
  * the SHA-256 of the result, so a retry cannot change what they install.
  */
-export async function download(fetchImpl: typeof fetch, url: string, label: string): Promise<Buffer> {
+export async function download(fetchImpl: RuntimeFetch, url: string, label: string): Promise<Buffer> {
   const attempts = 3;
   for (let attempt = 1; ; attempt += 1) {
     let response: Response | undefined;

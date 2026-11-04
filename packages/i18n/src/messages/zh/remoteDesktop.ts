@@ -45,7 +45,7 @@ export const messages = {
   "remoteDesktop.setup.grantAccess": "授予 {name} 访问权限",
   "remoteDesktop.setup.grant": "授予",
   "remoteDesktop.setup.grantHelp":
-    "请保持 Sunshine 账号在 Mac 上登录。在该账号下前往“系统设置 → 隐私与安全性”授予权限。点“授予”会打开一个辅助窗口，请把 Sunshine.app 拖入权限列表。",
+    "请保持运行 Sunshine 的 macOS 用户会话处于图形登录状态。在该用户下前往“系统设置 → 隐私与安全性”授予权限。点“授予”会打开一个辅助窗口，请把 Sunshine.app 拖入权限列表。",
   "remoteDesktop.setup.restartRequired": "Sunshine 需要重启。请结束当前远程桌面会话后重新检查。活跃会话不会被重启。",
   "remoteDesktop.setup.showInFinder": "在访达中显示 Sunshine",
   "remoteDesktop.setup.liveTest": "实时连接测试",

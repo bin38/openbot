@@ -13,6 +13,7 @@ import { join } from "node:path";
 import {
   agentTemplateShareOrigin,
   createAgentTemplateShareUrl,
+  createOpenBotAgentTemplateUrl,
   isAgentTemplateId,
 } from "@openbot/contracts/agent-template-links";
 import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
@@ -43,6 +44,7 @@ import { redactText } from "@openbot/logging";
 import { Effect, Result, Schema } from "effect";
 import { causeHelpers } from "../backend/effect-boundary";
 import { imageMimeType, localSchedule, toArrayBuffer, validTimezone } from "./agent-marketplace-service";
+import type { LocalMarketplaceCatalog } from "./local-marketplace-catalog";
 import type { LocalSkillLibrary } from "./local-skill-library";
 import { MANAGED_SKILL_SLUGS } from "./managed-skill-service";
 import { inspectSkillMarkdown, normalizedFiles } from "./skill-package";
@@ -150,6 +152,7 @@ export class AgentTemplateService {
     private readonly auth: AgentTemplateAuth,
     private readonly agents: AgentTemplateAgents,
     private readonly skills: AgentTemplateSkills,
+    private readonly localCatalog?: LocalMarketplaceCatalog,
   ) {}
 
   preview(agentId: string): Effect.Effect<AgentTemplatePreview, AgentTemplateFailure> {
@@ -199,6 +202,12 @@ export class AgentTemplateService {
       if (!isAgentTemplateSnapshot(snapshot))
         return yield* new AgentTemplateFailure({ cause: new Error(sourceText("error.marketplace.cannotPublish")) });
       yield* templateSync(() => assertNoSecrets(snapshot));
+      if (this.localCatalog) {
+        const owned = yield* this.localCatalog
+          .publishTemplate(agentId, snapshot, yield* this.readAvatar(agentId))
+          .pipe(toAgentTemplateFailure);
+        return this.publication(owned);
+      }
       const form = new FormData();
       form.set("snapshot", JSON.stringify(snapshot));
       form.set("sourceAgentId", agentId);
@@ -213,6 +222,7 @@ export class AgentTemplateService {
   }
 
   unpublish(agentId: string): Effect.Effect<void, AgentTemplateFailure> {
+    if (this.localCatalog) return this.localCatalog.unpublishTemplate(agentId).pipe(toAgentTemplateFailure);
     return Effect.gen({ self: this }, function* (): Effect.fn.Return<void, AgentTemplateFailure> {
       const owned = yield* this.owned(agentId);
       if (!owned) return;
@@ -223,6 +233,7 @@ export class AgentTemplateService {
   }
 
   get(templateId: string): Effect.Effect<AgentTemplateDetail, AgentTemplateFailure> {
+    if (this.localCatalog) return this.localCatalog.getTemplate(templateId).pipe(toAgentTemplateFailure);
     return Effect.gen({ self: this }, function* (): Effect.fn.Return<AgentTemplateDetail, AgentTemplateFailure> {
       if (!isAgentTemplateId(templateId))
         return yield* new AgentTemplateFailure({ cause: new Error(sourceText("error.marketplace.linkInvalid")) });
@@ -273,8 +284,10 @@ export class AgentTemplateService {
           });
         reused.set(slug, { id: current.id, revision: current.version });
       }
-      let avatar: AvatarImageInput | null = null;
-      if (detail.avatarUrl) {
+      let avatar: AvatarImageInput | null = this.localCatalog
+        ? yield* this.localCatalog.templateAvatar(detail.id).pipe(toAgentTemplateFailure)
+        : null;
+      if (!this.localCatalog && detail.avatarUrl) {
         const avatarUrl = detail.avatarUrl;
         const bytes = yield* this.auth.downloadAuthorized(avatarUrl).pipe(toAgentTemplateFailure);
         const mimeType = imageMimeType(bytes);
@@ -388,6 +401,13 @@ export class AgentTemplateService {
   }
 
   owned(agentId: string): Effect.Effect<OwnedTemplate | null, AgentTemplateFailure> {
+    if (this.localCatalog)
+      return this.localCatalog.ownedTemplate(agentId).pipe(
+        Effect.map((entry) =>
+          entry ? { id: entry.detail.id, sourceAgentId: entry.sourceAgentId, updatedAt: entry.detail.updatedAt } : null,
+        ),
+        toAgentTemplateFailure,
+      );
     return Effect.gen({ self: this }, function* (): Effect.fn.Return<OwnedTemplate | null, AgentTemplateFailure> {
       const mine = yield* this.auth
         .requestAuthorized("/v1/agent-templates/mine", { method: "GET" }, decodeOwnedTemplates)
@@ -398,6 +418,8 @@ export class AgentTemplateService {
 
   /** A share link on the Worker this app uses, so a development publish opens the local page. */
   private publication(owned: OwnedTemplate): AgentTemplatePublication {
+    if (this.localCatalog)
+      return { templateId: owned.id, shareUrl: createOpenBotAgentTemplateUrl(owned.id), publishedAt: owned.updatedAt };
     const origin = agentTemplateShareOrigin(new URL(this.auth.resolveApiUrl("/")).origin);
     return {
       templateId: owned.id,

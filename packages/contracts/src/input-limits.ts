@@ -141,6 +141,7 @@ export const INPUT_LIMITS = {
 // `INPUT_LIMITS.teamMembers` stays the wire cap for stored members.
 export const DEFAULT_TEAM_MEMBER_LIMIT = 3;
 
+/** Budgets for byte-only APIs and in-memory previews. Disk and streaming uploads do not use these ceilings. */
 export const ATTACHMENT_LIMITS = {
   fileBytes: 100 * 1024 * 1024,
   totalBytes: 250 * 1024 * 1024,

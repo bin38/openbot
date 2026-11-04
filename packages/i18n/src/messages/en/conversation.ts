@@ -60,6 +60,29 @@ export const messages = defineMessages("conversation", {
   "conversation.sidePanel.openPane": "Open {name}",
   "conversation.sidePanel.launcher": "Open a pane",
   "conversation.sidePanel.pane.browser": "Browser",
+  "conversation.sidePanel.pane.cloudComputer": "Cloud computer",
+  "conversation.cloudComputer.open": "Open cloud computer side panel",
+  "conversation.cloudComputer.resize": "Resize cloud computer side panel",
+  "conversation.cloudComputer.configure": "Cloud computer settings",
+  "conversation.cloudComputer.configureTitle": "Connect E2B first",
+  "conversation.cloudComputer.configureDescription":
+    "Save your E2B key in cloud computer settings to create a desktop for this agent.",
+  "conversation.cloudComputer.emptyTitle": "Give this agent a cloud computer",
+  "conversation.cloudComputer.emptyDescription":
+    "Start a computer to see its desktop here. Take control when you need to use it, then return control to the agent.",
+  "conversation.cloudComputer.pausedTitle": "The cloud computer is paused",
+  "conversation.cloudComputer.pausedDescription": "Start or resume to continue with the same desktop and files.",
+  "conversation.cloudComputer.continueTitle": "The computer is under human control",
+  "conversation.cloudComputer.continueDescription":
+    "Continue control to open the desktop here, or return it to the agent.",
+  "conversation.cloudComputer.continueControl": "Continue control",
+  "conversation.cloudComputer.waitingFrame": "Reading the desktop image",
+  "conversation.cloudComputer.agentControl": "Agent control · read-only view",
+  "conversation.cloudComputer.previewAlt": "Current cloud computer desktop",
+  "conversation.cloudComputer.agentHint":
+    "This read-only image refreshes about every 2 seconds while the agent can work. Take control to use the mouse and keyboard.",
+  "conversation.cloudComputer.humanHint":
+    "You can use the desktop now. Return control before the agent continues. Closing this pane also returns a desktop taken over here.",
   "conversation.sidePanel.pane.files": "Files",
   "conversation.threads.new": "New thread",
   "conversation.threads.all": "All threads",

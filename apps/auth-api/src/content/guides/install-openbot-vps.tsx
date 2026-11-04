@@ -1,7 +1,21 @@
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
+import { useText } from "@openbot/ui/text";
 import { Link } from "@tanstack/solid-router";
 import { OPENBOT_LINKS } from "../../lib/landing-links";
 
 export function InstallOpenBotVPS() {
+  const { t } = useText();
+  if (INDEPENDENT_EDITION) {
+    return (
+      <>
+        <p>{t("webClient.independent.downloads")}</p>
+        <p>{t("webClient.independent.remote")}</p>
+        <p>
+          <a href={OPENBOT_LINKS.documentation}>{t("webClient.independent.build")}</a>
+        </p>
+      </>
+    );
+  }
   return (
     <>
       <p>

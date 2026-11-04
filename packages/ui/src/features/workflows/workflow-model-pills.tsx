@@ -5,6 +5,7 @@
  */
 
 import { ProviderLogo } from "@openbot/brand";
+import { modelSupportsProviderAccount } from "@openbot/contracts/account-scoped-models";
 import {
   type AgentModelId,
   type AgentProviderRef,
@@ -45,8 +46,8 @@ const EFFORT_LABEL = {
 } as const satisfies Record<AgentReasoningEffort, AppTextKey>;
 
 /** The model with this id in a list of models. */
-export function modelOption(models: readonly ClientAgentModelOption[], id: AgentModelId) {
-  return models.find((option) => option.id === id);
+export function modelOption(models: readonly ClientAgentModelOption[], id: AgentModelId, accountId?: string | null) {
+  return models.find((option) => option.id === id && modelSupportsProviderAccount(option, accountId));
 }
 
 /** The name of a provider. A provider that this build does not know has the name that its host sends. */
@@ -80,18 +81,36 @@ function modelChips(t: AppTranslate, option: ClientAgentModelOption): PickerChip
 export function ModelPill(props: {
   provider: WfProvider;
   value: AgentModelId;
+  /** An agent step keeps its account only while the override uses that agent's provider. */
+  accountProvider?: AgentProviderRef;
+  providerAccountId?: string;
   disabled?: boolean;
   onChange: (model: AgentModelId, provider: WfProvider) => void;
 }) {
   const board = useBoard();
   const { t } = useText();
-  const models = () => board.catalogs().models;
-  const providers = () => workflowModelProviders(board.catalogs(), props.provider);
+  const models = () =>
+    board
+      .catalogs()
+      .models.filter((option) =>
+        modelSupportsProviderAccount(
+          option,
+          option.provider === props.accountProvider ? props.providerAccountId : null,
+        ),
+      );
+  const providers = () =>
+    workflowModelProviders(
+      board.catalogs(),
+      props.provider,
+      props.accountProvider
+        ? { provider: props.accountProvider, providerAccountId: props.providerAccountId }
+        : undefined,
+    );
   const name = (provider: AgentProviderRef) => providerName(board.catalogs(), provider);
   const [open, setOpen] = createSignal(false);
   const [tab, setTab] = createSignal<AgentProviderRef>(untrack(() => props.provider));
   const [query, setQuery] = createSignal("");
-  const current = () => modelOption(models(), props.value);
+  const current = () => models().find((option) => option.id === props.value && option.provider === props.provider);
   let panel: HTMLDivElement | undefined;
   let opening = false;
   const rows = (provider: AgentProviderRef) => {
@@ -102,7 +121,7 @@ export function ModelPill(props: {
     return text ? options.filter((option) => pickerMatches(option, text)) : options;
   };
   const choose = (id: AgentModelId) => {
-    const option = modelOption(models(), id);
+    const option = models().find((option) => option.id === id && option.provider === tab());
     if (option && id !== props.value) props.onChange(id, option.provider);
     setOpen(false);
   };

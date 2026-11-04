@@ -1,3 +1,13 @@
+import {
+  decodeAttachmentUploadId,
+  decodeBeginAttachmentUpload,
+  decodeCompleteAttachmentUpload,
+  decodeWriteAttachmentUpload,
+  STREAMING_ATTACHMENT_ROUTES,
+  STREAMING_ATTACHMENTS_CAPABILITY,
+} from "@openbot/contracts/team-protocol/streaming-attachments-v1";
+import type { AttachmentUploadSessions } from "../../backend/attachment-upload-sessions";
+import { decodeAttachmentUploadStateFromHost } from "../remote-attachment-streaming-decoding";
 // Attachments, and the shared and workspace files an agent can open or preview.
 // Every path here crosses to the local filesystem, so the parsers are the boundary.
 
@@ -9,6 +19,7 @@ import {
   assertSupportedAttachmentName,
   attachmentFileExtension,
   IMAGE_ATTACHMENT_EXTENSIONS,
+  isKnownAttachmentName,
   isOpenableAttachmentName,
   MEDIA_ATTACHMENT_EXTENSIONS,
   MP4_ATTACHMENT_EXTENSIONS,
@@ -46,6 +57,7 @@ import { causeHelpers, runCauseEffect } from "../../backend/effect-boundary";
 import type { MailboxStore } from "../../backend/mailbox-store";
 import { filePreviewFromBytes, localFilePreview, mimeTypeForName } from "../file-preview";
 import { filePreviewPages } from "../file-preview-pages";
+import { decodeDraftAttachment } from "../remote-agent-decoding";
 import { AttachmentDownloadStopped } from "../remote-attachment-cache";
 import { decodeVoid } from "../remote-host-decoding";
 import type { RemoteServerManager } from "../remote-server-manager";
@@ -64,11 +76,12 @@ import {
   parsePreviewSharedFile,
   parsePreviewWorkspaceFile,
 } from "./agent-inputs";
-import { type IpcGroupHandlers, payloadHandler } from "./define-ipc-group";
+import { eventPayloadHandler, type IpcGroupHandlers, payloadHandler } from "./define-ipc-group";
 import { routeToServer } from "./route-to-server";
 import { scopedHandler } from "./scoped-handler";
 
 export interface AttachmentIpcDependencies {
+  uploads: AttachmentUploadSessions;
   service: Pick<
     AgentService,
     | "prepareAttachments"
@@ -87,6 +100,8 @@ export interface AttachmentIpcDependencies {
     | "stopAttachmentDownload"
     | "downloadSharedFile"
     | "downloadWorkspaceFile"
+    | "uploadAttachmentPath"
+    | "downloadAttachmentToDisk"
     | "uploadAttachment"
   >;
   getMainWindow: () => BrowserWindow | null;
@@ -94,6 +109,7 @@ export interface AttachmentIpcDependencies {
 }
 
 export function attachmentIpcHandlers({
+  uploads,
   service,
   mailbox,
   remoteServers,
@@ -143,6 +159,66 @@ export function attachmentIpcHandlers({
       }),
     },
     agentAttachments: {
+      beginAttachmentUpload: eventPayloadHandler(agentRequest(decodeBeginAttachmentUpload), (event, scoped) =>
+        routeToServer(scoped.serverId, {
+          local: () => runCauseEffect(uploads.begin(`desktop:${event.sender.id}`, scoped.payload)),
+          remote: (serverId) => {
+            requireStreamingHost(remoteServers, serverId);
+            return runCauseEffect(
+              remoteServers.request(serverId, STREAMING_ATTACHMENT_ROUTES.begin, decodeAttachmentUploadStateFromHost, {
+                method: "POST",
+                body: scoped.payload,
+              }),
+            );
+          },
+        }),
+      ),
+      writeAttachmentUpload: eventPayloadHandler(agentRequest(decodeWriteAttachmentUpload), (event, scoped) =>
+        routeToServer(scoped.serverId, {
+          local: () => runCauseEffect(uploads.write(`desktop:${event.sender.id}`, scoped.payload)),
+          remote: (serverId) =>
+            runCauseEffect(
+              remoteServers.request(serverId, STREAMING_ATTACHMENT_ROUTES.write, decodeAttachmentUploadStateFromHost, {
+                method: "POST",
+                body: scoped.payload,
+              }),
+            ),
+        }),
+      ),
+      completeAttachmentUpload: eventPayloadHandler(agentRequest(decodeCompleteAttachmentUpload), (event, scoped) =>
+        routeToServer(scoped.serverId, {
+          local: async () => {
+            const owner = `desktop:${event.sender.id}`;
+            const path = await runCauseEffect(uploads.finish(owner, scoped.payload));
+            try {
+              const [attachment] = await runCauseEffect(service.prepareImportedAttachments([path], []));
+              if (!attachment) throw new Error("The attachment was not prepared.");
+              return attachment;
+            } finally {
+              await runCauseEffect(uploads.cancel(owner, scoped.payload.id));
+            }
+          },
+          remote: (serverId) =>
+            runCauseEffect(
+              remoteServers.request(serverId, STREAMING_ATTACHMENT_ROUTES.complete, decodeDraftAttachment, {
+                method: "POST",
+                body: scoped.payload,
+              }),
+            ),
+        }),
+      ),
+      cancelAttachmentUpload: eventPayloadHandler(agentRequest(decodeAttachmentUploadId), (event, scoped) =>
+        routeToServer(scoped.serverId, {
+          local: () => runCauseEffect(uploads.cancel(`desktop:${event.sender.id}`, scoped.payload.id)),
+          remote: (serverId) =>
+            runCauseEffect(
+              remoteServers.request(serverId, STREAMING_ATTACHMENT_ROUTES.cancel, decodeVoid, {
+                method: "POST",
+                body: scoped.payload,
+              }),
+            ),
+        }),
+      ),
       importAttachmentData: scopedHandler(parseAttachmentData, {
         local: (data) => runCauseEffect(service.prepareImportedAttachments([], data)),
         remote: (data, serverId) => runCauseEffect(uploadRemoteImports(remoteServers, serverId, { paths: [], data })),
@@ -169,18 +245,21 @@ export function attachmentIpcHandlers({
           filters:
             filter === "images"
               ? [{ name: translate("dialog.filter.images"), extensions: [...IMAGE_ATTACHMENT_EXTENSIONS] }]
-              : [
-                  {
-                    name: translate("dialog.filter.supportedFiles"),
-                    extensions: supportedAttachmentExtensions({
-                      eml: supportsEml,
-                      media: supportsMedia,
-                      zip: supportsZip,
-                      mp4: supportsMp4,
-                      svg: supportsSvg,
-                    }),
-                  },
-                ],
+              : serverId === LOCAL_SERVER_ID ||
+                  remoteServers.supportsCapability(serverId, STREAMING_ATTACHMENTS_CAPABILITY)
+                ? [{ name: translate("dialog.filter.allFiles"), extensions: ["*"] }]
+                : [
+                    {
+                      name: translate("dialog.filter.supportedFiles"),
+                      extensions: supportedAttachmentExtensions({
+                        eml: supportsEml,
+                        media: supportsMedia,
+                        zip: supportsZip,
+                        mp4: supportsMp4,
+                        svg: supportsSvg,
+                      }),
+                    },
+                  ],
         };
         const result = mainWindow
           ? await dialog.showOpenDialog(mainWindow, options)
@@ -314,7 +393,7 @@ export function attachmentIpcHandlers({
 
 export type OpenAttachmentDependencies = Pick<AttachmentIpcDependencies, "getMainWindow" | "translate"> & {
   mailbox: Pick<MailboxStore, "resolveAttachment">;
-  remoteServers: Pick<RemoteServerManager, "downloadAttachment">;
+  remoteServers: Pick<RemoteServerManager, "downloadAttachment" | "downloadAttachmentToDisk" | "supportsCapability">;
 };
 
 /**
@@ -345,6 +424,30 @@ export function openAttachmentForServer(
       await openOrRevealPath(attachment.path);
     },
     remote: async (target) => {
+      if (remoteServers.supportsCapability(target, STREAMING_ATTACHMENTS_CAPABILITY)) {
+        const downloaded = await runCauseEffect(
+          remoteServers.downloadAttachmentToDisk(
+            input.attachmentId,
+            join(app.getPath("userData"), "remote-attachments"),
+            target,
+            input.size,
+          ),
+        ).catch((error: unknown) => {
+          if (error instanceof AttachmentDownloadStopped) return null;
+          throw error;
+        });
+        if (!downloaded) return;
+        if (input.action === "download") {
+          try {
+            const destination = await chooseSavePath(getMainWindow(), translate, downloaded.name);
+            if (destination) await copyFile(downloaded.path, destination);
+          } finally {
+            await rm(downloaded.path, { force: true });
+          }
+        } else if (input.action === "reveal") shell.showItemInFolder(downloaded.path);
+        else await openOrRevealPath(downloaded.path);
+        return;
+      }
       const downloaded = await runCauseEffect(
         remoteServers.downloadAttachment(input.attachmentId, target, false, input.size),
       ).catch((error: unknown) => {
@@ -447,19 +550,22 @@ const uploadRemotePaths = Effect.fn("AttachmentIpc.uploadRemotePaths")(function*
     );
     for (const path of paths) assertSupportedAttachmentName(basename(path));
   });
-  const files = yield* Effect.forEach(
-    paths,
-    (path) =>
-      remoteCall(() => readFile(path)).pipe(
-        Effect.map((bytes) => ({
-          name: basename(path),
-          mimeType: mimeTypeForName(path),
-          bytes: new Uint8Array(bytes),
-        })),
-      ),
-    { concurrency: "unbounded" },
+  const metadata = yield* Effect.forEach(paths, (path) => remoteCall(() => stat(path)));
+  if (remoteServers.supportsCapability(serverId, STREAMING_ATTACHMENTS_CAPABILITY)) {
+    return yield* Effect.forEach(paths, (path) => remoteServers.uploadAttachmentPath(path, serverId));
+  }
+  yield* remoteDecode(() => {
+    if (
+      metadata.some((item) => !item.isFile() || item.size > ATTACHMENT_LIMITS.fileBytes) ||
+      metadata.reduce((total, item) => total + item.size, 0) > ATTACHMENT_LIMITS.totalBytes
+    )
+      throw new Error(sourceText("error.attachment.streamingUnsupported"));
+  });
+  return yield* Effect.forEach(paths, (path) =>
+    remoteCall(() => readFile(path)).pipe(
+      Effect.flatMap((bytes) => remoteServers.uploadAttachment(basename(path), mimeTypeForName(path), bytes, serverId)),
+    ),
   );
-  return yield* uploadRemoteFiles(remoteServers, serverId, files);
 });
 
 const uploadRemoteImports = Effect.fn("AttachmentIpc.uploadRemoteImports")(function* (
@@ -476,31 +582,35 @@ const uploadRemoteImports = Effect.fn("AttachmentIpc.uploadRemoteImports")(funct
       ...input.data.map((item) => basename(item.name)),
     ]);
   });
-  const pathFiles = yield* Effect.forEach(
-    input.paths,
-    (path) =>
-      remoteCall(() => readFile(path)).pipe(
-        Effect.map((bytes) => ({
-          name: basename(path),
-          mimeType: mimeTypeForName(path),
-          bytes: new Uint8Array(bytes),
-        })),
-      ),
-    { concurrency: "unbounded" },
-  );
-  const files = [
-    ...pathFiles,
-    ...input.data.map((item) => ({
-      name: basename(item.name),
-      mimeType: item.mimeType,
-      bytes: item.bytes,
-    })),
-  ];
-  return yield* uploadRemoteFiles(remoteServers, serverId, files, input.requestId);
+  const attachments = [];
+  const supportsStreaming = remoteServers.supportsCapability(serverId, STREAMING_ATTACHMENTS_CAPABILITY);
+  if (!supportsStreaming) {
+    const metadata = yield* Effect.forEach(input.paths, (path) => remoteCall(() => stat(path)));
+    yield* remoteDecode(() => {
+      if (
+        metadata.some((item) => !item.isFile() || item.size > ATTACHMENT_LIMITS.fileBytes) ||
+        metadata.reduce((sum, item) => sum + item.size, 0) +
+          input.data.reduce((sum, item) => sum + item.bytes.length, 0) >
+          ATTACHMENT_LIMITS.totalBytes
+      )
+        throw new Error(sourceText("error.attachment.streamingUnsupported"));
+    });
+  }
+  for (const path of input.paths) {
+    if (supportsStreaming) attachments.push(yield* remoteServers.uploadAttachmentPath(path, serverId, input.requestId));
+    else {
+      const bytes = yield* remoteCall(() => readFile(path));
+      attachments.push(
+        yield* remoteServers.uploadAttachment(basename(path), mimeTypeForName(path), bytes, serverId, input.requestId),
+      );
+    }
+  }
+  attachments.push(...(yield* uploadRemoteFiles(remoteServers, serverId, input.data, input.requestId)));
+  return attachments;
 });
 
 /**
- * Checks the names and sizes, then uploads every file at once, as one import. With `requestId`, the
+ * Checks the buffered names and sizes, then uploads files one at a time as one import. With `requestId`, the
  * import reports the bytes of a single file; several files at once would mix their progress.
  */
 function uploadRemoteFiles(
@@ -523,10 +633,15 @@ function uploadRemoteFiles(
       Effect.forEach(
         files,
         (file) => remoteServers.uploadAttachment(file.name, file.mimeType, file.bytes, serverId, progressId),
-        { concurrency: "unbounded" },
+        { concurrency: 1 },
       ),
     ),
   );
+}
+
+function requireStreamingHost(remoteServers: AttachmentIpcDependencies["remoteServers"], serverId: string): void {
+  if (!remoteServers.supportsCapability(serverId, STREAMING_ATTACHMENTS_CAPABILITY))
+    throw new Error(sourceText("error.attachment.streamingUnsupported"));
 }
 
 function assertRemoteAttachmentSupport(
@@ -534,6 +649,9 @@ function assertRemoteAttachmentSupport(
   serverId: string,
   names: readonly string[],
 ): void {
+  if (remoteServers.supportsCapability(serverId, STREAMING_ATTACHMENTS_CAPABILITY)) return;
+  if (names.some((name) => !isKnownAttachmentName(name)))
+    throw new Error(sourceText("error.attachment.streamingUnsupported"));
   if (
     names.some((name) =>
       MEDIA_ATTACHMENT_EXTENSIONS.some((extension) => extension === attachmentFileExtension(name)),

@@ -3,7 +3,7 @@
  * away is `SidebarMoveToSubmenu`, which the channel menu shows too; everything here is agent-only.
  */
 
-import { AppWindow, ContextMenu, Copy, MessageCirclePlus, Moon, Pin, PinOff, RotateCcw } from "@openbot/ui";
+import { AppWindow, ContextMenu, Copy, FolderOpen, MessageCirclePlus, Moon, Pin, PinOff, RotateCcw } from "@openbot/ui";
 import { Show } from "solid-js";
 import type { AgentProfile } from "../../data";
 import { useText } from "../../text";
@@ -47,6 +47,14 @@ export function SidebarAgentContextMenu(menuProps: { agent: AgentProfile; pinned
             <ContextMenu.Item onSelect={() => open()(menuProps.agent.id)}>
               <AppWindow class="agent-context-icon size-4" aria-hidden="true" />
               <span>{t("sidebar.agentMenu.openWindow")}</span>
+            </ContextMenu.Item>
+          )}
+        </Show>
+        <Show when={props.onOpenAgentWorkspace}>
+          {(open) => (
+            <ContextMenu.Item onSelectAfterClose={() => open()(menuProps.agent.id)}>
+              <FolderOpen class="agent-context-icon size-4" aria-hidden="true" />
+              <span>{t("sidebar.agentMenu.openWorkspace")}</span>
             </ContextMenu.Item>
           )}
         </Show>

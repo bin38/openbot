@@ -3,6 +3,7 @@ import { createMemo, createSignal, flush, onSettled } from "solid-js";
 import { EMPTY_TEAM_PRESENCE } from "../../app-defaults";
 import { createSimpleContext } from "../../simple-context";
 import { useAuth } from "../account/account-context";
+import { useServers } from "../servers/servers-context";
 import { teamPort } from "./team-port";
 
 /**
@@ -27,10 +28,17 @@ import { teamPort } from "./team-port";
 const Presence = createSimpleContext({
   name: "Presence",
   init: () => {
-    const { centralAuth } = useAuth();
+    const { centralAuth, localWorkspace, currentWorkspaceUserId } = useAuth();
+    const { activeServer } = useServers();
     const [teamPresence, setTeamPresence] = createSignal<TeamPresenceSnapshot>(EMPTY_TEAM_PRESENCE);
 
     const currentTeamMember = createMemo(() => {
+      const server = activeServer();
+      const local = localWorkspace();
+      if ((local && server?.kind === "local") || server?.thisComputer) {
+        const memberId = currentWorkspaceUserId(server);
+        return memberId ? teamPresence().members.find((member) => member.id === memberId) : undefined;
+      }
       const state = centralAuth();
       if (state.status !== "signed_in") return undefined;
       const email = state.user.email.trim().toLowerCase();

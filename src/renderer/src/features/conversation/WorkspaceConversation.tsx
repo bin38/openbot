@@ -540,6 +540,11 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
         onSignInProvider={composerSignIn() ? connectFromComposer : undefined}
         onSignInWithCodeProvider={composerCodeSignIn() ? signInWithCode : undefined}
         onManageProviders={manageProviders() ? openProviderSettings : undefined}
+        onManageCloudComputer={
+          activeServer()?.kind === "local"
+            ? (trigger) => openServerSettings(activeServer()?.id ?? "local", trigger, "cloud-computer")
+            : undefined
+        }
         onManageBrowserProfiles={manageBrowserProfiles() ? openBrowserProfileSettings : undefined}
         onOpenNotificationSettings={openNotificationLevels}
         agent={conversationAgent()}
@@ -575,10 +580,9 @@ export function WorkspaceConversation(props: { account: () => CentralAuthUser })
         presence={teamPresence()}
         currentUserEmail={props.account().email}
         isOwnSender={(senderId) => {
-          const state = auth.centralAuth();
           return isReaderAuthor(senderId, {
             memberId: currentTeamMember()?.id ?? null,
-            accountUserId: state.status === "signed_in" ? state.user.id : null,
+            accountUserId: auth.currentWorkspaceUserId(activeServer()),
             onOwnComputer: activeServer()?.kind === "local",
           });
         }}

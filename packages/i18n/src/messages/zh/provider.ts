@@ -158,6 +158,14 @@ export const messages = {
   "provider.geminiKey.description":
     "在这台电脑上保存 Gemini API 密钥。保存后会替代 Google 账号登录。若要用 Google 登录，请先移除密钥，再在 Gemini 行上选择“连接”。",
   "provider.geminiKey.label": "Gemini API 密钥",
+  "provider.claudeKey.title": "Anthropic API 密钥",
+  "provider.claudeKey.description":
+    "在主机上保存 Anthropic API 密钥。Anthropic 按此密钥的请求量计费。要让某个助手使用该密钥，请在助手的模型菜单中选择 API 密钥账号。Claude 未登录时，所有助手都会使用该密钥。",
+  "provider.claudeKey.label": "Anthropic API 密钥",
+  "provider.codexKey.title": "使用 OpenAI API 密钥登录",
+  "provider.codexKey.description":
+    "Codex 会在本机保存密钥。OpenAI 按此密钥的请求量计费，不使用你的 ChatGPT 套餐。如需重新使用套餐，请断开该账号，再连接 ChatGPT。",
+  "provider.codexKey.label": "OpenAI API 密钥",
   "provider.inceptionKey.title": "Inception API 密钥",
   "provider.inceptionKey.description":
     "在这台电脑上保存 Inception API 密钥，即可使用 Mercury 模型。OpenBot 会在它下载的 Pi CLI 中运行这些模型。",
@@ -188,6 +196,7 @@ export const messages = {
   "provider.account.addLabel": "添加另一个 {name} 账号",
   "provider.account.count": { one: "{count} 个账号", other: "{count} 个账号" },
   "provider.account.numbered": "账号 {number}",
+  "provider.account.apiKey": "API 密钥",
   "provider.account.listLabel": "{name} 的账号",
   "provider.account.usedBy": "被 {agents} 使用",
   "provider.account.failed": "登录失败",
@@ -197,6 +206,8 @@ export const messages = {
   "provider.account.cancelSignIn": "取消登录",
   "provider.account.finishSignIn": "请在浏览器中完成登录。",
   "provider.account.remove": "移除账号",
+  "provider.account.removeLabel": "移除 {name}",
+  "provider.account.defaultSignInDescription": "主机默认账号 · 沿用主机已有的登录",
   "provider.account.disconnect": "断开连接",
   "provider.account.actionFailed": "无法更改 {name} 账号。",
   "provider.account.resetUsage": "重置用量",
@@ -248,6 +259,10 @@ export const messages = {
   "provider.settings.keyOptional": "可选。添加密钥后可使用付费模型。",
   "provider.settings.keyAlternative": "或粘贴 {name} API 密钥。",
   "provider.settings.geminiKeyInUse": "Gemini 使用该密钥，而不是你的 Google AI 套餐。不显示该套餐的用量。",
+  "provider.settings.claudeKeyInUse": "在助手的模型菜单中选择 API 密钥账号。Claude 未登录时，所有助手都会使用该密钥。",
+  "provider.settings.codexKeyInUse":
+    "当前使用此 API 密钥，而不是 ChatGPT 套餐。OpenAI 按此密钥的请求量计费，这里不显示套餐用量。",
+  "provider.settings.codexKeyAlternative": "也可以使用 OpenAI API 密钥登录。OpenAI 按此密钥的请求量计费。",
   "provider.settings.addKey": "添加密钥",
   "provider.settings.changeKey": "更换密钥",
   "provider.settings.runtime": "运行时",

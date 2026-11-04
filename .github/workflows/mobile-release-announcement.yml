@@ -26,7 +26,7 @@ concurrency:
 jobs:
   detect:
     name: Find the version that both stores have now
-    if: github.ref == 'refs/heads/main'
+    if: github.repository == 'nightly-labs/openbot' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -75,7 +75,7 @@ jobs:
   announce:
     name: Post on Discord
     needs: detect
-    if: needs.detect.outputs.version != ''
+    if: github.repository == 'nightly-labs/openbot' && needs.detect.outputs.version != ''
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: release-mobile

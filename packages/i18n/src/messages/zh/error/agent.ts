@@ -49,7 +49,7 @@ export const messages = {
   "error.agent.waitBeforeCompactContext": "请等当前轮次和队列结束后再压缩上下文。",
   "error.agent.compactContextUnavailable": "该助手现在无法压缩上下文。",
   "error.agent.unknown": "未知助手：{id}",
-  "error.agent.onlyUserWidensSettings": "只有用户可以给助手完全访问权限或开启 Computer Use，请让用户在助手设置中修改。",
+  "error.agent.onlyUserWidensSettings": "只有用户可以给助手完全访问权限或开启 电脑操作，请让用户在助手设置中修改。",
   "error.agent.queuedMessageCreateFailed": "无法创建排队消息。",
   "error.agent.messageUnavailable": "该消息已不可用。",
   "error.agent.hostLimit": "一台主机最多可有 {limit} 个助手。",
@@ -83,7 +83,7 @@ export const messages = {
     "已保存的助手资料 {id} 中“{field}”的值无法读取，请先更新数据再启动 OpenBot。",
   // Written by `QueueEditRejectedError` in @openbot/contracts, which cannot import this package.
   "error.agent.queueEditRejected": "队列编辑被拒绝：{reason}",
-  "error.agent.computerUseLocalOnly": "Computer Use 只能在运行该助手的电脑上更改。",
+  "error.agent.computerUseLocalOnly": "电脑操作 只能在运行该助手的电脑上更改。",
   "error.agent.automationLocalOnly": "本地脚本只能在运行该助手的电脑上允许。",
   "error.agent.newChatLocalOnly": "只有运行该助手的电脑才能让它开始新对话。",
   "error.agent.quickAcknowledgementLocalOnly": "只有运行该助手的电脑才能更改该设置。",
@@ -106,7 +106,7 @@ export const messages = {
     "“仅工作区”需要 {tool}，但 OpenBot 没有找到它。请安装它，或在助手设置中选择完全访问。",
   "error.agent.claudeSandboxUnavailable":
     "“仅工作区”需要 Claude 沙盒，但 Claude 无法在这台电脑上启动它：{reason}。请在助手设置中选择完全访问或其他服务商。",
-  "error.agent.screenCaptureOff": "该助手的截屏功能已关闭，用户可以在助手设置中开启 Computer Use。",
+  "error.agent.screenCaptureOff": "该助手的截屏功能已关闭，用户可以在助手设置中开启 电脑操作。",
   "error.agent.screenCaptureUnavailable": "这台电脑不支持截屏。",
   "error.agent.screenCaptureShared": "在 Slack、Discord、Telegram 对话中无法使用截屏，因为其他人也会收到这些文件。",
   "error.agent.screenCaptureDeclined": "用户未允许本次截屏，没有截取任何内容。",

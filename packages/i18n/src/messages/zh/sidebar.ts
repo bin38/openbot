@@ -67,6 +67,8 @@ export const messages = {
   "sidebar.agentMenu.restore": "恢复",
   "sidebar.agentMenu.restoreTo": "恢复到 {section}",
   "sidebar.agentMenu.openWindow": "在新窗口中打开",
+  "sidebar.agentMenu.openWorkspace": "打开工作区文件夹",
+  "sidebar.agentMenu.openWorkspaceFailed": "无法打开工作区文件夹。",
   "sidebar.agentMenu.newThread": "新话题",
   "sidebar.agentMenu.inWindow": "在独立窗口中打开",
   "sidebar.channelMenu.label": "频道操作",

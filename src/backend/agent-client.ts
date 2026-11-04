@@ -1,7 +1,14 @@
 import type { AgentProviderId, AgentSessionSettingsSnapshot, AgentSessionSettingValue } from "@openbot/contracts/ipc";
 import { sourceText } from "@openbot/i18n/source";
 import type { Effect } from "effect";
-import type { AppServerNotification, AppServerRequest, RequestId, ResponseDecoder, RpcError } from "./protocol";
+import type {
+  AppServerNotification,
+  AppServerRequest,
+  ModelListResponse,
+  RequestId,
+  ResponseDecoder,
+  RpcError,
+} from "./protocol";
 import type { ProviderClientOperationError } from "./provider-client-effects";
 import type { ReadProviderHistory } from "./provider-history";
 
@@ -22,6 +29,8 @@ export interface AgentClient {
   readonly contextCompaction?: "events" | "request" | "native" | "handoff" | "unsupported";
   readonly running: boolean;
   readonly readHistory?: ReadProviderHistory;
+  /** Already discovered model metadata. Reading it starts no process, session, or model probe. */
+  cachedModels?(): ModelListResponse | null;
   /**
    * True when the user's MCP tools in this thread wait for the provider's own `tool_search`. OpenBot's
    * tool search knows only the built-in tools, so it then sends the model to that tool. Optional,

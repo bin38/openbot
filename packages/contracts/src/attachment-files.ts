@@ -126,6 +126,8 @@ export interface AttachmentSupport {
   zip: boolean;
   mp4: boolean;
   svg: boolean;
+  /** The peer accepts every ordinary file through bounded upload sessions. */
+  allFiles?: boolean;
 }
 
 export function supportedAttachmentExtensions(support: AttachmentSupport): string[] {
@@ -154,10 +156,16 @@ export function attachmentFileExtension(name: string): string | null {
   return dot >= 0 && dot < basename.length - 1 ? basename.slice(dot + 1) : null;
 }
 
-export function isSupportedAttachmentName(name: string): boolean {
+export function isKnownAttachmentName(name: string): boolean {
   const basename = name.split(/[\\/]/u).at(-1)?.trim().toLowerCase() ?? "";
   const extension = attachmentFileExtension(basename);
   return EXTENSIONLESS_TEXT_FILES.has(basename) || (extension !== null && SUPPORTED_EXTENSIONS.has(extension));
+}
+
+/** Uploading a file does not grant permission to preview or execute it. */
+export function isSupportedAttachmentName(name: string): boolean {
+  const basename = name.split(/[\\/]/u).at(-1)?.trim() ?? "";
+  return basename.length > 0 && basename !== "." && basename !== ".." && !/\p{Cc}/u.test(basename);
 }
 
 const OPENABLE_EXTENSIONS = new Set<string>(OPENABLE_ATTACHMENT_EXTENSIONS);
@@ -183,6 +191,8 @@ export function rasterImageMimeType(name: string): string | null {
  */
 export function isSupportedAttachmentNameFor(name: string, support: AttachmentSupport): boolean {
   if (!isSupportedAttachmentName(name)) return false;
+  if (support.allFiles) return true;
+  if (!isKnownAttachmentName(name)) return false;
   const extension = attachmentFileExtension(name);
   if (extension === "eml") return support.eml;
   if (MEDIA_ATTACHMENT_EXTENSIONS.some((media) => media === extension)) return support.media;
@@ -262,7 +272,7 @@ export function attachmentMimeTypeForName(name: string) {
     case "ipynb":
       return "application/json";
     default:
-      return isSupportedAttachmentName(name) ? "text/plain" : "application/octet-stream";
+      return isKnownAttachmentName(name) ? "text/plain" : "application/octet-stream";
   }
 }
 

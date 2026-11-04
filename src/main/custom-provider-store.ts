@@ -13,12 +13,14 @@ import type {
   CustomProviderHeader,
   CustomProviderHeaderInput,
   CustomProviderModel,
+  CustomProviderModelSyncState,
   CustomProviderSummary,
   SaveCustomProviderInput,
   UpdateCustomProviderInput,
 } from "@openbot/contracts/ipc";
 import {
   CUSTOM_PROVIDER_HARNESSES,
+  CUSTOM_PROVIDER_RESTARTS,
   DEFAULT_CUSTOM_PROVIDER_HARNESS,
   isCustomProviderContextWindow,
   isCustomProviderMaxOutput,
@@ -55,6 +57,30 @@ const modelSchema = z.object({
   maxOutput: z.number().refine(isCustomProviderMaxOutput).optional().catch(undefined),
 });
 const headerSchema = z.object({ name: z.string(), value: z.string() });
+const syncTime = z.string().datetime().nullable();
+const modelSyncSchema = z.object({
+  enabled: z.boolean(),
+  lastAttemptAt: syncTime,
+  lastSuccessAt: syncTime,
+  lastFailure: z.literal("failed").nullable(),
+  lastRestart: z.enum(CUSTOM_PROVIDER_RESTARTS).nullable(),
+  upstreamCount: z.number().int().nonnegative().nullable(),
+  missingModelIds: z.array(z.string()),
+  omittedModelCount: z.number().int().nonnegative(),
+});
+type StoredModelSync = z.infer<typeof modelSyncSchema>;
+function initialModelSync(): StoredModelSync {
+  return {
+    enabled: false,
+    lastAttemptAt: null,
+    lastSuccessAt: null,
+    lastFailure: null,
+    lastRestart: null,
+    upstreamCount: null,
+    missingModelIds: [],
+    omittedModelCount: 0,
+  };
+}
 
 /**
  * A plaintext envelope around one encrypted field, rather than a wholly encrypted file: a computer
@@ -72,6 +98,7 @@ const entrySchema = z.object({
    * without it, and a value this build does not know, run on OpenCode; an older build drops it.
    */
   harness: z.enum(CUSTOM_PROVIDER_HARNESSES).optional().catch(undefined),
+  modelSync: modelSyncSchema.optional().catch(undefined),
 });
 
 const fileSchema = z.object({ version: z.literal(1), providers: z.array(entrySchema) });
@@ -175,6 +202,40 @@ export class CustomProviderStore {
     }));
   }
 
+  /** Sync metadata contains no endpoint, key, header, or remote error body. */
+  modelSyncStates(): CustomProviderModelSyncState[] {
+    return this.#entries.map(({ stored }) => {
+      const state = stored.modelSync ?? initialModelSync();
+      const ids = new Set(stored.models.map((model) => model.id));
+      return {
+        ...state,
+        id: stored.id,
+        running: false,
+        missingModelIds: state.missingModelIds.filter((id) => ids.has(id)),
+      };
+    });
+  }
+
+  setModelSync(
+    id: string,
+    patch: Partial<StoredModelSync>,
+    expectedAttemptAt?: string,
+  ): Effect.Effect<void, CustomProviderFailure> {
+    return this.#mutate(() => {
+      const current = this.#entries.find((entry) => entry.stored.id === id);
+      if (expectedAttemptAt && current?.stored.modelSync?.lastAttemptAt !== expectedAttemptAt) return null;
+      if (!current) throw new Error(NOT_SAVED_MESSAGE);
+      return this.#entries.map((entry) =>
+        entry.stored.id !== id
+          ? entry
+          : {
+              ...entry,
+              stored: { ...entry.stored, modelSync: { ...(entry.stored.modelSync ?? initialModelSync()), ...patch } },
+            },
+      );
+    }).pipe(Effect.asVoid);
+  }
+
   /**
    * Adds one endpoint. An id already in the list is refused rather than replaced, because editing a
    * saved endpoint is a different operation: the form has no way to say "keep the stored key", so a
@@ -234,6 +295,10 @@ export class CustomProviderStore {
           models: input.models.map(copyModel),
           secret: sealed,
           ...storedHarness(input.harness ?? current.stored.harness),
+          // A different endpoint needs an explicit decision to start background requests.
+          ...(input.baseUrl === current.stored.baseUrl && current.stored.modelSync
+            ? { modelSync: current.stored.modelSync }
+            : {}),
         },
         secret,
       };

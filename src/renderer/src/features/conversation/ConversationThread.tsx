@@ -1,4 +1,3 @@
-import { supportedAttachmentExtensions } from "@openbot/contracts/attachment-files";
 import { canPreviewAttachment } from "@openbot/contracts/ipc";
 import type { AppTextKey } from "@openbot/i18n";
 import { classifyFailure } from "@openbot/telemetry";
@@ -23,15 +22,7 @@ import type { ConversationThreads } from "./conversation-types";
 import { createTurnSteps } from "./turn-steps";
 
 /** A thread takes files only from this computer, which reads every supported type. */
-const THREAD_ATTACHMENT_ACCEPT = supportedAttachmentExtensions({
-  eml: true,
-  media: true,
-  zip: true,
-  mp4: true,
-  svg: true,
-})
-  .map((extension) => `.${extension}`)
-  .join(",");
+const THREAD_ATTACHMENT_ACCEPT = "";
 
 /** The open side thread of the agent, in the place of the agent's own chat and its message box. */
 export function ConversationThread() {

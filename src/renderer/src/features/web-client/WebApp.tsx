@@ -9,6 +9,7 @@ import {
   WEB_APP_MARKETPLACE_SKILL_PARAM,
 } from "@openbot/contracts/marketplace-links";
 import { pluginSlugFromWebAppSearch, WEB_APP_PLUGIN_PARAM } from "@openbot/contracts/plugin-links";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { isBoolean, isDynamicRecord, isString } from "@openbot/contracts/runtime-values";
 import { formatLocale, resolveLocale } from "@openbot/i18n";
 import { sourceText } from "@openbot/i18n/source";
@@ -130,6 +131,7 @@ function takeBillingReturn(): BillingReturn | null {
   const outcome = url.searchParams.get("cancelled") === "1" ? "cancelled" : "completed";
   for (const name of [WEB_APP_BILLING_PARAM, "cancelled"]) url.searchParams.delete(name);
   window.history.replaceState(window.history.state, "", url);
+  if (INDEPENDENT_EDITION) return null;
   return kind === "license" || kind === "portal" ? { outcome, kind } : { outcome };
 }
 

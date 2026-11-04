@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { basename } from "node:path";
 import { isValidAvatarImage } from "@openbot/contracts/avatar-images";
+import { ATTACHMENT_LIMITS } from "@openbot/contracts/input-limits";
 import { type InviteLinkOptions, type InviteLinkPayload, parseInviteUrl } from "@openbot/contracts/invite-links";
 import type {
   AgentEvent,
@@ -58,6 +59,7 @@ import {
   REMOTE_DESKTOP_SETUP_CAPABILITY,
   type RemoteDesktopTestInput,
 } from "@openbot/contracts/ipc";
+import { decodeRecord, requiredString } from "@openbot/contracts/ipc-decoding";
 import { isDynamicRecord } from "@openbot/contracts/runtime-values";
 import { TEAM_API_ROUTES } from "@openbot/contracts/team-api-routes";
 import { AGENT_IMPORT_ROUTES } from "@openbot/contracts/team-protocol/agent-import-v1";
@@ -71,6 +73,7 @@ import { FOCUS_USE_CAPABILITY, FOCUS_USE_ROUTES } from "@openbot/contracts/team-
 import type { HostRestartEvent } from "@openbot/contracts/team-protocol/host-update-v1";
 import { INSTANCE_TRANSFER_ROUTES } from "@openbot/contracts/team-protocol/instance-transfer-v1";
 import type { MachineAlertEvent } from "@openbot/contracts/team-protocol/machine-resources-v1";
+import { STREAMING_ATTACHMENTS_CAPABILITY } from "@openbot/contracts/team-protocol/streaming-attachments-v1";
 import { decodeTeamProtocolV1CurrentHttpResponse } from "@openbot/contracts/team-protocol/v1-adapter";
 import { sourceText } from "@openbot/i18n/source";
 import { createFocusUsePing } from "@openbot/team-client/focus-use";
@@ -94,6 +97,11 @@ import {
   decodeDuplicateAgentResultFromHost,
 } from "./remote-agent-decoding";
 import { AttachmentDownloadStopped, type RemoteAttachment, RemoteAttachmentCache } from "./remote-attachment-cache";
+import {
+  downloadRemoteAttachmentToDisk,
+  uploadRemoteAttachmentBytes,
+  uploadRemoteAttachmentPath,
+} from "./remote-attachment-streaming";
 import type { RemoteConnectTrace } from "./remote-connect-trace";
 import {
   decodeConversationPageFromHost,
@@ -156,6 +164,15 @@ export interface LocalServerAttachInput {
   password: string;
   /** Selects the server: true only when the user just made it. */
   select: boolean;
+}
+
+/** The released login payload has the member ID; keep it only for an authenticated child session. */
+function decodeLocalServerLogin(value: unknown) {
+  const result = decodeJoinResult(value);
+  const member = decodeRecord(decodeRecord(value, "local server login").member, "local server member");
+  const id = requiredString(member, "id");
+  if (!id || id.length > 128) throw new Error("Invalid local server member ID.");
+  return { ...result, member: { ...result.member, id } };
 }
 
 interface RemoteServerEvents {
@@ -286,6 +303,7 @@ export class RemoteServerManager extends EventEmitter<RemoteServerEvents> {
   #keyChangedAt = new Map<string, number>();
   /** The local servers that this app runs as its child processes. See `local-servers/`. */
   #thisComputerServers: ReadonlySet<string> = new Set();
+  readonly #localReaderMemberIds = new Map<string, string>();
   readonly #hostedServers: HostedServerWakeHooks | null;
   /** When each hosted server that starts after a wake request started. */
   readonly #hostedStartAt = new Map<string, number>();
@@ -620,8 +638,10 @@ export class RemoteServerManager extends EventEmitter<RemoteServerEvents> {
       (serverId) => this.#keyChangedAt.get(serverId),
     ).map((server) => {
       const mute = this.#store.muteState(server.id);
+      const currentMemberId = server.thisComputer ? this.#localReaderMemberIds.get(server.id) : undefined;
       return {
         ...server,
+        ...(currentMemberId ? { currentMemberId } : {}),
         notificationsMuted: mute.muted,
         notificationsMutedUntil: mute.mutedUntil,
         // The level that the user chose for all devices wins over the level of this computer.
@@ -1025,6 +1045,9 @@ export class RemoteServerManager extends EventEmitter<RemoteServerEvents> {
   /** Called by the local servers before they start, so that the directory sync keeps their entries. */
   setThisComputerServers(serverIds: Iterable<string>): void {
     this.#thisComputerServers = new Set(serverIds);
+    for (const id of this.#localReaderMemberIds.keys()) {
+      if (!this.#thisComputerServers.has(id)) this.#localReaderMemberIds.delete(id);
+    }
     this.#emitChanged();
   }
 
@@ -1040,7 +1063,7 @@ export class RemoteServerManager extends EventEmitter<RemoteServerEvents> {
       const verifiedIdentity = yield* this.#client.verifyIdentity(input.apiUrl, input.serverId, input.fingerprint);
       if (verifiedIdentity.publicKey !== input.publicKey)
         return yield* new RemoteWorkflowError({ cause: new Error(sourceText("error.remote.identityNotVerified")) });
-      const result = yield* requestJson(input.apiUrl, TEAM_API_ROUTES.auth.login, decodeJoinResult, {
+      const result = yield* requestJson(input.apiUrl, TEAM_API_ROUTES.auth.login, decodeLocalServerLogin, {
         method: "POST",
         body: { username: input.username, password: input.password },
         ...this.#client.requestProtocol(verifiedIdentity.compatibility),
@@ -1071,6 +1094,7 @@ export class RemoteServerManager extends EventEmitter<RemoteServerEvents> {
       this.#connections.clearIssue(stored.id);
       this.#connections.setState(stored.id, "online");
       yield* this.#store.attachLocal(stored, input.select);
+      this.#localReaderMemberIds.set(stored.id, result.member.id);
       this.#events.syncScopes();
       this.#emitChanged();
       yield* this.#events.restart(stored.id, true);
@@ -1532,6 +1556,7 @@ export class RemoteServerManager extends EventEmitter<RemoteServerEvents> {
   }
 
   #clearServerConnectionState(serverId: string): void {
+    this.#localReaderMemberIds.delete(serverId);
     this.#hostedStartRevision.set(serverId, (this.#hostedStartRevision.get(serverId) ?? 0) + 1);
     this.#clearHostedStart(serverId);
     this.#hostedStartExpired.delete(serverId);
@@ -1915,6 +1940,28 @@ export class RemoteServerManager extends EventEmitter<RemoteServerEvents> {
     });
   }
 
+  uploadAttachmentPath(path: string, serverId: string, requestId?: string) {
+    return uploadRemoteAttachmentPath(
+      this.request.bind(this),
+      serverId,
+      path,
+      requestId === undefined ? undefined : this.#importProgress(serverId, requestId),
+    ).pipe(Effect.map((attachment) => addRemotePreviewUrls(attachment, serverId)));
+  }
+
+  downloadAttachmentToDisk(attachmentId: string, directory: string, serverId: string, size?: number) {
+    const progress = size === undefined ? undefined : this.#attachmentProgress(serverId, attachmentId, size);
+    // Cancellation belongs to the Effect fiber, not the progress callback. Interrupting it aborts
+    // the current request and waits for the downloader's file-close and partial-file finalizers.
+    return this.#owned(
+      this.#stoppable(
+        serverId,
+        attachmentId,
+        downloadRemoteAttachmentToDisk(this.request.bind(this), serverId, attachmentId, directory, progress),
+      ),
+    );
+  }
+
   readonly uploadAttachment = Effect.fn("RemoteManager.uploadAttachment")(
     function* (
       this: RemoteServerManager,
@@ -1925,6 +1972,16 @@ export class RemoteServerManager extends EventEmitter<RemoteServerEvents> {
       // With it, the bytes that the host confirms go to the renderer as `attachmentImportProgress`.
       requestId?: string,
     ): Effect.fn.Return<DraftAttachment, RemoteWorkflowError, RemoteRequest> {
+      if (this.supportsCapability(serverId, STREAMING_ATTACHMENTS_CAPABILITY)) {
+        return yield* uploadRemoteAttachmentBytes(
+          this.request.bind(this),
+          serverId,
+          name,
+          mimeType,
+          bytes,
+          requestId === undefined ? undefined : this.#importProgress(serverId, requestId),
+        ).pipe(Effect.map((attachment) => addRemotePreviewUrls(attachment, serverId)));
+      }
       const server = yield* remoteDecode(() => this.#store.require(serverId));
       const url = new URL(TEAM_API_ROUTES.attachments, server.apiUrl);
       url.searchParams.set("name", name);
@@ -2138,7 +2195,7 @@ export class RemoteServerManager extends EventEmitter<RemoteServerEvents> {
                   // A WebRTC answer holds the whole file already, and its bytes were reported.
                   progress && server.transport !== "webrtc-v2"
                     ? countedResponseBytes(response, progress, signal)
-                    : response.arrayBuffer().then((buffer) => new Uint8Array(buffer)),
+                    : fileResponseBytes(response, ATTACHMENT_LIMITS.fileBytes),
                 ),
                 name: contentDispositionFileName(response.headers.get("content-disposition"), attachmentId),
                 mimeType: response.headers.get("content-type") ?? "application/octet-stream",
@@ -2414,25 +2471,34 @@ function requiredServerSummary(servers: ServerSummary[], serverId: string): Serv
  */
 async function countedResponseBytes(
   response: Response,
-  progress: RemoteFileProgress,
-  signal: AbortSignal,
+  progress: RemoteFileProgress | undefined,
+  signal: AbortSignal | undefined,
+  maxBytes = ATTACHMENT_LIMITS.fileBytes,
 ): Promise<Uint8Array> {
+  if (Number(response.headers.get("content-length")) > maxBytes) {
+    await response.body?.cancel();
+    throw new Error(sourceText("error.attachment.previewTooLarge"));
+  }
   const reader = response.body?.getReader();
-  if (!reader) return new Uint8Array(await response.arrayBuffer());
+  if (!reader) return new Uint8Array();
   const stop = () => void reader.cancel().catch(() => undefined);
-  signal.addEventListener("abort", stop, { once: true });
+  signal?.addEventListener("abort", stop, { once: true });
   try {
     const named = Number(response.headers.get("content-length"));
-    const total = Number.isSafeInteger(named) && named > 0 ? named : progress.size;
+    const total = Number.isSafeInteger(named) && named > 0 ? named : (progress?.size ?? 0);
     const parts: Uint8Array[] = [];
     let received = 0;
-    progress.onProgress(0, total);
+    progress?.onProgress(0, total);
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      parts.push(value);
       received += value.byteLength;
-      progress.onProgress(Math.min(received, total), total);
+      if (received > maxBytes) {
+        await reader.cancel();
+        throw new Error(sourceText("error.attachment.previewTooLarge"));
+      }
+      parts.push(value);
+      progress?.onProgress(Math.min(received, total), total);
     }
     const bytes = new Uint8Array(received);
     let offset = 0;
@@ -2442,7 +2508,7 @@ async function countedResponseBytes(
     }
     return bytes;
   } finally {
-    signal.removeEventListener("abort", stop);
+    signal?.removeEventListener("abort", stop);
   }
 }
 
@@ -2451,12 +2517,5 @@ async function countedResponseBytes(
  * the body. A host that names no size is read, and the result is checked.
  */
 async function fileResponseBytes(response: Response, maxBytes: number | undefined): Promise<Uint8Array> {
-  if (maxBytes !== undefined && Number(response.headers.get("content-length")) > maxBytes) {
-    await response.body?.cancel();
-    throw new Error(sourceText("error.attachment.previewTooLarge"));
-  }
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  if (maxBytes !== undefined && bytes.byteLength > maxBytes)
-    throw new Error(sourceText("error.attachment.previewTooLarge"));
-  return bytes;
+  return countedResponseBytes(response, undefined, undefined, maxBytes ?? ATTACHMENT_LIMITS.fileBytes);
 }

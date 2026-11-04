@@ -1,3 +1,7 @@
+import {
+  type AccountScopedClientAgentModelOption,
+  withoutProviderAccountModelScope,
+} from "@openbot/contracts/account-scoped-models";
 import { AGENT_MEMORY_CONTEXT_BUDGET_BYTES, essentialMemoryBytes } from "@openbot/contracts/agent-memory-context";
 import type {
   AcpRegistryEntry,
@@ -193,11 +197,15 @@ import {
   withStoryForeignProvider,
 } from "./fixtures";
 import { mockAgentAnalytics, mockHostAnalytics } from "./mock-agent-analytics";
+import { createMockApiChannels } from "./mock-api-channels";
+import { createMockAttachmentUploads } from "./mock-attachment-uploads";
 import { createMockAuth, type MockAuthOptions } from "./mock-auth";
 import { createMockBilling, previewBillingServers } from "./mock-billing";
 import { createMockBitwardenConnector } from "./mock-bitwarden-connector";
 import { createMockBrowser, type MockBrowserOptions } from "./mock-browser";
 import { createMockChannels, type MockChannelSeed } from "./mock-channels";
+import { createMockCustomProviderModelSync } from "./mock-custom-provider-model-sync";
+import { createMockE2b } from "./mock-e2b";
 import { createMockEvents } from "./mock-events";
 import { createMockGitHubConnector } from "./mock-github-connector";
 import { createMockHostTimezone } from "./mock-host-timezone";
@@ -239,7 +247,7 @@ export interface MockOpenBotOptions
   agentStatus?: AgentStatus;
   usage?: AccountUsage;
   agents?: ClientAgentSummary[];
-  models?: ClientAgentModelOption[];
+  models?: AccountScopedClientAgentModelOption[];
   snapshots?: Record<string, ConversationSnapshot>;
   /** Deliveries that wait in each agent's queue when the preview starts. */
   queues?: Record<string, QueueDelivery[]>;
@@ -1476,10 +1484,42 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
     onePasswordConnector: createMockOnePasswordConnector(),
     bitwardenConnector: createMockBitwardenConnector(),
     vault: createMockVault(),
+    e2b: createMockE2b(),
+    apiChannels: createMockApiChannels(),
+    mcpRegistry: {
+      search: async ({ query }) => ({
+        servers:
+          !query || "preview example".includes(query.toLowerCase())
+            ? [
+                {
+                  name: "example/preview",
+                  title: "Preview MCP",
+                  description: "A preview configuration with no external connection.",
+                  version: "1.0.0",
+                  websiteUrl: "https://example.com",
+                  connections: [
+                    {
+                      id: "preview-http",
+                      transport: "http",
+                      url: "https://example.com/mcp",
+                      command: "",
+                      args: [],
+                      fields: [],
+                    },
+                  ],
+                },
+              ]
+            : [],
+        nextCursor: null,
+        fetchedAt: new Date().toISOString(),
+        stale: false,
+      }),
+    },
     billing: createMockBilling(billingPlans),
     license: createMockLicense(),
     routineFeed: createMockRoutineFeed(),
     hostedServers: createMockHostedServers(billingPlans),
+    customProviderModelSync: createMockCustomProviderModelSync(() => customProviders),
     customProviders: {
       list: async () => clone(customProviders),
       /**
@@ -1899,13 +1939,19 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
       },
       // A saved endpoint's models are composed here, not stored, so a removal drops them the way a
       // respawned OpenCode would: it lists what its config names and nothing else.
-      listModels: async (serverId) =>
-        clone([
+      listModels: async (serverId) => {
+        const options = [
           ...[...models, ...customProviders.flatMap(mockCustomProviderModels)].filter(
             (model) => !agentStatus.providers?.some((row) => row.id === model.provider && row.off),
           ),
           ...(serverId === storyForeignServerId ? [STORY_FOREIGN_MODEL] : []),
-        ]),
+        ];
+        return clone(
+          (serverId ?? mockTeam.activeServerId()) === LOCAL_SERVER_ID
+            ? options
+            : options.map(withoutProviderAccountModelScope),
+        );
+      },
       listAgents: async (serverId) =>
         clone(serverId === storyForeignServerId ? [...agents, STORY_FOREIGN_AGENT] : agents),
       listHiddenAgents: async () => hiddenAgents(),
@@ -2663,6 +2709,7 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
         return clone(conversationReadState(input.agentId));
       },
       chooseAttachments: async (_input) => [],
+      ...createMockAttachmentUploads(),
       importAttachmentData: async (data) =>
         data.map((file) => ({
           id: crypto.randomUUID(),

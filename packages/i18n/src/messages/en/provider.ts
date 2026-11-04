@@ -206,6 +206,8 @@ export const messages = defineMessages("provider", {
   "provider.account.cancelSignIn": "Cancel sign-in",
   "provider.account.finishSignIn": "Finish the sign-in in the browser.",
   "provider.account.remove": "Remove account",
+  "provider.account.removeLabel": "Remove {name}",
+  "provider.account.defaultSignInDescription": "Host default account · uses the host's existing sign-in.",
   "provider.account.disconnect": "Disconnect",
   "provider.account.actionFailed": "Could not change the {name} account.",
   "provider.account.resetUsage": "Reset usage",

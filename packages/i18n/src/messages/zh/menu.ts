@@ -2,8 +2,30 @@ import type { PartialTranslation } from "../../message";
 import type { messages as source } from "../en/menu";
 
 export const messages = {
-  // The native application menu. Electron localizes its own `role:` entries from the operating
-  // system, so only the custom items are here.
+  // 应用菜单的文字跟随应用语言，role 保留系统行为和快捷键。
+  "menu.application": "OpenBot",
+  "menu.edit": "编辑",
+  "menu.view": "显示",
+  "menu.window": "窗口",
+  "menu.hide": "隐藏 OpenBot",
+  "menu.hideOthers": "隐藏其他应用",
+  "menu.showAll": "显示全部",
+  "menu.reload": "重新加载",
+  "menu.forceReload": "强制重新加载",
+  "menu.developerTools": "切换开发者工具",
+  "menu.toggleFullscreen": "切换全屏",
+  "menu.minimize": "最小化",
+  "menu.windowZoom": "缩放窗口",
+  "menu.bringAllToFront": "全部移到前面",
+  "menu.closeWindow": "关闭窗口",
+  "menu.substitutions": "替换",
+  "menu.showSubstitutions": "显示替换选项",
+  "menu.smartQuotes": "智能引号",
+  "menu.smartDashes": "智能破折号",
+  "menu.textReplacement": "文本替换",
+  "menu.speech": "朗读",
+  "menu.startSpeaking": "开始朗读",
+  "menu.stopSpeaking": "停止朗读",
   "menu.stopAllAgents": "停止所有助手",
   "menu.checkForUpdates": "检查更新…",
   "menu.preferences": "设置…",

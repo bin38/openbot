@@ -1,7 +1,9 @@
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { useText } from "@openbot/ui/text";
 import { createEffect, createSignal, Loading, Show } from "solid-js";
 import { useAuth } from "./features/account/account-context";
 import { useProviderDetection } from "./features/custom-providers/provider-detection-context";
+import { IndependentSetup } from "./features/onboarding/IndependentSetup";
 import { createLanguageStep } from "./features/onboarding/language-step";
 import { useSetup } from "./features/onboarding/onboarding-context";
 import { SetupReadError } from "./features/onboarding/SetupReadError";
@@ -74,31 +76,40 @@ export function AppAccessGate() {
     <>
       <Show when={started()}>
         <Show
-          when={auth.visibleSignedInAccount()}
+          when={auth.visibleWorkspaceAccount()}
           fallback={
-            <Loading fallback={<LoadingScreen />}>
-              <Show
-                when={languageStepShown()}
-                fallback={
-                  <AccountLogin
+            <Show
+              when={!INDEPENDENT_EDITION}
+              fallback={
+                <div class="initial-setup-screen" role="alert">
+                  {i18n.t("onboarding.local.unavailable")}
+                </div>
+              }
+            >
+              <Loading fallback={<LoadingScreen />}>
+                <Show
+                  when={languageStepShown()}
+                  fallback={
+                    <AccountLogin
+                      variant={platform.appInfo()?.variant ?? "production"}
+                      state={auth.centralAuth()}
+                      onRetry={auth.retryCentralAccount}
+                      onRequestEmailCode={auth.requestEmailCode}
+                      onVerifyEmailCode={auth.verifyEmailCode}
+                      onReset={auth.logoutCentralAccount}
+                      language={i18n.locale()}
+                      onChangeLanguage={languageStep.reopen}
+                    />
+                  }
+                >
+                  <LanguageStep
                     variant={platform.appInfo()?.variant ?? "production"}
-                    state={auth.centralAuth()}
-                    onRetry={auth.retryCentralAccount}
-                    onRequestEmailCode={auth.requestEmailCode}
-                    onVerifyEmailCode={auth.verifyEmailCode}
-                    onReset={auth.logoutCentralAccount}
-                    language={i18n.locale()}
-                    onChangeLanguage={languageStep.reopen}
+                    reopened={languageStep.reopened()}
+                    onDone={languageStep.complete}
                   />
-                }
-              >
-                <LanguageStep
-                  variant={platform.appInfo()?.variant ?? "production"}
-                  reopened={languageStep.reopened()}
-                  onDone={languageStep.complete}
-                />
-              </Show>
-            </Loading>
+                </Show>
+              </Loading>
+            </Show>
           }
         >
           {(account) => (
@@ -108,43 +119,63 @@ export function AppAccessGate() {
                 <Show when={scope.connection.hasContent} fallback={<WorkspaceShell account={account} />}>
                   <Show when={!setup.setupReadFailed()} fallback={<SetupReadError />}>
                     <Show
-                      when={setup.pendingInviteUrl().trim()}
+                      when={!INDEPENDENT_EDITION}
                       fallback={
-                        <Loading fallback={<LoadingScreen />}>
-                          <FirstRunFlow
-                            {...setupProviders}
-                            state={
-                              setup.setupState() ?? { completed: false, preferredProvider: null, preferredModel: null }
-                            }
-                            platform={platform.appInfo()?.platform ?? "darwin"}
-                            onSave={setup.saveSetup}
-                            onAnalyticsChoice={(enabled, chosen) =>
-                              settings.updateGeneralSettings(
-                                { ...settings.generalSettings(), productAnalytics: enabled },
-                                { analyticsChosen: chosen },
-                              )
-                            }
-                            onProviderStepShown={detection.scanOnce}
-                            logoVariant={platform.appInfo()?.variant ?? "production"}
-                          />
-                        </Loading>
-                      }
-                    >
-                      <Loading fallback={<LoadingScreen />}>
-                        <InitialSetup
+                        <IndependentSetup
                           {...setupProviders}
                           state={
                             setup.setupState() ?? { completed: false, preferredProvider: null, preferredModel: null }
                           }
                           platform={platform.appInfo()?.platform ?? "darwin"}
-                          accountEmail={account().email}
-                          inviteUrl={setup.pendingInviteUrl()}
+                          workspaceName={account().name ?? ""}
                           onSave={setup.saveSetup}
-                          onPreviewInvite={setup.previewInvite}
-                          onJoinRemote={joinRemoteDuringSetup}
-                          onLogout={auth.logoutCentralAccount}
+                          onProviderStepShown={detection.scanOnce}
                         />
-                      </Loading>
+                      }
+                    >
+                      <Show
+                        when={setup.pendingInviteUrl().trim()}
+                        fallback={
+                          <Loading fallback={<LoadingScreen />}>
+                            <FirstRunFlow
+                              {...setupProviders}
+                              state={
+                                setup.setupState() ?? {
+                                  completed: false,
+                                  preferredProvider: null,
+                                  preferredModel: null,
+                                }
+                              }
+                              platform={platform.appInfo()?.platform ?? "darwin"}
+                              onSave={setup.saveSetup}
+                              onAnalyticsChoice={(enabled, chosen) =>
+                                settings.updateGeneralSettings(
+                                  { ...settings.generalSettings(), productAnalytics: enabled },
+                                  { analyticsChosen: chosen },
+                                )
+                              }
+                              onProviderStepShown={detection.scanOnce}
+                              logoVariant={platform.appInfo()?.variant ?? "production"}
+                            />
+                          </Loading>
+                        }
+                      >
+                        <Loading fallback={<LoadingScreen />}>
+                          <InitialSetup
+                            {...setupProviders}
+                            state={
+                              setup.setupState() ?? { completed: false, preferredProvider: null, preferredModel: null }
+                            }
+                            platform={platform.appInfo()?.platform ?? "darwin"}
+                            accountEmail={account().email}
+                            inviteUrl={setup.pendingInviteUrl()}
+                            onSave={setup.saveSetup}
+                            onPreviewInvite={setup.previewInvite}
+                            onJoinRemote={joinRemoteDuringSetup}
+                            onLogout={auth.logoutCentralAccount}
+                          />
+                        </Loading>
+                      </Show>
                     </Show>
                   </Show>
                 </Show>
@@ -155,14 +186,16 @@ export function AppAccessGate() {
           )}
         </Show>
       </Show>
-      <WhatsNewOverlay
-        ready={
-          !platform.chatWindow &&
-          !splashShown() &&
-          !!auth.visibleSignedInAccount() &&
-          (setup.setupState()?.completed === true || !scope.connection.hasContent)
-        }
-      />
+      <Show when={!INDEPENDENT_EDITION}>
+        <WhatsNewOverlay
+          ready={
+            !platform.chatWindow &&
+            !splashShown() &&
+            !!auth.visibleSignedInAccount() &&
+            (setup.setupState()?.completed === true || !scope.connection.hasContent)
+          }
+        />
+      </Show>
       <QuitShortcutHint />
       <Show when={splashShown()}>
         {/* Before `appInfo` loads, the build's own mode picks the logo colour. */}

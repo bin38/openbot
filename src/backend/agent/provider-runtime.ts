@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { statSync } from "node:fs";
 import { basename } from "node:path";
+import type { AccountScopedAgentModelOption } from "@openbot/contracts/account-scoped-models";
 import type {
   AccountUsage,
   AgentEvent,
@@ -893,6 +894,12 @@ export class ProviderRuntime implements ProviderPort {
 
   listModels(): AgentModelOption[] {
     return this.#modelCatalog.list().filter((model) => !this.#off.has(model.provider));
+  }
+
+  /** The desktop can distinguish models from separate Gemini accounts. */
+  listLocalModels(): AccountScopedAgentModelOption[] {
+    const snapshots = this.#providerAccounts?.modelSnapshots() ?? [];
+    return this.#modelCatalog.listLocal(snapshots).filter((model) => !this.#off.has(model.provider));
   }
 
   /**

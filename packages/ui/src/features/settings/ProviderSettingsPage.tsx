@@ -1,7 +1,7 @@
 /**
  * Settings > Providers: a short list, and one page for each provider. A list row shows one line, and
  * a badge only when the provider needs the user. The provider page has its accounts or its sign-in,
- * its key, its runtime and its use, each as a settings card with at most one button on a row.
+ * its key, its runtime and its use. Added accounts have a visible removal action.
  */
 
 import { ProviderLogo } from "@openbot/brand";
@@ -9,6 +9,7 @@ import {
   type AgentProviderId,
   type AgentProviderStatus,
   agentProviderName,
+  type CustomProviderModelSyncState,
   type CustomProviderSummary,
   DEFAULT_CUSTOM_PROVIDER_HARNESS,
   DEFAULT_PROVIDER_ACCOUNT_ID,
@@ -61,6 +62,7 @@ import {
   Smartphone,
   Spinner,
   Switch,
+  Text,
   Trash2,
   UserRoundPlus,
   X,
@@ -105,6 +107,14 @@ export interface ProviderPromptCache {
   onChange: (ttl: PromptCacheTtl) => void;
 }
 
+export interface CustomProviderModelSyncSettings {
+  states: readonly CustomProviderModelSyncState[];
+  pendingId: string | null;
+  error: string | null;
+  onRefresh: (id: string) => Promise<void>;
+  onSetEnabled: (id: string, enabled: boolean) => Promise<void>;
+}
+
 export interface ProviderSettingsPageProps extends ProviderRowHost {
   options: ProviderPickerOption[];
   /** The default for new agents. A joined server has none: its default is not this computer's. */
@@ -128,6 +138,7 @@ export interface ProviderSettingsPageProps extends ProviderRowHost {
   /** The dialog element that the menus and the select portal into. */
   menuMount?: HTMLElement | undefined;
   customProviders?: readonly CustomProviderSummary[] | undefined;
+  customProviderModelSync?: CustomProviderModelSyncSettings | undefined;
   /** Without it the page has no custom endpoints: a joined server's OpenCode is not this computer's. */
   onAddCustomProvider?: (() => void) | undefined;
   /**
@@ -818,7 +829,7 @@ const VERSION_SOURCE = {
   managed: "provider.settings.versionDownloaded",
 } as const satisfies Record<NonNullable<AgentProviderStatus["cliSource"]>, keyof AppMessages>;
 
-/** One account. Its text says what is wrong; the right edge has at most one button, then the ⋯ menu. */
+/** One account. Sign-in and removal stay visible; secondary actions use the menu. */
 function AccountRow(
   props: SectionProps & {
     account: ProviderPickerAccount;
@@ -884,6 +895,9 @@ function AccountRow(
           />
         </Show>
         <Show when={detail()}>{(text) => <ItemDescription>{text()}</ItemDescription>}</Show>
+        <Show when={own()}>
+          <ItemDescription>{t("provider.account.defaultSignInDescription")}</ItemDescription>
+        </Show>
         <Show when={ownSigningIn()}>
           <ItemDescription>{t("provider.connecting.browserHint")}</ItemDescription>
         </Show>
@@ -932,6 +946,19 @@ function AccountRow(
             {t("common.cancel")}
           </Button>
         </Show>
+        <Show when={!own() && !apiKey()}>
+          <Button
+            type="button"
+            variant="destructive-ghost"
+            size="sm"
+            aria-label={t("provider.account.removeLabel", { name: name() })}
+            disabled={props.disabled || !props.accountActions?.remove}
+            onClick={() => props.onRemove()}
+          >
+            <Trash2 aria-hidden="true" />
+            {t("provider.account.remove")}
+          </Button>
+        </Show>
         <DropdownMenu.Root placement="bottom-end" gutter={4} modal={false}>
           <MenuTrigger label={t("provider.account.moreActions", { name: name() })} disabled={props.disabled} />
           <DropdownMenu.Portal mount={props.menuMount ?? document.body}>
@@ -961,13 +988,6 @@ function AccountRow(
                 <DropdownMenu.Item onSelect={() => void props.onSignInProvider?.(props.option.id)}>
                   <KeyRound aria-hidden="true" />
                   {t("provider.settings.changeKey")}
-                </DropdownMenu.Item>
-              </Show>
-              <Show when={!own() && !apiKey()}>
-                <DropdownMenu.Separator />
-                <DropdownMenu.Item onSelect={() => props.onRemove()}>
-                  <Trash2 aria-hidden="true" />
-                  {t("provider.account.remove")}
                 </DropdownMenu.Item>
               </Show>
               <Show when={own() && state() === "connected" && props.onDisconnect}>
@@ -1810,7 +1830,9 @@ function CustomEndpointsPage(props: ProviderSettingsPageProps) {
             variant="outline"
             size="sm"
             aria-label={t("provider.custom.addLabel")}
-            disabled={props.disabled || !ready()}
+            // Saving an endpoint is also what prepares its missing runtime. Requiring that
+            // runtime here makes the first endpoint impossible to add.
+            disabled={props.disabled || !props.onAddCustomProvider}
             onClick={() => props.onAddCustomProvider?.()}
           >
             <Plus aria-hidden="true" />
@@ -1818,6 +1840,18 @@ function CustomEndpointsPage(props: ProviderSettingsPageProps) {
           </Button>
         }
       >
+        <Show when={props.customProviderModelSync?.error}>
+          {(error) => (
+            <Text tone="danger" role="alert">
+              {error()}
+            </Text>
+          )}
+        </Show>
+        <Show when={!ready()}>
+          <Text variant="caption" tone="muted" role="status">
+            {t("customProvider.runtimeHint")}
+          </Text>
+        </Show>
         <ItemGroup class="settings-modal-card" aria-label={t("customProvider.list.label")}>
           <Show
             when={endpoints().length > 0}
@@ -1842,6 +1876,11 @@ function CustomEndpointsPage(props: ProviderSettingsPageProps) {
                       {endpoint().hasApiKey ? ` · ${t("customProvider.list.apiKeySaved")}` : ""}
                       {props.customProviderHarnesses ? ` · ${runsOn(endpoint())}` : ""}
                     </ItemDescription>
+                    <Show when={props.customProviderModelSync} keyed>
+                      {(sync) => (
+                        <CustomEndpointModelSync endpoint={endpoint()} sync={sync} disabled={props.disabled} />
+                      )}
+                    </Show>
                   </ItemContent>
                   <Show when={props.onEditCustomProvider || props.onRemoveCustomProvider}>
                     <ItemActions>
@@ -1895,6 +1934,86 @@ function CustomEndpointsPage(props: ProviderSettingsPageProps) {
           if (target) props.onRemoveCustomProvider?.(target);
         }}
       />
+    </>
+  );
+}
+
+function CustomEndpointModelSync(props: {
+  endpoint: CustomProviderSummary;
+  sync: CustomProviderModelSyncSettings;
+  disabled?: boolean;
+}) {
+  const { t, format } = useText();
+  const state = () => props.sync.states.find((entry) => entry.id === props.endpoint.id);
+  const pending = () => Boolean(props.sync.pendingId) || state()?.running === true;
+  const checkedAt = () => state()?.lastSuccessAt;
+  return (
+    <>
+      <ItemDescription>{t("customProvider.sync.description")}</ItemDescription>
+      <Show when={state()?.lastFailure === "failed"}>
+        <Text variant="caption" tone="danger" role="status">
+          {t("customProvider.sync.failed")}
+        </Text>
+        <Show when={state()?.lastAttemptAt}>
+          {(at) => (
+            <ItemDescription>
+              {t("customProvider.sync.lastFailure", {
+                time: format.date(new Date(at()), { dateStyle: "short", timeStyle: "short" }),
+              })}
+            </ItemDescription>
+          )}
+        </Show>
+      </Show>
+      <Show when={checkedAt()}>
+        {(at) => (
+          <ItemDescription>
+            {t("customProvider.sync.lastSuccess", {
+              time: format.date(new Date(at()), { dateStyle: "short", timeStyle: "short" }),
+            })}
+          </ItemDescription>
+        )}
+      </Show>
+      <Show when={!state()?.lastAttemptAt}>
+        <ItemDescription>{t("customProvider.sync.notChecked")}</ItemDescription>
+      </Show>
+      <Show when={state()?.missingModelIds.length}>
+        <ItemDescription>
+          {t("customProvider.sync.missing", {
+            count: state()?.missingModelIds.length ?? 0,
+            models: state()?.missingModelIds.slice(0, 3).join(", ") ?? "",
+          })}
+        </ItemDescription>
+      </Show>
+      <Show when={state()?.omittedModelCount}>
+        <ItemDescription>
+          {t("customProvider.sync.capacity", { count: state()?.omittedModelCount ?? 0 })}
+        </ItemDescription>
+      </Show>
+      <Show when={state()?.lastRestart === "skipped-busy"}>
+        <ItemDescription>{t("customProvider.sync.restartPending")}</ItemDescription>
+      </Show>
+      <ItemActions>
+        <Switch
+          checked={state()?.enabled ?? false}
+          disabled={props.disabled || pending()}
+          aria-label={t("customProvider.sync.autoLabel", { name: props.endpoint.name })}
+          onChange={(enabled) => void props.sync.onSetEnabled(props.endpoint.id, enabled)}
+        />
+        <Text variant="caption">{t("customProvider.sync.auto")}</Text>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={props.disabled || pending()}
+          loading={state()?.running === true}
+          loadingLabel={t("customProvider.sync.refreshing")}
+          aria-label={t("customProvider.sync.refreshLabel", { name: props.endpoint.name })}
+          onClick={() => void props.sync.onRefresh(props.endpoint.id)}
+        >
+          <RotateCcw aria-hidden="true" />
+          {t("customProvider.sync.refresh")}
+        </Button>
+      </ItemActions>
     </>
   );
 }

@@ -1,6 +1,7 @@
 import { type AppAppearance, isAppAppearance } from "@openbot/contracts/app-appearance";
 import type { AppLanguage } from "@openbot/contracts/app-language";
 import type { CentralAuthUser } from "@openbot/contracts/ipc";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import type { AppTextKey } from "@openbot/i18n";
 import {
   Button,
@@ -27,7 +28,7 @@ import { SettingsProfileTab } from "@openbot/ui/features/settings/SettingsProfil
 import { SoundChoiceSelect } from "@openbot/ui/features/settings/SoundChoiceSelect";
 import { createSettingsProfileStore } from "@openbot/ui/features/settings/stores/profile-store";
 import { useText } from "@openbot/ui/text";
-import { createEffect, createSignal, onCleanup } from "solid-js";
+import { createEffect, createSignal, onCleanup, Show } from "solid-js";
 import { readActionSoundChoice, setActionSoundChoice } from "../../action-sounds";
 import { setShowAgentSteps, useShowAgentSteps } from "../../agent-steps-preference";
 import { playSoundChoice, readTaskSound, setTaskSound } from "../../completion-sound";
@@ -68,7 +69,7 @@ export interface WebAccountSettingsProps {
   appearance: AppAppearance;
   onChangeAppearance: (appearance: AppAppearance) => void;
   /** Closes these settings and opens the plans and servers of the account. */
-  onOpenBilling: () => void;
+  onOpenBilling?: (() => void) | undefined;
   onSignOut: () => Promise<void>;
   /** The levels of each host and its agents, which apply on all devices of the user. */
   notifications: WebNotificationSettings;
@@ -159,20 +160,22 @@ export default function WebAccountSettings(props: WebAccountSettingsProps) {
                 );
               })}
             </Tabs.List>
-            <div class="settings-modal-nav">
-              <Button
-                variant="ghost"
-                type="button"
-                class="settings-modal-nav-item"
-                onClick={() => {
-                  props.onOpenChange(false);
-                  props.onOpenBilling();
-                }}
-              >
-                <CreditCard aria-hidden="true" />
-                <span>{t("account.menu.billing")}</span>
-              </Button>
-            </div>
+            <Show when={!INDEPENDENT_EDITION && props.onOpenBilling}>
+              <div class="settings-modal-nav">
+                <Button
+                  variant="ghost"
+                  type="button"
+                  class="settings-modal-nav-item"
+                  onClick={() => {
+                    props.onOpenChange(false);
+                    props.onOpenBilling?.();
+                  }}
+                >
+                  <CreditCard aria-hidden="true" />
+                  <span>{t("account.menu.billing")}</span>
+                </Button>
+              </div>
+            </Show>
           </>
         }
       >

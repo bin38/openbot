@@ -21,6 +21,37 @@ interface PluginTextKeys {
  * keys here. A listing that is not here shows its catalog text.
  */
 const PLUGIN_TEXT = {
+  x: {
+    tagline: "marketplace.plugin.x.tagline",
+    description: "marketplace.plugin.x.description",
+    apps: { "app-x-mcp": "marketplace.plugin.x.app" },
+    prompts: { "prompt-1": "marketplace.plugin.x.prompt1", "prompt-2": "marketplace.plugin.x.prompt2" },
+  },
+  "x-account": {
+    tagline: "marketplace.plugin.x_account.tagline",
+    description: "marketplace.plugin.x_account.description",
+    apps: { "app-x-account-mcp": "marketplace.plugin.x_account.app" },
+    prompts: { "prompt-1": "marketplace.plugin.x_account.prompt1", "prompt-2": "marketplace.plugin.x_account.prompt2" },
+  },
+  feishu: {
+    tagline: "marketplace.plugin.feishu.tagline",
+    description: "marketplace.plugin.feishu.description",
+    apps: { "app-feishu-mcp": "marketplace.plugin.feishu.app" },
+    prompts: {
+      "prompt-1": "marketplace.plugin.feishu.prompt1",
+      "prompt-2": "marketplace.plugin.feishu.prompt2",
+      "prompt-3": "marketplace.plugin.feishu.prompt3",
+    },
+  },
+  "github-mcp": {
+    tagline: "marketplace.plugin.github_mcp.tagline",
+    description: "marketplace.plugin.github_mcp.description",
+    apps: { "app-github-mcp-mcp": "marketplace.plugin.github_mcp.app" },
+    prompts: {
+      "prompt-1": "marketplace.plugin.github_mcp.prompt1",
+      "prompt-2": "marketplace.plugin.github_mcp.prompt2",
+    },
+  },
   aave: {
     tagline: "marketplace.plugin.aave.tagline",
     description: "marketplace.plugin.aave.description",
@@ -400,6 +431,45 @@ const PLUGIN_TEXT = {
  * label of the page that gives a key. Text that is not here shows as the catalog has it.
  */
 const AUTH_TEXT: Readonly<Record<string, AppTextKey>> = {
+  "Sign in": "marketplace.auth.signIn",
+  "MCP link": "marketplace.auth.mcpLink",
+  "Airtable account page → API": "marketplace.auth.airtableHint",
+  "Brave Search API dashboard → API keys": "marketplace.auth.braveHint",
+  "Firecrawl dashboard → API keys": "marketplace.auth.firecrawlHint",
+  "PostHog Project settings → Personal API keys": "marketplace.auth.posthogHint",
+  "Render Account settings → API keys": "marketplace.auth.renderHint",
+  "Resend dashboard → API keys": "marketplace.auth.resendHint",
+  "Figma desktop app": "marketplace.auth.figmaDesktop",
+  "The local server can only read designs: layout, code context, variables and screenshots. It cannot draw or edit yet. We are working on write support.":
+    "marketplace.auth.figmaReadOnly",
+  "Open the Figma desktop app and sign in. The server needs a Dev or Full seat on a paid plan.":
+    "marketplace.auth.figmaPrepare",
+  "Open a design file from a team project, not from Drafts.": "marketplace.auth.figmaFile",
+  'Press ⌘K (Ctrl+K on Windows), search for "MCP", and turn on "Enable desktop MCP server".':
+    "marketplace.auth.figmaEnable",
+  "Keep Figma open while agents use it.": "marketplace.auth.figmaKeepOpen",
+  "X access token": "marketplace.auth.xToken",
+  "Access token": "marketplace.auth.accessToken",
+  "Use a token issued by your own X developer application. App-only tokens are read-only.":
+    "marketplace.auth.xTokenHint",
+  "X MCP setup": "marketplace.auth.xSetup",
+  "Own X account": "marketplace.auth.xAccount",
+  "Configure xurl": "marketplace.auth.xurlSetup",
+  "Your own X app and user authorization are required. OpenBot does not supply a shared OAuth client or credits.":
+    "marketplace.auth.xAccountNote",
+  "Set up the official xurl CLI with your own X developer application.": "marketplace.auth.xAccountPrepare",
+  "Complete xurl OAuth sign-in on this computer with the permissions you need.": "marketplace.auth.xAccountAuthorize",
+  "Return here and connect. Review any write action before you send it.": "marketplace.auth.xAccountConnect",
+  "Own Feishu application": "marketplace.auth.feishuApp",
+  "Feishu MCP setup": "marketplace.auth.feishuSetup",
+  "App ID": "marketplace.auth.appId",
+  "Application credentials from your own Feishu developer console.": "marketplace.auth.feishuIdHint",
+  "App secret": "marketplace.auth.appSecret",
+  "The secret of that application. Grant only the API permissions you need.": "marketplace.auth.feishuSecretHint",
+  "Personal access token": "marketplace.auth.personalAccessToken",
+  "GitHub MCP setup": "marketplace.auth.githubSetup",
+  "GitHub token": "marketplace.auth.githubToken",
+  "Use a fine-grained token for the repositories and permissions you need.": "marketplace.auth.githubTokenHint",
   "API key": "marketplace.auth.apiKey",
   "Personal API key": "marketplace.auth.personalApiKey",
   "MCP URL": "marketplace.auth.mcpUrl",
@@ -436,7 +506,14 @@ function localizedFlow(flow: McpConnectFlow, t: AppTranslate): McpConnectFlow {
   const label = authText(t, flow.label);
   if (flow.kind === "link") return { ...flow, label };
   const docs = flow.docsLabel === undefined ? {} : { docsLabel: authText(t, flow.docsLabel) };
-  if (flow.kind === "local") return { ...flow, label, ...docs };
+  if (flow.kind === "local")
+    return {
+      ...flow,
+      label,
+      ...docs,
+      steps: flow.steps.map((step) => authText(t, step)),
+      ...(flow.note === undefined ? {} : { note: authText(t, flow.note) }),
+    };
   return {
     ...flow,
     label,

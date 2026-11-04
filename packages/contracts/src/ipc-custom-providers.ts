@@ -35,6 +35,9 @@ export const CUSTOM_PROVIDER_LIMITS = {
   maxOutputMax: 1_000_000,
 } as const;
 
+/** Native endpoints can retain a larger catalog; released Team API codecs stay bounded at 64. */
+export const CUSTOM_PROVIDER_LOCAL_MODEL_LIMIT = 256;
+
 /** A `provider` key in OpenCode's config, so lowercase and free of separators. */
 export const CUSTOM_PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
 
@@ -211,7 +214,7 @@ export function isCustomProviderSummary(value: unknown): value is CustomProvider
     (value.headerNames === undefined || isHeaderNames(value.headerNames)) &&
     (value.harness === undefined || isCustomProviderHarness(value.harness)) &&
     Array.isArray(value.models) &&
-    value.models.length <= CUSTOM_PROVIDER_LIMITS.models &&
+    value.models.length <= CUSTOM_PROVIDER_LOCAL_MODEL_LIMIT &&
     value.models.every(isCustomProviderModel)
   );
 }

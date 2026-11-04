@@ -2,7 +2,7 @@
   "name": "openbot",
   "productName": "OpenBot",
   "desktopName": "openbot.desktop",
-  "version": "0.59.0",
+  "version": "1.0.0",
   "description": "A local-first multi-agent desktop workspace for Codex, Claude, and Grok.",
   "author": {
     "name": "Norbert Bodziony",
@@ -11,12 +11,12 @@
   "license": "PolyForm-Noncommercial-1.0.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nightly-labs/openbot.git"
+    "url": "git+https://github.com/bin38/openbot.git"
   },
   "bugs": {
-    "url": "https://github.com/nightly-labs/openbot/issues"
+    "url": "https://github.com/bin38/openbot/issues"
   },
-  "homepage": "https://github.com/nightly-labs/openbot#readme",
+  "homepage": "https://github.com/bin38/openbot#readme",
   "keywords": [
     "ai-agents",
     "bun",
@@ -110,6 +110,7 @@
     "dev:bootstrap": "bun scripts/prepare-dev-environment.ts",
     "dev": "bun scripts/dev-services.ts app",
     "dev:api": "bun scripts/dev-services.ts api",
+    "dev:remote": "bun scripts/dev-services.ts remote",
     "dev:apns-key": "bun scripts/dev-apns-key.ts",
     "dev:test-client": "bun scripts/dev-services.ts test-client",
     "dev:all": "bun scripts/dev-services.ts all",
@@ -376,6 +377,7 @@
     "check:agent-context": "bun scripts/agent-context-budget.ts",
     "verify:preload": "bun scripts/verify-preload-bundle.ts",
     "package": "bun run voice:prepare-runtime && bun run prepare:remote-desktop-runtime && bun run verify:remote-desktop-runtime && bun run prepare:cua-driver && bun run build && electron-builder --dir --mac --config.mac.identity=null --config.mac.notarize=false",
+    "package:independent:mac": "bun scripts/package-independent-macos.ts",
     "verify:package": "bun scripts/verify-macos-package.ts",
     "package:verify": "bun run package && bun run verify:package",
     "package:win": "bun run voice:prepare-runtime && bun scripts/prepare-remote-desktop-runtime.ts win32 x64 && bun run verify:remote-desktop-runtime --windows && bun scripts/install-cua-driver.ts win32 x64 && bun run build && electron-builder --dir --win --x64 --publish never",
@@ -398,6 +400,7 @@
     "@agentclientprotocol/sdk": "1.9.0",
     "@anthropic-ai/claude-agent-sdk": "0.3.309",
     "@anthropic-ai/sdk": "0.137.0",
+    "@e2b/desktop": "2.5.0",
     "@fontsource-variable/inter": "catalog:",
     "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
     "@kobalte/core": "catalog:",

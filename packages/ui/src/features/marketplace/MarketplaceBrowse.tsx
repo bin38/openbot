@@ -242,6 +242,13 @@ export function MarketplaceBrowse(props: { scope: MarketplaceScope; lists: Brows
                   </Button>
                 )}
               </Show>
+              <Show when={model().browseRegistry}>
+                {(browse) => (
+                  <Button type="button" variant="outline" size="sm" onClick={() => browse()()}>
+                    {t("mcp.registry.open")}
+                  </Button>
+                )}
+              </Show>
             </div>
           </header>
           <div class="marketplace-stack">

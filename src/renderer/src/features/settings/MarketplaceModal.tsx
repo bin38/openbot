@@ -8,6 +8,7 @@ import { McpSignInRelayDialog } from "@openbot/ui/features/settings/McpSignInPag
 import { PluginUninstallDialog } from "@openbot/ui/features/settings/PluginUninstallDialog";
 import { useText } from "@openbot/ui/text";
 import { createEffect, createSignal, Show, untrack } from "solid-js";
+import { McpRegistryDialog } from "./McpRegistryDialog";
 import {
   createMarketplaceController,
   type MarketplaceControllerProps,
@@ -168,6 +169,17 @@ export function MarketplaceModal(props: MarketplaceModalProps) {
   return (
     <>
       <Marketplace model={controller.model} nav={nav} open={props.open} onOpenChange={props.onOpenChange} />
+      <Show when={controller.registryOpen() && controller.registryApi()} keyed>
+        {(api) => (
+          <McpRegistryDialog
+            api={api}
+            onSave={controller.saveRegistryConfig}
+            onTest={controller.testRegistryConfig}
+            onClose={controller.closeRegistry}
+            onOpenUrl={controller.openPluginUrl}
+          />
+        )}
+      </Show>
       {/* The confirmation and the connect step are beside the Marketplace: each is one decision
           over the page it was started from, not a part of that page. */}
       <Show when={controller.uninstalling()} keyed>

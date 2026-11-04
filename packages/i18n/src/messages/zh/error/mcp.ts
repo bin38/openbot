@@ -2,6 +2,7 @@ import type { PartialTranslation } from "../../../message";
 import type { messages as source } from "../../en/error/mcp";
 
 export const messages = {
+  "error.mcp.registryUnavailable": "暂时无法访问公开 MCP 目录，已保存的连接仍可使用。",
   // MCP sign-in errors, and the sign-in page in the browser.
   "error.mcp.redirectByName": "无法通过名称访问该地址。",
   "error.mcp.redirectGetOnly": "该地址只响应 GET 请求。",

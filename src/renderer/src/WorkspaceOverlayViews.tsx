@@ -3,6 +3,7 @@ import { MCP_SERVERS_CAPABILITY } from "@openbot/contracts/ipc";
 import type { MarketplaceListingLink } from "@openbot/contracts/marketplace-links";
 import type { ComponentProps } from "@solidjs/web";
 import { createMemo, Loading, omit, Show } from "solid-js";
+import { FeaturePanelBoundary } from "./components/FeaturePanelBoundary";
 import type { AgentTemplateInstallCalls } from "./features/agent-templates/agent-templates-port";
 import { ChannelCreateDialog } from "./features/channels/ChannelCreateDialog";
 import { useChannels } from "./features/channels/channels-context";
@@ -218,24 +219,35 @@ export function ServerSettingsOverlay(
     mcpServers: McpServerConfig[];
     storage: Omit<ServerStorageOptions, "canManage">;
     hostUpdate: ServerUpdateOptions;
+    onClose: () => void;
   },
 ) {
-  const modal = omit(props, "mcpServers", "storage", "hostUpdate");
+  const modal = omit(props, "mcpServers", "storage", "hostUpdate", "onClose");
   return (
-    <Loading>
-      <ServerSettingsModal
-        {...modal}
-        mcpServers={serverCanAdminister(props.server, MCP_SERVERS_CAPABILITY) ? props.mcpServers : undefined}
-        storage={
-          serverHasStorage(props.server) ? { ...props.storage, canManage: canManageStorage(props.server) } : undefined
-        }
-        hostUpdate={
-          remoteUpdateServer(props.server)
-            ? { ...props.hostUpdate, canManage: serverRoleCanAdminister(props.server) }
-            : undefined
-        }
-      />
-    </Loading>
+    <FeaturePanelBoundary
+      onClose={() => {
+        props.onClose();
+      }}
+      fallbackMount={() => props.page?.content}
+      render={() => (
+        <Loading>
+          <ServerSettingsModal
+            {...modal}
+            mcpServers={serverCanAdminister(props.server, MCP_SERVERS_CAPABILITY) ? props.mcpServers : undefined}
+            storage={
+              serverHasStorage(props.server)
+                ? { ...props.storage, canManage: canManageStorage(props.server) }
+                : undefined
+            }
+            hostUpdate={
+              remoteUpdateServer(props.server)
+                ? { ...props.hostUpdate, canManage: serverRoleCanAdminister(props.server) }
+                : undefined
+            }
+          />
+        </Loading>
+      )}
+    />
   );
 }
 

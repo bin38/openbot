@@ -1,6 +1,24 @@
 import { defineMessages } from "../../message";
 
 export const messages = defineMessages("webClient", {
+  "webClient.error.commerceUnavailable": "Billing and hosted-service purchases are disabled in this independent build.",
+  "webClient.independent.title": "OpenBot · Independent edition",
+  "webClient.independent.heading": "Your local workspace",
+  "webClient.independent.description":
+    "Use your local Codex account, your E2B desktop, and plugins that you configure.",
+  "webClient.independent.setup":
+    "Start the desktop app from this repository. This edition does not use the original vendor's account, paid hosting, or checkout services.",
+  "webClient.independent.downloads":
+    "No installer is configured for this edition. Use the source and build instructions.",
+  "webClient.independent.remote": "For browser or remote access, run your own account and Signal services.",
+  "webClient.independent.providers":
+    "E2B and plugin providers use your own credentials and may charge for their services.",
+  "webClient.independent.attribution": "The source license and original attribution remain in effect.",
+  "webClient.independent.source": "Source code",
+  "webClient.independent.build": "Build instructions",
+  "webClient.independent.license": "Source license",
+  "webClient.independent.app": "Browser client",
+  "webClient.independent.contactFooter": "Sent from the contact form. Reply to this email to answer {email}.",
   "webClient.loading": "Loading OpenBot…",
   "webClient.loadingLine.wake": "Waking up the agents…",
   "webClient.loadingLine.coffee": "Pouring coffee for the agents…",

@@ -1,5 +1,7 @@
 // The Link account of this computer: connect with Link's device sign-in, cancel it, and disconnect.
 
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
+import { sourceText } from "@openbot/i18n/source";
 import { runCauseEffect } from "../../backend/effect-boundary";
 import type { LinkAccountService } from "../link-account-service";
 import { handler, type IpcGroupHandlers } from "./define-ipc-group";
@@ -16,7 +18,10 @@ export function linkAccountIpcHandlers({
   return {
     linkAccount: {
       status: handler(() => linkAccount.status()),
-      connect: handler(() => runCauseEffect(linkAccount.connect())),
+      connect: handler(() => {
+        if (INDEPENDENT_EDITION) throw new Error(sourceText("error.auth.localWorkspace"));
+        return runCauseEffect(linkAccount.connect());
+      }),
       cancel: handler(() => linkAccount.cancel()),
       disconnect: handler(() => runCauseEffect(linkAccount.disconnect())),
     },

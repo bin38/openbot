@@ -1182,7 +1182,11 @@ export class TeamApiServer {
   }
 
   #routeFiles(context: TeamApiRequestContext): Promise<RouteOutcome> {
-    return routeFiles(context, { agents: this.#options.agents, mailbox: this.#options.mailbox });
+    return routeFiles(context, {
+      agents: this.#options.agents,
+      mailbox: this.#options.mailbox,
+      uploads: this.#options.attachmentUploads,
+    });
   }
 
   #routeAgents(context: TeamApiRequestContext): Promise<RouteOutcome> {
@@ -2128,6 +2132,7 @@ export class TeamApiServer {
             return (
               this.#options.remoteScreen?.checkSetup !== undefined && this.#options.remoteScreen?.test !== undefined
             );
+          if (capability === "streaming-attachments-v1") return this.#options.attachmentUploads !== undefined;
           if (capability === MCP_SERVERS_CAPABILITY) return this.#options.mcpServers !== undefined;
           // Each account signs in with the browser, so it needs the sign-in routes too.
           if (capability === MCP_ACCOUNTS_CAPABILITY)

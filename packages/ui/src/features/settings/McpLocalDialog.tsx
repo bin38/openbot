@@ -9,7 +9,7 @@
 
 import type { McpLocalFlow } from "@openbot/contracts/mcp-connect-flows";
 import { Alert, AlertContent, AlertDescription, AlertIcon, Button, ExternalLink, Info, Text } from "@openbot/ui";
-import { createMemo, For, onSettled, Show } from "solid-js";
+import { createMemo, For, onSettled, Show, untrack } from "solid-js";
 import { useText } from "../../text";
 import { createConnectRun, type McpConnectBaseProps, McpConnectShell } from "./McpConnectShell";
 
@@ -23,10 +23,12 @@ export interface McpLocalDialogProps extends McpConnectBaseProps {
 export function McpLocalDialog(props: McpLocalDialogProps) {
   const { t } = useText();
   const { state, busy, attempt } = createConnectRun(props);
+  const stdio = createMemo(() => props.subject.config.transport === "stdio");
+  const autoConnect = createMemo(() => props.connectOnOpen && !stdio());
   const connect = () => void attempt(async () => props.subject.config);
   // A server that is already on connects at once; one that is not keeps its steps on screen.
   onSettled(() => {
-    if (props.connectOnOpen) connect();
+    if (untrack(autoConnect)) connect();
   });
   const docs = createMemo(() => {
     const url = props.flow.docsUrl;
@@ -38,7 +40,7 @@ export function McpLocalDialog(props: McpLocalDialogProps) {
       {...props}
       state={state}
       busy={busy}
-      description={t("mcp.local.description", { name: props.subject.name })}
+      description={t(stdio() ? "mcp.local.stdioDescription" : "mcp.local.description", { name: props.subject.name })}
       onSubmit={connect}
       action={
         <Button type="submit" size="sm" loading={busy()} loadingLabel={t("common.connecting")}>
@@ -48,7 +50,9 @@ export function McpLocalDialog(props: McpLocalDialogProps) {
     >
       <div class="mcp-connect-card">
         <div class="mcp-connect-row">
-          <h3 class="mcp-local-heading">{t("mcp.local.stepsTitle", { name: props.subject.name })}</h3>
+          <h3 class="mcp-local-heading">
+            {t(stdio() ? "mcp.local.stdioStepsTitle" : "mcp.local.stepsTitle", { name: props.subject.name })}
+          </h3>
           <Show when={docs()}>
             {(page) => (
               <Button
@@ -68,9 +72,13 @@ export function McpLocalDialog(props: McpLocalDialogProps) {
         </div>
         <p class="mcp-connect-row mcp-local-address">
           <Text as="span" tone="muted">
-            {t("mcp.local.address")}
+            {stdio() ? t("mcp.local.command") : t("mcp.local.address")}
           </Text>
-          <code>{props.subject.config.url}</code>
+          <code>
+            {stdio()
+              ? JSON.stringify([props.subject.config.command, ...props.subject.config.args])
+              : props.subject.config.url}
+          </code>
         </p>
       </div>
 

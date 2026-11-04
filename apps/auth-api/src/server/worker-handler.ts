@@ -1,3 +1,4 @@
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { Effect, Result } from "effect";
 import { routeRequest as routeHostedSiteRequest } from "../../../site-router/src/index";
 import { type AuthRetentionResult, pruneExpiredAuthData } from "./auth-data-retention";
@@ -8,6 +9,7 @@ import { runApiEffect } from "./effect-runtime";
 import { createHostedBilling } from "./hosted-billing";
 import type { HostedServerBindings } from "./hosted-server-service";
 import { HostedSiteService } from "./hosted-site-service";
+import { independentServiceResponse } from "./independent-edition";
 import { enforceMarketplaceIngress, MarketplaceRateLimitError } from "./marketplace-request-policy";
 import { pageMarkdownResponse } from "./page-markdown";
 import {
@@ -41,6 +43,8 @@ export function createWorkerHandler(
         >,
       context?: WorkerExecutionContext,
     ) {
+      const unavailable = independentServiceResponse(request);
+      if (unavailable) return unavailable;
       const hostRedirect = canonicalHostRedirect(request);
       if (hostRedirect) return hostRedirect;
       if (request.method === "GET" && new URL(request.url).pathname === "/billing/checkout-return") {
@@ -99,6 +103,16 @@ export function createWorkerHandler(
         return;
       }
       const now = controller.scheduledTime;
+      if (INDEPENDENT_EDITION) {
+        const [retention] = await runApiEffect(
+          Effect.all([
+            Effect.exit(isDailyRetentionRun(now) ? prune(bindings.DB, now) : Effect.succeed(null)),
+            Effect.exit(deliverRemoteAuthEvents(bindings, now)),
+          ]).pipe(Effect.flatMap(([retention, delivery]) => Effect.all([retention, delivery]))),
+        );
+        if (retention) log(retention);
+        return;
+      }
       // Retention starts after the hosted server check; delivery and site cleanup run beside both.
       const hostingThenRetention = Effect.gen(function* () {
         const hostingResult = bindings.BOAT_API_KEY ? yield* tickHostedServers(bindings, now) : null;
@@ -264,6 +278,7 @@ function serveLocalHostedSite(
   request: Request,
   bindings: Partial<Pick<WorkerBindings, "SITES" | "SITE_LOCAL_ORIGIN">>,
 ) {
+  if (INDEPENDENT_EDITION) return Effect.succeed(null);
   if (!bindings.SITES || !bindings.SITE_LOCAL_ORIGIN) return Effect.succeed(null);
   const requestUrl = new URL(request.url);
   const configuredOrigin = new URL(bindings.SITE_LOCAL_ORIGIN);

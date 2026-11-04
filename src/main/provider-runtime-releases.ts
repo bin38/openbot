@@ -1,7 +1,9 @@
 import { MANAGED_RUNTIME_PROVIDERS, type ManagedProviderId } from "@openbot/contracts/ipc";
 import { type DynamicRecord, isDynamicRecord, isNumber, isString } from "@openbot/contracts/runtime-values";
 import { sourceText } from "@openbot/i18n/source";
+import { createOpenBotLogger } from "@openbot/logging";
 import { Effect } from "effect";
+import bundledBlocklist from "../../provider-runtime-blocklist.json";
 import type { AgentRuntimeLock } from "../../scripts/agent-runtime-lock";
 import {
   codexTag,
@@ -36,14 +38,11 @@ export interface LatestReleaseContext {
 }
 
 /**
- * Versions the OpenBot repository asks every installation not to offer.
+ * Versions this distribution must not offer.
  *
- * This is the one way to stop a broken upstream release without shipping an OpenBot release. It is a
- * block list, not an allow list: a new release is offered at once, and only a version named here is
- * held back. A list that cannot be read blocks nothing.
+ * The bundled file keeps compatibility protection without contacting another distribution's
+ * repository. An operator can explicitly provide a separately maintained HTTPS blocklist.
  */
-const BLOCKED_VERSIONS_URL =
-  "https://raw.githubusercontent.com/nightly-labs/openbot/main/provider-runtime-blocklist.json";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 const MAX_METADATA_BYTES = 4 * 1024 * 1024;
@@ -55,6 +54,7 @@ const VERSION = /^\d+\.\d+\.\d+$/u;
 const CURSOR_DATE = /^\d{4}\.\d{2}\.\d{2}$/u;
 const CURSOR_BUILD = /^\d{4}\.\d{2}\.\d{2}(?:-\d{2}-\d{2}-\d{2})?-[0-9a-f]{7,40}$/u;
 const HEADERS = { "User-Agent": "OpenBot-runtime-installer" };
+const logger = createOpenBotLogger("provider-runtime-releases");
 
 export type BlockedVersions = ReadonlyMap<ManagedProviderId, ReadonlySet<string>>;
 
@@ -377,10 +377,31 @@ export function latestRelease(
 }
 export const fetchBlockedVersions = Effect.fn("ProviderRelease.fetchBlockedVersions")(function* (
   fetch: Fetch,
+  configuredUrl = process.env.OPENBOT_RUNTIME_BLOCKLIST_URL,
 ): Effect.fn.Return<BlockedVersions, ProviderRuntimeFailure> {
-  const value = yield* fetchJsonEffect(fetch, BLOCKED_VERSIONS_URL);
+  const blocked = yield* runtimeSync(() => readBlockedVersions(bundledBlocklist));
+  const configured = configuredUrl?.trim();
+  if (!configured) return blocked;
+  const additional = yield* Effect.gen(function* () {
+    const url = yield* runtimeSync(() => ownBlocklistUrl(configured));
+    const value = yield* fetchJsonEffect((input, init) => fetch(input, { ...init, redirect: "error" }), url);
+    return yield* runtimeSync(() => readBlockedVersions(value));
+  }).pipe(
+    Effect.catch(() => {
+      logger.warn("The configured runtime blocklist is unavailable. Bundled compatibility protection remains active.");
+      return Effect.succeed(null);
+    }),
+  );
+  if (!additional) return blocked;
+  for (const [provider, versions] of additional) {
+    blocked.set(provider, new Set([...(blocked.get(provider) ?? []), ...versions]));
+  }
+  return blocked;
+});
+
+function readBlockedVersions(value: DynamicRecord): Map<ManagedProviderId, ReadonlySet<string>> {
   if (!(value.schemaVersion === 1 && isDynamicRecord(value.blocked))) {
-    return yield* new ProviderRuntimeFailure({ cause: new Error(sourceText("error.provider.blockedListShape")) });
+    throw new Error(sourceText("error.provider.blockedListShape"));
   }
   const blocked = new Map<ManagedProviderId, ReadonlySet<string>>();
   for (const provider of MANAGED_RUNTIME_PROVIDERS) {
@@ -388,7 +409,29 @@ export const fetchBlockedVersions = Effect.fn("ProviderRelease.fetchBlockedVersi
     if (Array.isArray(versions)) blocked.set(provider, new Set(versions.filter(isString)));
   }
   return blocked;
-});
+}
+
+function ownBlocklistUrl(value: string): string {
+  const url = new URL(value);
+  const loopback = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
+  const path = url.pathname.toLowerCase();
+  if (
+    !(url.protocol === "https:" || (url.protocol === "http:" && loopback)) ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash ||
+    url.hostname === "openbot.run" ||
+    url.hostname.endsWith(".openbot.run") ||
+    url.hostname === "openbot.site" ||
+    url.hostname.endsWith(".openbot.site") ||
+    ((url.hostname === "raw.githubusercontent.com" || url.hostname === "github.com") &&
+      path.startsWith("/nightly-labs/openbot")) ||
+    (url.hostname === "api.github.com" && path.startsWith("/repos/nightly-labs/openbot"))
+  )
+    throw new Error("OPENBOT_RUNTIME_BLOCKLIST_URL must name your own HTTPS or loopback blocklist.");
+  return url.toString();
+}
 
 /** The parts of a spec one npm platform package decides. */
 const npmArtifactEffect = Effect.fn("ProviderRelease.npmArtifact")(function* (

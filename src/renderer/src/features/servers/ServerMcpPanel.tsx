@@ -26,6 +26,7 @@ import {
   Switch,
   Text,
   Trash2,
+  Upload,
 } from "@openbot/ui";
 import type { BrowserViewRuntime } from "@openbot/ui/features/browser/BrowserLiveView";
 import {
@@ -36,6 +37,7 @@ import {
 import { useText } from "@openbot/ui/text";
 import type { JSX } from "@solidjs/web";
 import { createEffect, createMemo, createStore, For, onCleanup, Show } from "solid-js";
+import { McpConfigImportDialog } from "./McpConfigImportDialog";
 import { type McpPanelSignInApp, McpSignInAppSection } from "./McpSignInAppSection";
 import {
   emptyMcpConfig,
@@ -181,6 +183,11 @@ interface McpPanelState {
   formTest: McpTestState | null;
   /** The config the form test ran with; a test only describes the settings it measured. */
   formTestConfig: McpServerConfig | null;
+  importOpen: boolean;
+  /** Imported drafts are reviewed and saved one at a time, through the existing form. */
+  pendingImports: McpServerConfig[];
+  importPosition: number;
+  importTotal: number;
 }
 
 const STDIO_LABEL = "STDIO";
@@ -203,6 +210,10 @@ export function ServerMcpPanel(props: ServerMcpPanelProps) {
     tests: {},
     formTest: null,
     formTestConfig: null,
+    importOpen: false,
+    pendingImports: [],
+    importPosition: 0,
+    importTotal: 0,
   });
   // Counts the form's tests, so an answer that arrives after the user left is dropped.
   let draftTestRun = 0;
@@ -476,7 +487,7 @@ export function ServerMcpPanel(props: ServerMcpPanelProps) {
     },
   );
 
-  function openForm(config: McpServerConfig | null): void {
+  function openForm(config: McpServerConfig | null, importing = false): void {
     // The row's Cancel is not on the form, and an edit can change the address it signs in to: a
     // sign-in still waiting on this row ends here rather than storing a token for the old address.
     const pending = config ? state.tests[config.id] : undefined;
@@ -484,7 +495,7 @@ export function ServerMcpPanel(props: ServerMcpPanelProps) {
     const draft = config ? mcpConfigDraft(config) : emptyMcpConfig();
     setState((current) => {
       current.view = "form";
-      current.editingId = config?.id ?? null;
+      current.editingId = importing ? null : (config?.id ?? null);
       current.draft = draft;
       // Copy, not alias: the form edits `draft` in place while the baseline holds still.
       current.baseline = mcpConfigDraft(draft);
@@ -496,12 +507,38 @@ export function ServerMcpPanel(props: ServerMcpPanelProps) {
     draftTestRun += 1;
     // Store writes are not visible to reads in the same tick: read from the argument.
     props.onDetailChange?.({
-      title: config ? t("mcp.panel.editTitle") : t("mcp.panel.connectTitle"),
+      title: config && !importing ? t("mcp.panel.editTitle") : t("mcp.panel.connectTitle"),
       back: backToList,
       saveBar,
       save: () => void save(),
       reset: resetForm,
     });
+  }
+
+  function reviewImports(configs: McpServerConfig[]): void {
+    const first = configs[0];
+    if (!first || disabled()) return;
+    setState((current) => {
+      current.importOpen = false;
+      current.pendingImports = configs.slice(1);
+      current.importPosition = 1;
+      current.importTotal = configs.length;
+    });
+    openForm(first, true);
+  }
+
+  function nextImport(): void {
+    endFormSignIn();
+    const next = state.pendingImports[0];
+    if (!next) {
+      backToList();
+      return;
+    }
+    setState((current) => {
+      current.pendingImports.shift();
+      current.importPosition += 1;
+    });
+    openForm(next, true);
   }
 
   /** Leaving or resetting the form drops its Cancel, so a sign-in still waiting ends with it. */
@@ -520,6 +557,13 @@ export function ServerMcpPanel(props: ServerMcpPanelProps) {
       current.error = "";
       current.formTest = null;
       current.formTestConfig = null;
+      if (current.importTotal > 0) {
+        current.draft = emptyMcpConfig();
+        current.baseline = emptyMcpConfig();
+      }
+      current.pendingImports = [];
+      current.importPosition = 0;
+      current.importTotal = 0;
     });
     draftTestRun += 1;
   }
@@ -541,7 +585,10 @@ export function ServerMcpPanel(props: ServerMcpPanelProps) {
       await props.onSave(normalizeMcpConfig(state.draft));
       stored = true;
     });
-    if (stored) backToList();
+    if (stored) {
+      if (state.importTotal > 0) nextImport();
+      else backToList();
+    }
   }
 
   /**
@@ -595,12 +642,13 @@ export function ServerMcpPanel(props: ServerMcpPanelProps) {
    * off screen until there is something to save.
    */
   function saveBar(): McpPanelSaveBar | null {
-    if (!mcpConfigChanged(state.draft, state.baseline)) return null;
+    const changed = mcpConfigChanged(state.draft, state.baseline);
+    if (!changed && state.importTotal === 0) return null;
     return {
       message: state.error || t("mcp.panel.changesNotSaved"),
       failed: Boolean(state.error),
       saving: state.busy === "save",
-      resetDisabled: state.busy !== null,
+      resetDisabled: state.busy !== null || !changed,
       saveDisabled: disabled() || formWaiting() || (state.touched && !mcpConfigIsValid(state.draft)),
     };
   }
@@ -619,12 +667,28 @@ export function ServerMcpPanel(props: ServerMcpPanelProps) {
          */
         description={t("mcp.panel.description")}
         actions={
-          <Show when={props.servers.length > 0}>
-            <Button type="button" size="sm" variant="outline" disabled={disabled()} onClick={() => openForm(null)}>
-              <Plus aria-hidden="true" />
-              {t("mcp.panel.connectCustom")}
+          <ItemActions>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={disabled()}
+              onClick={() =>
+                setState((current) => {
+                  current.importOpen = true;
+                })
+              }
+            >
+              <Upload aria-hidden="true" />
+              {t("mcp.import.action")}
             </Button>
-          </Show>
+            <Show when={props.servers.length > 0}>
+              <Button type="button" size="sm" variant="outline" disabled={disabled()} onClick={() => openForm(null)}>
+                <Plus aria-hidden="true" />
+                {t("mcp.panel.connectCustom")}
+              </Button>
+            </Show>
+          </ItemActions>
         }
       >
         <Show when={state.error}>
@@ -806,6 +870,16 @@ export function ServerMcpPanel(props: ServerMcpPanelProps) {
           });
         }}
       >
+        <Show when={state.importTotal > 0}>
+          <div class="server-mcp-row-next">
+            <Text variant="caption" tone="muted" role="status">
+              {t("mcp.import.progress", { position: state.importPosition, total: state.importTotal })}
+            </Text>
+            <Button type="button" size="sm" variant="ghost" disabled={disabled() || formWaiting()} onClick={nextImport}>
+              {t("mcp.import.skip")}
+            </Button>
+          </div>
+        </Show>
         {/* The dialog header already names the view, so this section only labels the group. */}
         <SettingsSection
           class="server-mcp-section"
@@ -1233,6 +1307,19 @@ export function ServerMcpPanel(props: ServerMcpPanelProps) {
         <div class="t-page" data-page-id="1">
           {listView()}
         </div>
+      </Show>
+
+      <Show when={state.importOpen}>
+        <McpConfigImportDialog
+          servers={props.servers}
+          disabled={disabled()}
+          onReview={reviewImports}
+          onClose={() =>
+            setState((current) => {
+              current.importOpen = false;
+            })
+          }
+        />
       </Show>
 
       {/* The dialog unmounts with its target, so its title never shows an empty name while it closes. */}

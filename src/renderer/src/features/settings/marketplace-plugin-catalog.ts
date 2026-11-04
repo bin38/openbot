@@ -37,6 +37,236 @@ export function createPluginAppConfig(app: MarketplacePluginApp): McpServerConfi
   };
 }
 
+const X: MarketplacePluginDetail = {
+  id: "plugin-x",
+  slug: "x",
+  name: "X",
+  tagline: "Search public posts with your own X access token",
+  description:
+    "Connect directly to the official X MCP endpoint with your own developer access token. An app-only bearer token provides read access; operations depend on the token scopes and your X API plan. This connection does not use an OpenBot or Codex connector account.",
+  category: "productivity",
+  creatorName: "X",
+  iconUrl: null,
+  version: "1.0.0",
+  prompts: [
+    { id: "prompt-1", text: "Find recent public posts about this project." },
+    { id: "prompt-2", text: "Summarize the public posts from this account." },
+  ],
+  apps: [
+    {
+      id: "app-x-mcp",
+      name: "X",
+      description: "Search public posts with your own X access token",
+      iconUrl: null,
+      server: {
+        name: "x",
+        transport: "http",
+        url: "https://api.x.com/mcp",
+        auth: [
+          {
+            id: "x-bearer",
+            kind: "key",
+            label: "X access token",
+            fields: [
+              {
+                id: "token",
+                label: "Access token",
+                header: "Authorization",
+                prefix: "Bearer ",
+                hint: "Use a token issued by your own X developer application. App-only tokens are read-only.",
+              },
+            ],
+            docsUrl: "https://docs.x.com/tools/mcp",
+            docsLabel: "X MCP setup",
+          },
+        ],
+      },
+    },
+  ],
+  websiteUrl: "https://docs.x.com/tools/mcp",
+  privacyPolicyUrl: null,
+  termsUrl: null,
+  skills: [],
+  installs: 0,
+  featured: true,
+  updatedAt: "2026-11-04T00:00:00.000Z",
+  shareUrl: "https://openbot.run/plugins/x",
+};
+
+const X_ACCOUNT: MarketplacePluginDetail = {
+  id: "plugin-x-account",
+  slug: "x-account",
+  name: "X Account",
+  tagline: "Use your own signed-in X developer application",
+  description:
+    "The official xurl bridge connects the X MCP endpoint with your own user authorization. Set up your own developer application and complete xurl login on this computer before connecting. X does not support native MCP dynamic OAuth registration. Actions depend on the permissions you authorize and your X API plan.",
+  category: "productivity",
+  creatorName: "X",
+  iconUrl: null,
+  version: "1.0.0",
+  prompts: [
+    { id: "prompt-1", text: "Read the posts that my authorized account can access." },
+    { id: "prompt-2", text: "Draft an X post from this document and show it to me before posting." },
+  ],
+  apps: [
+    {
+      id: "app-x-account-mcp",
+      name: "X Account",
+      description: "Use your own signed-in X developer application",
+      iconUrl: null,
+      server: {
+        name: "x-account",
+        transport: "stdio",
+        command: "npx",
+        args: ["-y", "@xdevplatform/xurl@1.3.4", "mcp", "https://api.x.com/mcp"],
+        auth: [
+          {
+            id: "x-account-local",
+            label: "Own X account",
+            kind: "local",
+            steps: [
+              "Set up the official xurl CLI with your own X developer application.",
+              "Complete xurl OAuth sign-in on this computer with the permissions you need.",
+              "Return here and connect. Review any write action before you send it.",
+            ],
+            note: "Your own X app and user authorization are required. OpenBot does not supply a shared OAuth client or credits.",
+            docsUrl: "https://docs.x.com/tools/mcp",
+            docsLabel: "Configure xurl",
+          },
+        ],
+      },
+    },
+  ],
+  websiteUrl: "https://docs.x.com/tools/mcp",
+  privacyPolicyUrl: null,
+  termsUrl: null,
+  skills: [],
+  installs: 0,
+  featured: false,
+  updatedAt: "2026-11-04T00:00:00.000Z",
+  shareUrl: "https://openbot.run/plugins/x-account",
+};
+
+const FEISHU: MarketplacePluginDetail = {
+  id: "plugin-feishu",
+  slug: "feishu",
+  name: "飞书 / Feishu",
+  tagline: "Documents, tables, and messages through your own Feishu app",
+  description:
+    "Use the official Lark/Feishu MCP server with your own application ID and secret. The server acts with the permissions granted to that application; it does not inherit every user document or chat. Personal-user access requires a separate user OAuth login in the official CLI.",
+  category: "productivity",
+  creatorName: "Lark / Feishu",
+  iconUrl: null,
+  version: "1.0.0",
+  prompts: [
+    { id: "prompt-1", text: "List the documents and tables my Feishu application can access." },
+    { id: "prompt-2", text: "Summarize this Feishu document." },
+    { id: "prompt-3", text: "Prepare a message for the selected Feishu chat and ask me before sending." },
+  ],
+  apps: [
+    {
+      id: "app-feishu-mcp",
+      name: "飞书 / Feishu",
+      description: "Documents, tables, and messages through your own Feishu app",
+      iconUrl: null,
+      server: {
+        name: "feishu",
+        transport: "stdio",
+        command: "npx",
+        args: ["-y", "@larksuiteoapi/lark-mcp@0.5.1", "mcp"],
+        auth: [
+          {
+            id: "feishu-app",
+            kind: "key",
+            label: "Own Feishu application",
+            fields: [
+              {
+                id: "app-id",
+                label: "App ID",
+                env: "APP_ID",
+                hint: "Application credentials from your own Feishu developer console.",
+              },
+              {
+                id: "app-secret",
+                label: "App secret",
+                env: "APP_SECRET",
+                hint: "The secret of that application. Grant only the API permissions you need.",
+              },
+            ],
+            docsUrl:
+              "https://github.com/larksuite/lark-openapi-mcp/blob/main/docs/usage/configuration/configuration.md",
+            docsLabel: "Feishu MCP setup",
+          },
+        ],
+      },
+    },
+  ],
+  websiteUrl: "https://github.com/larksuite/lark-openapi-mcp",
+  privacyPolicyUrl: null,
+  termsUrl: null,
+  skills: [],
+  installs: 0,
+  featured: true,
+  updatedAt: "2026-11-04T00:00:00.000Z",
+  shareUrl: "https://openbot.run/plugins/feishu",
+};
+
+const GITHUB_MCP: MarketplacePluginDetail = {
+  id: "plugin-github-mcp",
+  slug: "github-mcp",
+  name: "GitHub MCP",
+  tagline: "Repositories and issues through your own GitHub token",
+  description:
+    "Connect directly to GitHub’s official MCP endpoint with your own personal access token. Repository access and write actions follow the token permissions. No upstream OpenBotGit application or token broker is used.",
+  category: "coding",
+  creatorName: "GitHub",
+  iconUrl: null,
+  version: "1.0.0",
+  prompts: [
+    { id: "prompt-1", text: "List the open issues in this repository." },
+    { id: "prompt-2", text: "Review the changes in this pull request." },
+  ],
+  apps: [
+    {
+      id: "app-github-mcp-mcp",
+      name: "GitHub MCP",
+      description: "Repositories and issues through your own GitHub token",
+      iconUrl: null,
+      server: {
+        name: "github-mcp",
+        transport: "http",
+        url: "https://api.githubcopilot.com/mcp/",
+        auth: [
+          {
+            id: "github-pat",
+            kind: "key",
+            label: "Personal access token",
+            fields: [
+              {
+                id: "token",
+                label: "GitHub token",
+                header: "Authorization",
+                prefix: "Bearer ",
+                hint: "Use a fine-grained token for the repositories and permissions you need.",
+              },
+            ],
+            docsUrl: "https://github.com/github/github-mcp-server",
+            docsLabel: "GitHub MCP setup",
+          },
+        ],
+      },
+    },
+  ],
+  websiteUrl: "https://github.com/github/github-mcp-server",
+  privacyPolicyUrl: null,
+  termsUrl: null,
+  skills: [],
+  installs: 0,
+  featured: true,
+  updatedAt: "2026-11-04T00:00:00.000Z",
+  shareUrl: "https://openbot.run/plugins/github-mcp",
+};
+
 const AAVE: MarketplacePluginDetail = {
   id: "plugin-aave",
   slug: "aave",
@@ -71,8 +301,8 @@ const AAVE: MarketplacePluginDetail = {
   termsUrl: "https://aave.com/terms",
   skills: [],
   installs: 0,
-  featured: true,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  featured: false,
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/aave",
 };
 
@@ -112,8 +342,8 @@ const CANVA: MarketplacePluginDetail = {
   termsUrl: "https://www.canva.com/policies/terms-of-use/",
   skills: [],
   installs: 0,
-  featured: true,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  featured: false,
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/canva",
 };
 
@@ -154,7 +384,7 @@ const LINEAR: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/linear",
 };
 
@@ -195,7 +425,7 @@ const NOTION: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: true,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/notion",
 };
 
@@ -252,7 +482,7 @@ const OBSIDIAN: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/obsidian",
 };
 
@@ -292,7 +522,7 @@ const ATLASSIAN: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/atlassian",
 };
 
@@ -332,7 +562,7 @@ const TODOIST: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/todoist",
 };
 
@@ -372,7 +602,7 @@ const TRELLO: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/trello",
 };
 
@@ -412,7 +642,7 @@ const COBRAIN: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/cobrain",
 };
 
@@ -466,8 +696,8 @@ const FIGMA: MarketplacePluginDetail = {
   termsUrl: "https://www.figma.com/tos/",
   skills: [],
   installs: 0,
-  featured: true,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  featured: false,
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/figma",
 };
 
@@ -503,7 +733,7 @@ const PAPER: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/paper",
 };
 
@@ -543,7 +773,7 @@ const APPLE_APPS: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/apple-apps",
 };
 
@@ -583,7 +813,7 @@ const SENTRY: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/sentry",
 };
 
@@ -624,7 +854,7 @@ const VERCEL: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/vercel",
 };
 
@@ -664,7 +894,7 @@ const CLOUDFLARE: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/cloudflare",
 };
 
@@ -704,7 +934,7 @@ const SUPABASE: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/supabase",
 };
 
@@ -747,7 +977,7 @@ const NEON: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/neon",
 };
 
@@ -787,7 +1017,7 @@ const PRISMA: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/prisma",
 };
 
@@ -828,7 +1058,7 @@ const NETLIFY: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/netlify",
 };
 
@@ -868,7 +1098,7 @@ const RAILWAY: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/railway",
 };
 
@@ -926,7 +1156,7 @@ const RENDER: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/render",
 };
 
@@ -961,7 +1191,7 @@ const CONTEXT7: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/context7",
 };
 
@@ -996,7 +1226,7 @@ const HUGGINGFACE: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/huggingface",
 };
 
@@ -1036,7 +1266,7 @@ const STRIPE: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/stripe",
 };
 
@@ -1094,7 +1324,7 @@ const POSTHOG: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/posthog",
 };
 
@@ -1144,7 +1374,7 @@ const AIRTABLE: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/airtable",
 };
 
@@ -1202,7 +1432,7 @@ const FIRECRAWL: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/firecrawl",
 };
 
@@ -1254,7 +1484,7 @@ const BRAVE_SEARCH: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/brave-search",
 };
 
@@ -1306,7 +1536,7 @@ const RESEND: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/resend",
 };
 
@@ -1370,7 +1600,7 @@ const COMPOSIO: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/composio",
 };
 
@@ -1410,11 +1640,15 @@ const CLICKUP: MarketplacePluginDetail = {
   skills: [],
   installs: 0,
   featured: false,
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   shareUrl: "https://openbot.run/plugins/clickup",
 };
 
 export const MARKETPLACE_PLUGINS: MarketplacePluginDetail[] = [
+  X,
+  X_ACCOUNT,
+  FEISHU,
+  GITHUB_MCP,
   AAVE,
   CANVA,
   LINEAR,

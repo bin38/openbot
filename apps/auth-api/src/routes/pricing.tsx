@@ -1,4 +1,5 @@
-import { createFileRoute } from "@tanstack/solid-router";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
+import { createFileRoute, redirect } from "@tanstack/solid-router";
 import { PricingPage } from "../components/pricing/PricingPage";
 import { pricingPageText } from "../components/pricing/pricing-page-text";
 import { loadPageText } from "../lib/page-text";
@@ -7,6 +8,9 @@ import { PRICING_ROUTE } from "../lib/pricing-page";
 import { OPENBOT_SOCIAL_IMAGE_ALT, OPENBOT_SOCIAL_IMAGE_URL, OPENBOT_X_HANDLE } from "../lib/site-metadata";
 
 export const Route = createFileRoute("/pricing")({
+  beforeLoad: () => {
+    if (INDEPENDENT_EDITION) throw redirect({ to: "/", statusCode: 307 });
+  },
   loader: async ({ context }) => {
     const offer = await readPricingOffer();
     const page = await loadPageText(context.locale, pricingPageText);

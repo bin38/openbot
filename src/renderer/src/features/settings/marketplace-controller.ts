@@ -16,10 +16,15 @@ import type {
   McpSignInState,
 } from "@openbot/contracts/ipc";
 import { assignedSkillCount, isRemovableSkill, isSkillEnabled, mcpConfigErrors } from "@openbot/contracts/ipc";
-import { createMarketplaceShareUrl, type MarketplaceListingLink } from "@openbot/contracts/marketplace-links";
+import {
+  createMarketplaceShareUrl,
+  createOpenBotMarketplaceUrl,
+  type MarketplaceListingLink,
+} from "@openbot/contracts/marketplace-links";
 import { mcpAccountFragment, mcpAccountUrl } from "@openbot/contracts/mcp-accounts";
 import { type McpConnectFlow, mcpFlowFields } from "@openbot/contracts/mcp-connect-flows";
-import { createPluginShareUrl } from "@openbot/contracts/plugin-links";
+import { createOpenBotPluginUrl, createPluginShareUrl } from "@openbot/contracts/plugin-links";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { TOAST_DURATION, toast } from "@openbot/ui";
 import { connectorSummary } from "@openbot/ui/features/connectors/ConnectorDetailPanel";
 import { CONNECTOR_LISTINGS } from "@openbot/ui/features/connectors/connector-catalog";
@@ -223,6 +228,7 @@ export function createMarketplaceController(props: MarketplaceControllerProps) {
     setErrorCode(cause === undefined ? null : errorReference(cause));
   };
   const [notice, setNotice] = createSignal("");
+  const [registryOpen, setRegistryOpen] = createSignal(false);
   /** The actions in flight: `agent:<listing>`, `skill:<skill>` and `app:<app id>`. */
   const [busy, setBusy] = createStore<Record<string, true>>({});
   const mark = (key: string, on: boolean) =>
@@ -1384,14 +1390,20 @@ export function createMarketplaceController(props: MarketplaceControllerProps) {
   /* The address is built from the slug rather than read from `shareUrl`, so what is copied is what the route answers. */
   function copyLink(slug: string) {
     void Promise.resolve()
-      .then(() => writeClipboardText(createPluginShareUrl(slug)))
+      .then(() => writeClipboardText(INDEPENDENT_EDITION ? createOpenBotPluginUrl(slug) : createPluginShareUrl(slug)))
       .catch((cause) => setError(t("marketplace.error.copyLink"), cause));
   }
 
   /* The agent or skill link of a listing. The address is built from its id, as for a plugin. */
   function copyListingLink(link: MarketplaceListingLink) {
     void Promise.resolve()
-      .then(() => writeClipboardText(createMarketplaceShareUrl(link, calls().shareOrigin)))
+      .then(() =>
+        writeClipboardText(
+          INDEPENDENT_EDITION
+            ? createOpenBotMarketplaceUrl(link)
+            : createMarketplaceShareUrl(link, calls().shareOrigin),
+        ),
+      )
       .catch((cause) => setError(t("marketplace.error.copyLink"), cause));
   }
 
@@ -1507,6 +1519,9 @@ export function createMarketplaceController(props: MarketplaceControllerProps) {
     get addServer() {
       return props.onAddServer;
     },
+    get browseRegistry() {
+      return props.pluginServerId && calls().registry ? () => setRegistryOpen(true) : undefined;
+    },
     get runPrompt() {
       const run = props.onRunPluginPrompt;
       const agentId = pluginAgentId();
@@ -1525,6 +1540,21 @@ export function createMarketplaceController(props: MarketplaceControllerProps) {
 
   return {
     model,
+    registryOpen,
+    registryApi: () => calls().registry,
+    closeRegistry: () => setRegistryOpen(false),
+    testRegistryConfig: (config: McpServerConfig) => {
+      const serverId = props.pluginServerId;
+      if (!serverId) return Promise.reject(new Error(t("marketplace.error.uninstallNoServer")));
+      return calls().mcp.testMcpServer({ config }, serverId);
+    },
+    saveRegistryConfig: async (config: McpServerConfig) => {
+      const serverId = props.pluginServerId;
+      if (!serverId) throw new Error(t("marketplace.error.uninstallNoServer"));
+      const next = await calls().mcp.saveMcpServer({ config }, serverId);
+      setServers(next);
+      setNotice(t("mcp.registry.saved"));
+    },
     readListing,
     appStatesRead,
     connecting,

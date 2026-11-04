@@ -8,6 +8,6 @@ export const messages = defineMessages("startup", {
   // Shown while OpenBot runs, when another program changed `app.asar`: the next start would fail with no message.
   "startup.archiveChangedTitle": "OpenBot files were changed",
   "startup.archiveChangedBody":
-    "Another program changed the OpenBot file app.asar. OpenBot runs now, but it will not open after you quit it.\n\nTo repair OpenBot, install it again. Your local data stays.",
-  "startup.archiveChangedDownload": "Download OpenBot",
+    "Another program changed the OpenBot file app.asar. OpenBot runs now, but it will not open after you quit it.\n\nTo repair OpenBot, install it again from your own build or backup. Your local data stays.",
+  "startup.archiveChangedDownload": "Open recovery source",
 });

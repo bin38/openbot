@@ -22,12 +22,14 @@
 # The manifest is the one that the Linux desktop updater reads, so a server trusts the same source as
 # a desktop install. A server only moves to a newer version: an older OpenBot cannot open a database
 # that a newer one migrated. provision.sh sources this file for the same install steps.
+# Set OPENBOT_RELEASE_REPOSITORY=owner/repo to your own GitHub release repository before an install.
+# install_hosting saves that explicit source in a root-owned file for the update units.
 set -euo pipefail
 export LC_ALL=C DEBIAN_FRONTEND=noninteractive
 umask 022
 
 INSTALL=/opt/OpenBot
-RELEASES=https://github.com/nightly-labs/openbot/releases
+RELEASES=""
 LOCK=/run/openbot-update.lock
 # Not in a directory that boat saves, so a download that a stop interrupts does not stay.
 SCRATCH=/var/tmp
@@ -54,7 +56,41 @@ fail() {
   exit 1
 }
 
+# Stored settings are data, never shell code. A tenant must not control an update source.
+read_release_setting() {
+  local file=$1 permissions
+  [ -f "$file" ] && [ ! -L "$file" ] || fail "The release setting must be a regular file."
+  [ "$(stat -c %u -- "$file")" = 0 ] || fail "Root must own the release setting."
+  permissions=$(stat -c %a -- "$file")
+  [[ $permissions =~ ^[0-7]{3,4}$ ]] && (( (8#$permissions & 0022) == 0 )) ||
+    fail "The release setting must not be writable by a group or another user."
+  cat -- "$file"
+}
+
+require_release_repository() {
+  local repository=${OPENBOT_RELEASE_REPOSITORY:-} setting=$INSTALL/hosted/release-repository
+  if [ -z "$repository" ] && { [ -e "$setting" ] || [ -L "$setting" ]; }; then
+    repository=$(read_release_setting "$setting") || return 1
+  fi
+  [[ $repository =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] ||
+    fail "Set OPENBOT_RELEASE_REPOSITORY to your own owner/repo before installation or updates."
+  repository=$(printf '%s' "$repository" | tr '[:upper:]' '[:lower:]')
+  case $repository in
+    nightly-labs/openbot | nightly-labs/openbot.git) fail "The original release repository is not permitted." ;;
+  esac
+  export OPENBOT_RELEASE_REPOSITORY=$repository
+  RELEASES=https://github.com/$repository/releases
+}
+
+require_staged_source() {
+  require_release_repository
+  [ -f "$INSTALL/staged.source" ] || fail "The staged release has no independent source record. It was kept."
+  [ "$(read_release_setting "$INSTALL/staged.source")" = "$OPENBOT_RELEASE_REPOSITORY" ] ||
+    fail "The staged release is from another repository. It was kept."
+}
+
 fetch() {
+  require_release_repository
   curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 --silent --show-error --retry 3 "$@"
 }
 
@@ -115,6 +151,7 @@ available_package() {
 # and newer releases replace some libraries of the remote desktop runtime. A package that the system
 # does not have is skipped with a warning; then only the feature that uses it can fail.
 install_packages() {
+  require_release_repository
   local package missing=() available=()
   while read -r package; do
     [[ -z $package || $package == \#* ]] && continue
@@ -148,6 +185,7 @@ unpack() {
 
 # Root owns the release. The service user must read and run each file, and must not write any of them.
 prepare_release() {
+  require_release_repository
   [ -x "$1/openbot" ] || fail "The AppImage has no openbot executable."
   chown -R root:root "$1"
   # The extract keeps the umask of the shell, which can be 077 under sudo.
@@ -166,6 +204,7 @@ prepare_release() {
 # OpenBot. Without the owner, cp makes each path with its mode at once. Root owns the source, and root
 # copies it, so the owner and the SUID helper do not change.
 copy_release() {
+  require_release_repository
   rm -rf "$2"
   cp -a --no-preserve=ownership "$1" "$2"
 }
@@ -183,18 +222,25 @@ repair_release_modes() {
 # hosting files of the release are installed. A stop or a failure before then leaves `.applying`, and
 # `apply` does all of it again at the next boot.
 swap_in() {
+  require_staged_source
   : >"$INSTALL/.applying"
   copy_release "$INSTALL/staged" "$INSTALL/app"
 }
 
 finish_swap() {
   rm -f "$INSTALL/.applying"
-  rm -rf "$INSTALL/staged" "$INSTALL/staged.ready"
+  rm -rf "$INSTALL/staged" "$INSTALL/staged.ready" "$INSTALL/staged.source"
 }
 
 stage_release() {
+  require_release_repository
   rm -f "$INSTALL/staged.ready"
   copy_release "$1" "$INSTALL/staged"
+  local source_record
+  source_record=$(mktemp "$INSTALL/.staged.source.XXXXXX")
+  printf '%s\n' "$OPENBOT_RELEASE_REPOSITORY" >"$source_record"
+  chmod 0600 "$source_record"
+  mv -f "$source_record" "$INSTALL/staged.source"
   version_of "$INSTALL/staged" >"$INSTALL/staged.ready"
 }
 
@@ -225,9 +271,14 @@ download() {
 # Installs the server scripts, the AppArmor profile and the units of $1. A script is written next to
 # its target and then renamed, so a running script never reads a half-written file.
 install_hosting() {
-  local source=$1 user file unit changed=0
+  require_release_repository
+  local source=$1 user file unit source_setting changed=0
   user=$(<"$INSTALL/hosted/service-user")
   [[ $user =~ ^[a-zA-Z_][a-zA-Z0-9_-]*$ ]] || fail "The service user is not valid."
+  source_setting=$(mktemp "$INSTALL/hosted/.release-repository.XXXXXX")
+  printf '%s\n' "$OPENBOT_RELEASE_REPOSITORY" >"$source_setting"
+  chmod 0600 "$source_setting"
+  mv -f "$source_setting" "$INSTALL/hosted/release-repository"
   for file in "${HOSTED_FILES[@]}"; do
     install -m 0755 "$source/$file" "$INSTALL/hosted/.$file.new"
     mv -f "$INSTALL/hosted/.$file.new" "$INSTALL/hosted/$file"
@@ -274,6 +325,7 @@ install_pre_stop() {
 }
 
 stage() {
+  require_release_repository
   local architecture manifest version path sha512 size current
   case $(uname -m) in
     x86_64) architecture=x86_64 manifest=latest-linux.yml ;;
@@ -286,6 +338,7 @@ stage() {
     return 0
   fi
   [ -x "$INSTALL/app/openbot" ] || fail "OpenBot is not installed."
+  if [ -d "$INSTALL/staged" ]; then require_staged_source; fi
   manifest=$(fetch "$RELEASES/latest/download/$manifest")
   version=$(sed -n 's/^version: *//p' <<<"$manifest" | head -n 1)
   path=$(sed -n 's/^path: *//p' <<<"$manifest" | head -n 1)
@@ -297,7 +350,7 @@ stage() {
   [[ $sha512 =~ ^[A-Za-z0-9+/]{86}==$ ]] || fail "The release manifest has no valid SHA-512."
   # A release that is no longer the latest one, for example because it was withdrawn, is removed. A
   # server that starts before this check applies it. This also removes a copy that a stop interrupted.
-  if [ "$(staged_version)" != "$version" ]; then rm -rf "$INSTALL/staged" "$INSTALL/staged.ready"; fi
+  if [ "$(staged_version)" != "$version" ]; then rm -rf "$INSTALL/staged" "$INSTALL/staged.ready" "$INSTALL/staged.source"; fi
   current=$(version_of "$INSTALL/app")
   # With an unknown version, each release looks newer, and an update could be a downgrade.
   [ -n "$current" ] || fail "The installed version is not known."
@@ -325,6 +378,8 @@ stage() {
 }
 
 apply() {
+  require_release_repository
+  if [ -d "$INSTALL/staged" ] || [ -e "$INSTALL/.applying" ]; then require_staged_source; fi
   recover
   local staged current
   staged=$(staged_version)
@@ -336,7 +391,7 @@ apply() {
   current=$(version_of "$INSTALL/app")
   # `.applying` means that a stop came during the last copy, so `app` is not complete.
   if [ ! -e "$INSTALL/.applying" ] && [ -d "$INSTALL/app" ] && ! newer "$staged" "$current"; then
-    rm -rf "$INSTALL/staged" "$INSTALL/staged.ready"
+    rm -rf "$INSTALL/staged" "$INSTALL/staged.ready" "$INSTALL/staged.source"
     return 0
   fi
   swap_in
@@ -367,6 +422,7 @@ boot() {
 # A release that an older script moved into place has the units of `request`, but that script
 # installed only the units that it knew. The start of OpenBot does not wait for the update lock.
 trigger() {
+  require_release_repository
   local source=$INSTALL/app/resources/hosting unit changed=0
   repair_release_modes || echo "The modes of the release are not repaired." >&2
   for unit in "${REQUEST_UNITS[@]}"; do
@@ -390,6 +446,8 @@ trigger() {
 # reads or follows one. `stage` and `apply` run as their own process and take the update lock, so a
 # request that comes during a download waits for it.
 request() {
+  require_release_repository
+  if [ -d "$INSTALL/staged" ]; then require_staged_source; fi
   local install=0 status=0 keeper
   if [ -e "$REQUESTS/update-install" ] || [ -L "$REQUESTS/update-install" ]; then install=1; fi
   if [ "$install" -eq 1 ]; then set_state installing; else set_state waiting; fi
@@ -421,6 +479,22 @@ request() {
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  case ${1:-} in
+    -h | --help)
+      printf 'Usage: %s boot|stage|apply|request|trigger|--dry-run\n' "$0"
+      printf 'Set OPENBOT_RELEASE_REPOSITORY=owner/repo to your own GitHub release repository.\n'
+      exit 0
+      ;;
+    --dry-run)
+      require_release_repository
+      printf 'Release manifests: %s/latest/download/latest-linux[-arm64].yml\n' "$RELEASES"
+      printf 'Release artifacts: %s/download/v<VERSION>/OpenBot-<VERSION>-<ARCH>.AppImage\n' "$RELEASES"
+      exit 0
+      ;;
+    boot | stage | apply | request | trigger) ;;
+    *) fail "usage: $0 boot|stage|apply|request|trigger|--dry-run" ;;
+  esac
+  require_release_repository
   [ "$(id -u)" -eq 0 ] || fail "Run this as root."
   case ${1:-} in
     trigger)

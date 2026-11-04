@@ -1,4 +1,5 @@
 import { APP_INTERFACE_SIZES, type AppInterfaceSize, type AppVariant } from "@openbot/contracts/ipc";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import {
   Item,
   ItemActions,
@@ -220,17 +221,19 @@ export function SettingsGeneralTab(props: SettingsGeneralTabProps) {
         </ItemGroup>
       </SettingsSection>
 
-      <SettingsSection title={i18n.t("settings.permissions.title")}>
-        <ItemGroup class="settings-modal-card">
-          <SwitchField
-            data-settings-row="settings.analytics.title"
-            checked={props.value.productAnalytics}
-            onChange={(checked) => props.onUpdateSetting("productAnalytics", checked)}
-            label={i18n.t("settings.analytics.title")}
-            description={i18n.t("settings.analytics.description")}
-          />
-        </ItemGroup>
-      </SettingsSection>
+      <Show when={!INDEPENDENT_EDITION}>
+        <SettingsSection title={i18n.t("settings.permissions.title")}>
+          <ItemGroup class="settings-modal-card">
+            <SwitchField
+              data-settings-row="settings.analytics.title"
+              checked={props.value.productAnalytics}
+              onChange={(checked) => props.onUpdateSetting("productAnalytics", checked)}
+              label={i18n.t("settings.analytics.title")}
+              description={i18n.t("settings.analytics.description")}
+            />
+          </ItemGroup>
+        </SettingsSection>
+      </Show>
     </>
   );
 }

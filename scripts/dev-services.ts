@@ -5,6 +5,7 @@ import { createServer } from "node:net";
 import { type NetworkInterfaceInfo, networkInterfaces } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { createOpenBotLogger, toLogValue } from "@openbot/logging";
 import { cliSpawnTarget } from "../src/backend/cli";
 import {
@@ -39,12 +40,12 @@ import {
 import { resolveDevelopmentAppDataRoot } from "./development-state-paths";
 import { withoutElectronRuntimeFlags } from "./electron-spawn-env";
 import { resolvePackageBin } from "./package-bin";
-import { prepareDevelopmentEnvironment } from "./prepare-dev-environment";
+import { prepareDevelopmentEnvironment, prepareLocalDevelopmentEnvironment } from "./prepare-dev-environment";
 
 const logger = createOpenBotLogger("dev-services");
 
 export type DevelopmentService = "api" | "remote" | "app" | "test-client";
-type DevelopmentTarget = Exclude<DevelopmentService, "remote"> | "all";
+type DevelopmentTarget = DevelopmentService | "all";
 type DevelopmentNetworkInterfaces = NodeJS.Dict<Array<Pick<NetworkInterfaceInfo, "address" | "family" | "internal">>>;
 
 export interface DevelopmentServiceSpec {
@@ -82,11 +83,32 @@ interface StopOwnedProcessesOptions {
 export function developmentEnvironmentForTarget(
   target: DevelopmentTarget,
   environment: NodeJS.ProcessEnv = process.env,
+  localDesktop = INDEPENDENT_EDITION && target === "app",
 ): NodeJS.ProcessEnv {
-  return {
+  const child: NodeJS.ProcessEnv = {
     ...environment,
     OPENBOT_DEV_TEST_CLIENT_ENABLED: target === "test-client" ? "1" : "0",
   };
+  if (INDEPENDENT_EDITION) {
+    // Legacy account routing is not an opt-in to a self-hosted account service.
+    delete child.OPENBOT_AUTH_API_URL;
+    delete child.OPENBOT_MOBILE_AUTH_API_URL;
+  }
+  if (localDesktop) {
+    child.OPENBOT_DEV_REMOTE_ROLE = "none";
+    child.OPENBOT_DEV_WITH_SERVICES = "0";
+    for (const name of [
+      "OPENBOT_AUTH_API_URL",
+      "OPENBOT_MOBILE_AUTH_API_URL",
+      "OPENBOT_REMOTE_SIGNAL_URL",
+      "OPENBOT_HOSTING_DEVELOPER_KEY",
+      "OPENBOT_HOSTING_TEST_API_URL",
+    ])
+      delete child[name];
+  } else {
+    child.OPENBOT_DEV_WITH_SERVICES = "1";
+  }
+  return child;
 }
 
 const scriptsRoot = dirname(fileURLToPath(import.meta.url));
@@ -104,10 +126,12 @@ const DEFAULT_REMOTE_DEBUGGING_PORTS = {
   "test-client": 9_334,
 } as const;
 
-export function servicesForTarget(target: DevelopmentTarget): DevelopmentService[] {
+export function servicesForTarget(target: DevelopmentTarget, withServices = false): DevelopmentService[] {
   if (target === "all") return ["api", "remote", "app"];
   if (target === "test-client") return ["api", "remote", "app", "test-client"];
   if (target === "api") return ["api"];
+  if (target === "remote") return ["remote"];
+  if (INDEPENDENT_EDITION && !withServices) return ["app"];
   return ["api", "remote", "app"];
 }
 
@@ -158,7 +182,13 @@ export function createDevelopmentServiceSpec(
       OPENBOT_DEV_REMOTE_DEBUGGING_PORT:
         childEnvironment.OPENBOT_DEV_REMOTE_DEBUGGING_PORT ??
         String(isTestClient ? DEFAULT_REMOTE_DEBUGGING_PORTS["test-client"] : DEFAULT_REMOTE_DEBUGGING_PORTS.app),
-      OPENBOT_DEV_REMOTE_ROLE: childEnvironment.OPENBOT_DEV_REMOTE_ROLE ?? (isTestClient ? "client" : "host"),
+      OPENBOT_DEV_REMOTE_ROLE:
+        childEnvironment.OPENBOT_DEV_REMOTE_ROLE ??
+        (isTestClient
+          ? "client"
+          : childEnvironment.OPENBOT_DEV_WITH_SERVICES === "1" || !INDEPENDENT_EDITION
+            ? "host"
+            : "none"),
     },
   };
 }
@@ -205,9 +235,10 @@ export function developmentProfileToSeed(
   specs: readonly DevelopmentServiceSpec[],
   profileExists: (path: string) => boolean = existsSync,
 ): { profile: string; env: NodeJS.ProcessEnv } | null {
-  // The seed writes the app profile, which every target except `api` opens.
+  // Only explicit service-test stacks call this; local app starts do not seed any profile.
   const app = specs.find((spec) => spec.name === "app");
   if (!app) return null;
+  if (INDEPENDENT_EDITION && app.env.OPENBOT_DEV_WITH_SERVICES !== "1") return null;
   const instanceId = readDevelopmentInstanceId(app.env.OPENBOT_DEV_INSTANCE_ID);
   const profile = resolve(
     resolveDevelopmentAppDataRoot(process.platform, app.env),
@@ -229,9 +260,15 @@ function seedDevelopmentProfile(profile: string, environment: NodeJS.ProcessEnv)
   });
 }
 
-const DEVELOPMENT_OPTIONS = ["--dry-run", "--force", "--shared", "--isolated", "--hosting=test", "--slack"] as const;
-/** The deployed `test` account Worker. It creates real hosted server VMs for the accounts on its allow list. */
-const TEST_ACCOUNT_API_URL = "https://openbot-auth-api-test.internal9671.workers.dev";
+const DEVELOPMENT_OPTIONS = [
+  "--dry-run",
+  "--force",
+  "--shared",
+  "--isolated",
+  "--hosting=test",
+  "--slack",
+  "--with-services",
+] as const;
 
 export interface DevelopmentInvocation {
   target: DevelopmentTarget;
@@ -243,8 +280,8 @@ export interface DevelopmentInvocation {
   // Open the shared `OpenBot Dev` profile instead of the profile of this
   // worktree, which is keyed to its path. The default keeps two worktrees from
   // seeing each other's conversations. `--isolated`, the old way to ask for the
-  // default, is still accepted and does nothing. Either way the profile is
-  // seeded on the start that creates it.
+  // default, is still accepted and does nothing. Only explicit integration stacks seed a missing
+  // profile; a local app start lets the application create its own local owner.
   shared: boolean;
   // Sign the app in to the `test` account Worker instead of the local one, so that a hosted server
   // is a real boat VM that can reach its Worker and Signal. The app gets one profile for this that
@@ -253,12 +290,37 @@ export interface DevelopmentInvocation {
   // Open a public HTTPS tunnel to Signal and to the account API, so that Slack can reach a managed
   // Slack app's host. See `dev-slack-tunnels.ts`.
   slack: boolean;
+  /** Explicit local Account API + Signal stack for self-hosted integration development. */
+  withServices: boolean;
+}
+
+export interface DevelopmentLaunchPlan {
+  services: DevelopmentService[];
+  localDesktop: boolean;
+  migrateAccountApi: boolean;
+  seedProfile: boolean;
+}
+
+export function developmentLaunchPlan(
+  invocation: Pick<DevelopmentInvocation, "target" | "hostingTest" | "slack" | "withServices">,
+): DevelopmentLaunchPlan {
+  const services = servicesForTarget(
+    invocation.target,
+    invocation.withServices || invocation.hostingTest || invocation.slack,
+  );
+  const localDesktop = services.length === 1 && services[0] === "app";
+  return {
+    services,
+    localDesktop,
+    migrateAccountApi: services.includes("api"),
+    seedProfile: !localDesktop && services.includes("app"),
+  };
 }
 
 export function parseDevelopmentTarget(args: string[]): DevelopmentInvocation {
-  const target = args.find((argument) => !argument.startsWith("--")) ?? "all";
-  if (target !== "api" && target !== "app" && target !== "test-client" && target !== "all") {
-    throw new Error(`Unknown development target: ${target}. Use api, app, test-client, or all.`);
+  const target = args.find((argument) => !argument.startsWith("--")) ?? (INDEPENDENT_EDITION ? "app" : "all");
+  if (target !== "api" && target !== "remote" && target !== "app" && target !== "test-client" && target !== "all") {
+    throw new Error(`Unknown development target: ${target}. Use api, remote, app, test-client, or all.`);
   }
   const unsupportedOption = args.find(
     (argument) => argument.startsWith("--") && !DEVELOPMENT_OPTIONS.some((option) => option === argument),
@@ -274,7 +336,33 @@ export function parseDevelopmentTarget(args: string[]): DevelopmentInvocation {
     shared: args.includes("--shared"),
     hostingTest: args.includes("--hosting=test"),
     slack: args.includes("--slack"),
+    withServices: args.includes("--with-services"),
   };
+}
+
+/** The hosting test mode never inherits the vendor's deployed account Worker. */
+export function hostingTestApiUrl(environment: NodeJS.ProcessEnv): string {
+  const value = environment.OPENBOT_HOSTING_TEST_API_URL ?? environment.OPENBOT_SELF_HOSTED_API_URL;
+  if (!value?.trim())
+    throw new Error(
+      "--hosting=test requires OPENBOT_HOSTING_TEST_API_URL or OPENBOT_SELF_HOSTED_API_URL for your own test service.",
+    );
+  const url = new URL(value);
+  const loopback = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
+  if (
+    !(url.protocol === "https:" || (url.protocol === "http:" && loopback)) ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash ||
+    url.hostname === "openbot.run" ||
+    url.hostname.endsWith(".openbot.run") ||
+    url.hostname === "openbot.site" ||
+    url.hostname.endsWith(".openbot.site") ||
+    url.hostname === "openbot-auth-api-test.internal9671.workers.dev"
+  )
+    throw new Error("The hosting test API must be your own HTTPS or loopback service, without URL credentials.");
+  return url.toString().replace(/\/+$/u, "");
 }
 
 /**
@@ -289,21 +377,31 @@ async function readHostingDeveloperKey(): Promise<string> {
 }
 
 async function main(): Promise<void> {
-  const { target, dryRun, force, shared, hostingTest, slack } = parseDevelopmentTarget(process.argv.slice(2));
-  if (!dryRun && prepareDevelopmentEnvironment() === "created") {
-    logger.info("Prepared local development state.");
+  const invocation = parseDevelopmentTarget(process.argv.slice(2));
+  const { target, dryRun, force, shared, hostingTest, slack } = invocation;
+  const plan = developmentLaunchPlan(invocation);
+  const hostingApi = hostingTest ? hostingTestApiUrl(process.env) : null;
+  const hostingKey = hostingTest && !dryRun ? await readHostingDeveloperKey() : undefined;
+  if (!dryRun) {
+    if (plan.localDesktop) prepareLocalDevelopmentEnvironment();
+    else if (prepareDevelopmentEnvironment({ migrateAccountApi: plan.migrateAccountApi }) === "created")
+      logger.info("Prepared local development service state.");
   }
-  const services = servicesForTarget(target);
-  const developmentEnvironment = dryRun ? {} : await loadDevelopmentEnvironment(projectRoot);
-  const sharedEnvironment = developmentEnvironmentForTarget(target);
-  if (hostingTest) {
-    sharedEnvironment.OPENBOT_AUTH_API_URL = TEST_ACCOUNT_API_URL;
-    sharedEnvironment.OPENBOT_MOBILE_AUTH_API_URL = TEST_ACCOUNT_API_URL;
-    sharedEnvironment.OPENBOT_DEV_INSTANCE_ID ??= developmentInstanceIdForWorktree("openbot:hosting-test");
-    sharedEnvironment.OPENBOT_HOSTING_DEVELOPER_KEY = await readHostingDeveloperKey();
+  const services = plan.services;
+  const developmentEnvironment = dryRun || plan.localDesktop ? {} : await loadDevelopmentEnvironment(projectRoot);
+  const sharedEnvironment = developmentEnvironmentForTarget(target, process.env, plan.localDesktop);
+  if (hostingApi) {
+    const apiUrl = hostingApi;
+    sharedEnvironment.OPENBOT_AUTH_API_URL = apiUrl;
+    sharedEnvironment.OPENBOT_MOBILE_AUTH_API_URL = apiUrl;
+    sharedEnvironment.OPENBOT_SELF_HOSTED_API_URL = apiUrl;
+    sharedEnvironment.OPENBOT_DEV_INSTANCE_ID ??= developmentInstanceIdForWorktree(
+      `openbot:hosting-test:${new URL(apiUrl).origin}`,
+    );
+    if (hostingKey) sharedEnvironment.OPENBOT_HOSTING_DEVELOPER_KEY = hostingKey;
     // A dev role signs a throwaway account in with a code that only the local Worker returns.
     sharedEnvironment.OPENBOT_DEV_REMOTE_ROLE = "none";
-    logger.info(`The app signs in to the test account Worker: ${TEST_ACCOUNT_API_URL}.`);
+    logger.info(`The app uses the self-hosted test Account API: ${new URL(apiUrl).origin}.`);
   }
   // The host and the test client of this stack find each other through a file named after it.
   sharedEnvironment.OPENBOT_DEV_STACK_ID = String(process.pid);
@@ -362,7 +460,7 @@ async function main(): Promise<void> {
   try {
     // After the lock, because seeding a profile takes long enough that a sibling
     // worktree should not wait behind it to choose its own ports.
-    const seed = developmentProfileToSeed(specs);
+    const seed = plan.seedProfile ? developmentProfileToSeed(specs) : null;
     if (seed) seedDevelopmentProfile(seed.profile, seed.env);
 
     await runDevelopmentServices(specs, stack);
@@ -441,39 +539,43 @@ async function allocateDevelopmentPorts(
     if (!sharedEnvironment.OPENBOT_AUTH_API_URL) {
       sharedEnvironment.OPENBOT_AUTH_API_URL = `http://127.0.0.1:${apiPort}`;
     }
+    if (INDEPENDENT_EDITION) {
+      sharedEnvironment.OPENBOT_SELF_HOSTED_API_URL ??= sharedEnvironment.OPENBOT_AUTH_API_URL;
+      sharedEnvironment.OPENBOT_AUTH_API_URL = hostingTestApiUrl({
+        OPENBOT_SELF_HOSTED_API_URL: sharedEnvironment.OPENBOT_SELF_HOSTED_API_URL,
+      });
+    }
     configureSiteHostingDevelopmentEnvironment(sharedEnvironment, apiPort);
-    if (services.includes("remote")) {
-      const signalPort = await findAvailablePort(
-        readPort(sharedEnvironment.REMOTE_SIGNAL_PORT) ?? DEFAULT_REMOTE_SIGNAL_PORT,
-        reservedPorts,
-        heldPorts,
-      );
-      reservedPorts.add(signalPort);
-      sharedEnvironment.REMOTE_SIGNAL_PORT = String(signalPort);
-
-      const healthPort = await findAvailablePort(
-        readPort(sharedEnvironment.REMOTE_HEALTH_PORT) ?? DEFAULT_REMOTE_HEALTH_PORT,
-        reservedPorts,
-        heldPorts,
-      );
-      reservedPorts.add(healthPort);
-      sharedEnvironment.REMOTE_HEALTH_PORT = String(healthPort);
-      sharedEnvironment.REMOTE_SESSION_SECRET ??= randomBytes(32).toString("hex");
-      sharedEnvironment.TURN_SHARED_SECRET ??= randomBytes(32).toString("hex");
-      if (signalPort !== DEFAULT_REMOTE_SIGNAL_PORT) {
-        logger.info(`Signal port ${DEFAULT_REMOTE_SIGNAL_PORT} is busy. Using ${signalPort}.`);
-      }
-      if (healthPort !== DEFAULT_REMOTE_HEALTH_PORT) {
-        logger.info(`Signal health port ${DEFAULT_REMOTE_HEALTH_PORT} is busy. Using ${healthPort}.`);
-      }
-    }
-    configureMobileConnectDevelopmentNetwork(services, sharedEnvironment, networkInterfaces());
-    if (sharedEnvironment.OPENBOT_MOBILE_AUTH_API_URL) {
-      logger.info(`Mobile Connect API: ${sharedEnvironment.OPENBOT_MOBILE_AUTH_API_URL}`);
-    }
     if (apiPort !== DEFAULT_API_PORT) {
       logger.info(`API port ${DEFAULT_API_PORT} is busy. Using ${apiPort}.`);
     }
+  }
+  if (services.includes("remote")) {
+    const signalPort = await findAvailablePort(
+      readPort(sharedEnvironment.REMOTE_SIGNAL_PORT) ?? DEFAULT_REMOTE_SIGNAL_PORT,
+      reservedPorts,
+      heldPorts,
+    );
+    reservedPorts.add(signalPort);
+    sharedEnvironment.REMOTE_SIGNAL_PORT = String(signalPort);
+    const healthPort = await findAvailablePort(
+      readPort(sharedEnvironment.REMOTE_HEALTH_PORT) ?? DEFAULT_REMOTE_HEALTH_PORT,
+      reservedPorts,
+      heldPorts,
+    );
+    reservedPorts.add(healthPort);
+    sharedEnvironment.REMOTE_HEALTH_PORT = String(healthPort);
+    sharedEnvironment.REMOTE_SESSION_SECRET ??= randomBytes(32).toString("hex");
+    sharedEnvironment.TURN_SHARED_SECRET ??= randomBytes(32).toString("hex");
+    if (signalPort !== DEFAULT_REMOTE_SIGNAL_PORT)
+      logger.info(`Signal port ${DEFAULT_REMOTE_SIGNAL_PORT} is busy. Using ${signalPort}.`);
+    if (healthPort !== DEFAULT_REMOTE_HEALTH_PORT)
+      logger.info(`Signal health port ${DEFAULT_REMOTE_HEALTH_PORT} is busy. Using ${healthPort}.`);
+  }
+  if (services.includes("api")) {
+    configureMobileConnectDevelopmentNetwork(services, sharedEnvironment, networkInterfaces());
+    if (sharedEnvironment.OPENBOT_MOBILE_AUTH_API_URL)
+      logger.info(`Mobile Connect API: ${sharedEnvironment.OPENBOT_MOBILE_AUTH_API_URL}`);
   }
 
   const specs: DevelopmentServiceSpec[] = [];

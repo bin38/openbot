@@ -16,18 +16,42 @@ export interface PluginCatalogIndex {
 export const PLUGIN_CATALOG_INDEX: PluginCatalogIndex = {
   schemaVersion: 1,
   catalogVersion: "v1",
-  updatedAt: "2026-09-30T00:00:00.000Z",
+  updatedAt: "2026-11-04T00:00:00.000Z",
   plugins: [
+    {
+      slug: "x",
+      version: "1.0.0",
+      featured: true,
+      detailSha256: "cea06fb39f568b4a2af07f984a98eff359fe0b043df4c3cc97268b13fa52b956",
+    },
+    {
+      slug: "x-account",
+      version: "1.0.0",
+      featured: false,
+      detailSha256: "86c5234a27b6b26ad8a4df1604db55148a5f2c841689f2f8ea244d2900e824d9",
+    },
+    {
+      slug: "feishu",
+      version: "1.0.0",
+      featured: true,
+      detailSha256: "43d601daf70837b1a3e854c2769c1e73594d03785dcdd132426854b1616c8cb1",
+    },
+    {
+      slug: "github-mcp",
+      version: "1.0.0",
+      featured: true,
+      detailSha256: "0a9e47dbea8e98ba1c8dfe7900534b2b835b0aac56a6134922df8adc24ea8993",
+    },
     {
       slug: "aave",
       version: "1.0.0",
-      featured: true,
+      featured: false,
       detailSha256: "720bef40809f071eb0b0a1e3b3283e758165726e4c9b516febaa634d5e883fb0",
     },
     {
       slug: "canva",
       version: "1.0.0",
-      featured: true,
+      featured: false,
       detailSha256: "c3cb9682531e3e4cb1cf0ff4ae522c4e8d0d11b0b5f8450efcb14e352a5c0afb",
     },
     {
@@ -75,7 +99,7 @@ export const PLUGIN_CATALOG_INDEX: PluginCatalogIndex = {
     {
       slug: "figma",
       version: "1.1.0",
-      featured: true,
+      featured: false,
       detailSha256: "e8143210a083f8e60e8c90d65eb7d022f052bf1c4f44be42ef593e8767c46577",
     },
     {
@@ -243,6 +267,212 @@ export interface PluginCatalogDetail {
 }
 
 export const PLUGIN_CATALOG_DETAILS: Record<string, PluginCatalogDetail> = {
+  x: {
+    slug: "x",
+    name: "X",
+    tagline: "Search public posts with your own X access token",
+    description:
+      "Connect directly to the official X MCP endpoint with your own developer access token. An app-only bearer token provides read access; operations depend on the token scopes and your X API plan. This connection does not use an OpenBot or Codex connector account.",
+    category: "productivity",
+    creatorName: "X",
+    iconUrl: null,
+    version: "1.0.0",
+    prompts: [
+      { id: "prompt-1", text: "Find recent public posts about this project." },
+      { id: "prompt-2", text: "Summarize the public posts from this account." },
+    ],
+    apps: [
+      {
+        id: "app-x-mcp",
+        name: "X",
+        description: "Search public posts with your own X access token",
+        iconUrl: null,
+        server: {
+          name: "x",
+          transport: "http",
+          url: "https://api.x.com/mcp",
+          auth: [
+            {
+              id: "x-bearer",
+              kind: "key",
+              label: "X access token",
+              fields: [
+                {
+                  id: "token",
+                  label: "Access token",
+                  header: "Authorization",
+                  prefix: "Bearer ",
+                  hint: "Use a token issued by your own X developer application. App-only tokens are read-only.",
+                },
+              ],
+              docsUrl: "https://docs.x.com/tools/mcp",
+              docsLabel: "X MCP setup",
+            },
+          ],
+        },
+      },
+    ],
+    websiteUrl: "https://docs.x.com/tools/mcp",
+    privacyPolicyUrl: null,
+    termsUrl: null,
+    skills: [],
+  },
+  "x-account": {
+    slug: "x-account",
+    name: "X Account",
+    tagline: "Use your own signed-in X developer application",
+    description:
+      "The official xurl bridge connects the X MCP endpoint with your own user authorization. Set up your own developer application and complete xurl login on this computer before connecting. X does not support native MCP dynamic OAuth registration. Actions depend on the permissions you authorize and your X API plan.",
+    category: "productivity",
+    creatorName: "X",
+    iconUrl: null,
+    version: "1.0.0",
+    prompts: [
+      { id: "prompt-1", text: "Read the posts that my authorized account can access." },
+      { id: "prompt-2", text: "Draft an X post from this document and show it to me before posting." },
+    ],
+    apps: [
+      {
+        id: "app-x-account-mcp",
+        name: "X Account",
+        description: "Use your own signed-in X developer application",
+        iconUrl: null,
+        server: {
+          name: "x-account",
+          transport: "stdio",
+          command: "npx",
+          args: ["-y", "@xdevplatform/xurl@1.3.4", "mcp", "https://api.x.com/mcp"],
+          auth: [
+            {
+              id: "x-account-local",
+              label: "Own X account",
+              kind: "local",
+              steps: [
+                "Set up the official xurl CLI with your own X developer application.",
+                "Complete xurl OAuth sign-in on this computer with the permissions you need.",
+                "Return here and connect. Review any write action before you send it.",
+              ],
+              note: "Your own X app and user authorization are required. OpenBot does not supply a shared OAuth client or credits.",
+              docsUrl: "https://docs.x.com/tools/mcp",
+              docsLabel: "Configure xurl",
+            },
+          ],
+        },
+      },
+    ],
+    websiteUrl: "https://docs.x.com/tools/mcp",
+    privacyPolicyUrl: null,
+    termsUrl: null,
+    skills: [],
+  },
+  feishu: {
+    slug: "feishu",
+    name: "飞书 / Feishu",
+    tagline: "Documents, tables, and messages through your own Feishu app",
+    description:
+      "Use the official Lark/Feishu MCP server with your own application ID and secret. The server acts with the permissions granted to that application; it does not inherit every user document or chat. Personal-user access requires a separate user OAuth login in the official CLI.",
+    category: "productivity",
+    creatorName: "Lark / Feishu",
+    iconUrl: null,
+    version: "1.0.0",
+    prompts: [
+      { id: "prompt-1", text: "List the documents and tables my Feishu application can access." },
+      { id: "prompt-2", text: "Summarize this Feishu document." },
+      { id: "prompt-3", text: "Prepare a message for the selected Feishu chat and ask me before sending." },
+    ],
+    apps: [
+      {
+        id: "app-feishu-mcp",
+        name: "飞书 / Feishu",
+        description: "Documents, tables, and messages through your own Feishu app",
+        iconUrl: null,
+        server: {
+          name: "feishu",
+          transport: "stdio",
+          command: "npx",
+          args: ["-y", "@larksuiteoapi/lark-mcp@0.5.1", "mcp"],
+          auth: [
+            {
+              id: "feishu-app",
+              kind: "key",
+              label: "Own Feishu application",
+              fields: [
+                {
+                  id: "app-id",
+                  label: "App ID",
+                  env: "APP_ID",
+                  hint: "Application credentials from your own Feishu developer console.",
+                },
+                {
+                  id: "app-secret",
+                  label: "App secret",
+                  env: "APP_SECRET",
+                  hint: "The secret of that application. Grant only the API permissions you need.",
+                },
+              ],
+              docsUrl:
+                "https://github.com/larksuite/lark-openapi-mcp/blob/main/docs/usage/configuration/configuration.md",
+              docsLabel: "Feishu MCP setup",
+            },
+          ],
+        },
+      },
+    ],
+    websiteUrl: "https://github.com/larksuite/lark-openapi-mcp",
+    privacyPolicyUrl: null,
+    termsUrl: null,
+    skills: [],
+  },
+  "github-mcp": {
+    slug: "github-mcp",
+    name: "GitHub MCP",
+    tagline: "Repositories and issues through your own GitHub token",
+    description:
+      "Connect directly to GitHub’s official MCP endpoint with your own personal access token. Repository access and write actions follow the token permissions. No upstream OpenBotGit application or token broker is used.",
+    category: "coding",
+    creatorName: "GitHub",
+    iconUrl: null,
+    version: "1.0.0",
+    prompts: [
+      { id: "prompt-1", text: "List the open issues in this repository." },
+      { id: "prompt-2", text: "Review the changes in this pull request." },
+    ],
+    apps: [
+      {
+        id: "app-github-mcp-mcp",
+        name: "GitHub MCP",
+        description: "Repositories and issues through your own GitHub token",
+        iconUrl: null,
+        server: {
+          name: "github-mcp",
+          transport: "http",
+          url: "https://api.githubcopilot.com/mcp/",
+          auth: [
+            {
+              id: "github-pat",
+              kind: "key",
+              label: "Personal access token",
+              fields: [
+                {
+                  id: "token",
+                  label: "GitHub token",
+                  header: "Authorization",
+                  prefix: "Bearer ",
+                  hint: "Use a fine-grained token for the repositories and permissions you need.",
+                },
+              ],
+              docsUrl: "https://github.com/github/github-mcp-server",
+              docsLabel: "GitHub MCP setup",
+            },
+          ],
+        },
+      },
+    ],
+    websiteUrl: "https://github.com/github/github-mcp-server",
+    privacyPolicyUrl: null,
+    termsUrl: null,
+    skills: [],
+  },
   aave: {
     slug: "aave",
     name: "Aave",

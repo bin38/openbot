@@ -1,5 +1,12 @@
+import { modelSupportsProviderAccount } from "@openbot/contracts/account-scoped-models";
 import { isKnownAgentProvider } from "@openbot/contracts/agent-providers";
-import type { AgentModelId, AgentProviderId, AgentReasoningEffort, UpdateAgentInput } from "@openbot/contracts/ipc";
+import {
+  type AgentModelId,
+  type AgentProviderId,
+  type AgentReasoningEffort,
+  agentNextProviderAccountId,
+  type UpdateAgentInput,
+} from "@openbot/contracts/ipc";
 import type {
   AgentRuntimeSettings,
   AgentRuntimeSettingsPatch,
@@ -141,7 +148,17 @@ export function createSettingsStore(deps: SettingsStoreDeps) {
     accountId?: string | null,
   ): Promise<boolean> {
     const option = deps.props.modelOptions.find(
-      (candidate) => candidate.provider === provider && candidate.id === model,
+      (candidate) =>
+        candidate.provider === provider &&
+        candidate.id === model &&
+        modelSupportsProviderAccount(
+          candidate,
+          accountId === undefined
+            ? provider === deps.settingsProvider() && deps.props.agent
+              ? agentNextProviderAccountId(deps.props.agent)
+              : null
+            : accountId,
+        ),
     );
     if (!option) return false;
     const reasoningEffort = option.supportedReasoningEfforts.includes(deps.settingsReasoning())
@@ -170,7 +187,10 @@ export function createSettingsStore(deps: SettingsStoreDeps) {
 
   async function selectAndConfirmReasoning(effort: AgentReasoningEffort): Promise<void> {
     const option = deps.props.modelOptions.find(
-      (candidate) => candidate.provider === deps.settingsProvider() && candidate.id === deps.settingsModel(),
+      (candidate) =>
+        candidate.provider === deps.settingsProvider() &&
+        candidate.id === deps.settingsModel() &&
+        modelSupportsProviderAccount(candidate, deps.props.agent ? agentNextProviderAccountId(deps.props.agent) : null),
     );
     if (!option?.supportedReasoningEfforts.includes(effort)) return;
     const settings = {

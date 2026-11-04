@@ -5,6 +5,7 @@ import {
 } from "@openbot/contracts/host-key-handover";
 import { DEFAULT_TEAM_MEMBER_LIMIT } from "@openbot/contracts/input-limits";
 import type { MobileConnectHostBinding } from "@openbot/contracts/mobile-connect";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { type DynamicRecord, isDynamicRecord, isString } from "@openbot/contracts/runtime-values";
 import type { RemoteAuthEvent } from "@openbot/contracts/signal-protocol/auth-events";
 import {
@@ -61,6 +62,7 @@ import {
 } from "./billing-entitlement";
 import { decodeBase64Url, hmacSha256, importHmacSha256Key, randomToken, sha256 } from "./crypto";
 import type { GitHubInstallationTokensError, GitHubRepositoryRoute } from "./github-installation-tokens";
+import { isOriginalServiceUrl } from "./independent-edition";
 import { PERSISTENT_SESSION_EXPIRES_AT } from "./session-policy";
 import type { AuthUser, WorkerBindings } from "./types";
 
@@ -911,7 +913,7 @@ export class RemoteControlPlane {
               // join after its users. So no server takes more people than the license has users.
               memberLimit: license ? Math.min(limit, license.users) : limit,
               // A server with an ended plan is not marked: a restart needs a new plan, which only the owner buys.
-              hosted: row.hosted === 1,
+              hosted: !INDEPENDENT_EDITION && row.hosted === 1,
             };
           }),
         { concurrency: "unbounded" },
@@ -2936,6 +2938,7 @@ export class RemoteControlPlane {
   /**
    * The seat checks for a user who joins a host or comes back to it. The license check applies only
    * while the owner has an open license. A lower limit removes no one: active members keep their seats.
+   * The independent edition uses only the server's resource limit.
    */
   readonly #memberSeat = Effect.fn("RemoteControlPlane.memberSeat")(function* (
     this: RemoteControlPlane,
@@ -3003,6 +3006,7 @@ export class RemoteControlPlane {
     this: RemoteControlPlane,
     hostId: string,
   ): Effect.fn.Return<OwnerLicense | null, RemoteFailure, RemoteDependencies> {
+    if (INDEPENDENT_EDITION) return null;
     const dependencies = yield* RemoteDependencies;
     return yield* ownerLicenseForHost(dependencies.database, hostId, dependencies.now()).pipe(
       Effect.mapError(() => new RemoteOperationError({})),
@@ -3015,6 +3019,7 @@ export class RemoteControlPlane {
    * when they are more than a plan that a self-hosted host keeps from before the license, else that plan,
    * else the default. A lower limit removes no one: members who are active keep their seats. `license`
    * is the owner's open license (`ownerLicenseForHost`).
+   * The independent edition keeps the custom limit or the shared default, without a billing lookup.
    */
   readonly #memberLimit = Effect.fn("RemoteControlPlane.memberLimit")(function* (
     this: RemoteControlPlane,
@@ -3026,6 +3031,7 @@ export class RemoteControlPlane {
       dependencies.database.prepare(SERVER_MEMBER_LIMIT_SQL).bind(hostId).first<{ member_limit: number }>(),
     );
     if (custom) return { limit: custom.member_limit, fromLicense: false };
+    if (INDEPENDENT_EDITION) return { limit: DEFAULT_TEAM_MEMBER_LIMIT, fromLicense: false };
     const plan = yield* getServerEntitlement(dependencies.database, hostId, dependencies.now()).pipe(
       Effect.mapError((error) => (error instanceof RemoteControlPlaneError ? error : new RemoteOperationError({}))),
     );
@@ -3261,6 +3267,7 @@ export function remoteSignalPlan(
 ): RemoteSignalPlan | null {
   const entryUrl = bindings.REMOTE_SIGNAL_URL?.trim();
   if (!entryUrl) return null;
+  if (INDEPENDENT_EDITION && isOriginalServiceUrl(entryUrl)) return null;
   const entryProtocol = urlProtocol(entryUrl);
   if (entryProtocol !== "wss:" && entryProtocol !== "ws:") return null;
   // Only a local development entry Signal without TLS permits homes without TLS.
@@ -3272,6 +3279,7 @@ export function remoteSignalPlan(
     if (separator < 0) return null;
     const id = entry.slice(0, separator).trim();
     const url = entry.slice(separator + 1).trim();
+    if (INDEPENDENT_EDITION && isOriginalServiceUrl(url)) return null;
     const protocol = urlProtocol(url);
     if (!SIGNAL_HOME_ID_PATTERN.test(id) || homes.has(id)) return null;
     if (protocol !== "wss:" && !(permitsWs && protocol === "ws:")) return null;
@@ -3325,9 +3333,9 @@ function remoteAuthWebhookUrls(
     .split(",")
     .map((url) => url.trim())
     .filter(Boolean);
-  if (urls.length > 0) return [...new Set(urls)];
+  if (urls.length > 0) return [...new Set(urls)].filter((url) => !INDEPENDENT_EDITION || !isOriginalServiceUrl(url));
   const url = bindings.REMOTE_AUTH_WEBHOOK_URL?.trim();
-  return url ? [url] : [];
+  return url && (!INDEPENDENT_EDITION || !isOriginalServiceUrl(url)) ? [url] : [];
 }
 
 const decodeAuthEventTargets = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Array(Schema.String)));
@@ -3413,6 +3421,9 @@ const deliverRemoteAuthEvents = Effect.fn("RemoteControlPlane.deliverAuthEvents"
       try: (signal) =>
         input.fetch(url, {
           method: "POST",
+          // Workers rejects "error" before sending. Manual keeps signed events on the configured
+          // origin, and the non-2xx check below refuses a redirect without forwarding its signature.
+          redirect: INDEPENDENT_EDITION ? "manual" : "follow",
           headers: {
             "Content-Type": "application/json",
             "OpenBot-Timestamp": timestamp,

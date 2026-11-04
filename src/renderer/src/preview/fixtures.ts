@@ -2,6 +2,7 @@ import type {
   AccountUsage,
   AgentStatus,
   AgentSubmission,
+  AppInfo,
   AttachmentSummary,
   BrowserControlState,
   BrowserTab,
@@ -896,9 +897,11 @@ export const STORY_UPDATE_STATUS: UpdateStatus = {
 export const STORY_APP_INFO = {
   name: "OpenBot",
   version: "0.1.11",
-  platform: "darwin" as const,
-  variant: "production" as const,
-};
+  platform: "darwin",
+  variant: "production",
+  localWorkspace: { id: "story-local-owner", name: "Local workspace" },
+  mobileConnectAvailability: { state: "unconfigured", accountOrigin: null },
+} satisfies AppInfo;
 
 /**
  * The marketplace surfaces. Storybook and the preview both reach the modal through

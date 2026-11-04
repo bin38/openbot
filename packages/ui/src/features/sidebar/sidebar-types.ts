@@ -122,6 +122,8 @@ export interface SidebarProps {
   onNewAgentThread?: ((agentId: string) => void) | undefined;
   /** Opens the agent's chat in a window of its own. Without it, the agent menu shows no window item. */
   onOpenAgentWindow?: ((agentId: string) => void) | undefined;
+  /** Opens the local agent's workspace folder in the operating system's file manager. */
+  onOpenAgentWorkspace?: ((agentId: string) => void) | undefined;
   /** The agents whose chat is open in a window of its own. Their rows show a window mark. */
   windowAgentIds?: ReadonlySet<string> | undefined;
   compact: boolean;

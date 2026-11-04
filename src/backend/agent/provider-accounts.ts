@@ -19,7 +19,7 @@ import { Cause, Effect, Fiber, Schema, type Scope } from "effect";
 import { startAcpAuthentication } from "./../acp-sign-in";
 import type { AgentClient } from "./../agent-client";
 import { type AgentCliInfo, cliPathEnvironment, cliSpawnTarget } from "./../cli";
-import type { AccountReadResult } from "./../protocol";
+import type { AccountReadResult, ModelListResponse } from "./../protocol";
 import { ProviderSignInError } from "../provider-client-effects";
 import { type ProviderAccountSupport, requireProviderDriver } from "./../provider-drivers";
 import type { ProviderTempOptions } from "./../provider-temp";
@@ -99,6 +99,7 @@ export class ProviderAccounts {
   readonly #store: ProviderAccountStore;
   readonly #host: ProviderAccountsHost;
   readonly #states = new Map<string, AccountState>();
+  readonly #models = new Map<string, ModelListResponse>();
   readonly #signIns = new Map<string, Fiber.Fiber<string | null>>();
   /** Accounts whose first sign-in runs. A cancel removes them with their folder. */
   readonly #added = new Set<string>();
@@ -126,6 +127,16 @@ export class ProviderAccounts {
   account(provider: AgentProviderId, accountId: string | undefined): StoredProviderAccount | null {
     if (!accountId || accountId === DEFAULT_PROVIDER_ACCOUNT_ID || !ProviderAccounts.support(provider)) return null;
     return this.#store.get(provider, accountId);
+  }
+
+  /** Connected added Gemini accounts, from metadata already read during their account checks. */
+  modelSnapshots(): Array<{ provider: "antigravity"; accountId: string; response: ModelListResponse }> {
+    return this.#store.list("antigravity").flatMap((account) => {
+      const response = this.#models.get(account.id);
+      return response && this.#states.get(account.id)?.state === "connected"
+        ? [{ provider: "antigravity", accountId: account.id, response: structuredClone(response) }]
+        : [];
+    });
   }
 
   /** The variable that points the CLI at the account's folder, and the key of a key account. */
@@ -604,6 +615,11 @@ export class ProviderAccounts {
                     )
                   : reading
               : null;
+          if (provider === "antigravity") {
+            const models = client.cachedModels?.();
+            if (models) this.#models.set(account.id, structuredClone(models));
+            else this.#models.delete(account.id);
+          }
           this.#setState(account.id, { state: "connected", email, message: null });
           // The rail shows an account only with a reading, and no usage request follows a sign-in.
           if (limit) this.#host.usageChanged(limit);
@@ -733,6 +749,7 @@ export class ProviderAccounts {
 
   #forget(accountId: string): void {
     this.#states.delete(accountId);
+    this.#models.delete(accountId);
     this.#usage.delete(accountId);
     this.#usageGates.delete(accountId);
   }
@@ -748,6 +765,8 @@ export class ProviderAccounts {
 
   #setState(accountId: string, patch: Partial<Omit<AccountState, "checkedAt">>): void {
     const current = this.#states.get(accountId);
+    if (patch.state === "signed-out" || patch.state === "error" || patch.state === "connecting")
+      this.#models.delete(accountId);
     // The state only: the message and email can hold what the CLI printed.
     if (patch.state && patch.state !== current?.state)
       logger.info("A provider account changed state.", { accountId, from: current?.state ?? null, to: patch.state });

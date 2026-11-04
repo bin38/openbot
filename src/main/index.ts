@@ -7,6 +7,7 @@ import {
   type HostStatus,
   IPC_ENDPOINTS,
 } from "@openbot/contracts/ipc";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { createFormat, resolveLocale, translateFor } from "@openbot/i18n";
 import { localizeSourceText } from "@openbot/i18n/source";
 import { createOpenBotLogger, toLogValue } from "@openbot/logging";
@@ -50,6 +51,7 @@ import { filePreviewPages } from "./file-preview-pages";
 import { hostAllowsTenantLaunch } from "./host-update-coordinator";
 import { takeHostedServerEnvironment } from "./hosted-server-bootstrap";
 import { takeHostingDeveloperKey } from "./hosted-server-service";
+import { readIndependentInstallation } from "./independent-installation";
 import { accountIpcHandlers } from "./ipc/account-handlers";
 import { acpRegistryIpcHandlers } from "./ipc/acp-registry-handlers";
 import { agentAdminIpcHandlers } from "./ipc/agent-admin-handlers";
@@ -58,6 +60,7 @@ import { agentIpcHandlers } from "./ipc/agent-handlers";
 import { agentImportIpcHandlers } from "./ipc/agent-import-handlers";
 import { agentInstructionsIpcHandlers } from "./ipc/agent-instructions-handlers";
 import { agentTemplateIpcHandlers } from "./ipc/agent-template-handlers";
+import { apiChannelIpcHandlers } from "./ipc/api-channel-handlers";
 import { appIpcHandlers } from "./ipc/app-handlers";
 import { attachmentIpcHandlers } from "./ipc/attachment-handlers";
 import { backgroundProcessIpcHandlers } from "./ipc/background-process-handlers";
@@ -70,8 +73,10 @@ import { channelRoutineIpcHandlers } from "./ipc/channel-routine-handlers";
 import { computerUseIpcHandlers } from "./ipc/computer-use-handlers";
 import { customAgentIpcHandlers } from "./ipc/custom-agent-handlers";
 import { customProviderIpcHandlers } from "./ipc/custom-provider-handlers";
+import { customProviderModelSyncIpcHandlers } from "./ipc/custom-provider-model-sync-handlers";
 import { registerIpcGroups } from "./ipc/define-ipc-group";
 import { dynamicIslandIpcHandlers } from "./ipc/dynamic-island-handlers";
+import { e2bIpcHandlers } from "./ipc/e2b-handlers";
 import { eventsIpcHandlers } from "./ipc/events-handlers";
 import { githubConnectorIpcHandlers } from "./ipc/github-connector-handlers";
 import { hostAdminIpcHandlers } from "./ipc/host-admin-handlers";
@@ -84,6 +89,7 @@ import { localServerIpcHandlers } from "./ipc/local-server-handlers";
 import { macAutomationIpcHandlers } from "./ipc/mac-automation-handlers";
 import { marketplaceAgentIpcHandlers } from "./ipc/marketplace-agent-handlers";
 import { marketplaceLinkIpcHandlers } from "./ipc/marketplace-link-handlers";
+import { mcpRegistryIpcHandlers } from "./ipc/mcp-registry-handlers";
 import { mcpServerIpcHandlers } from "./ipc/mcp-server-handlers";
 import { memoryIpcHandlers } from "./ipc/memory-handlers";
 import { messagingIpcHandlers } from "./ipc/messaging-handlers";
@@ -122,6 +128,7 @@ import {
 } from "./main-window";
 import { ensureMacApplicationPresence, secondLaunchResponse } from "./main-window-state";
 import { MessageLinkRelay, openHttpLink } from "./message-link-relay";
+import { mobileConnectAvailability } from "./mobile-connect-host";
 import { startMainLog } from "./provider-log";
 import { watchRemoteHostDirectory } from "./remote-server-host-directory";
 import { createRendererForwarders } from "./renderer-forwarders";
@@ -222,13 +229,32 @@ const serverMode = takeServerModeEnvironment(process.env, app.isPackaged, proces
 // Always taken, so the owner password leaves the environment also when the flag is refused.
 const localServerChildEnvironment = takeLocalServerChildEnvironment(process.env, commandLineUserDataDirectory);
 const localServerChild = serverMode || hostedServer ? null : localServerChildEnvironment;
+const independentInstallation = Effect.runSync(
+  readIndependentInstallation({
+    packaged: app.isPackaged,
+    independent: INDEPENDENT_EDITION,
+    rootDesktop: !serverMode && !hostedServer && !localServerChild,
+    resourcesPath: process.resourcesPath,
+    appDataPath: app.getPath("appData"),
+    userDataOverride: commandLineUserDataDirectory,
+    environment: process.env,
+  }),
+);
+if (independentInstallation) {
+  if (independentInstallation.accountUrl === null) delete process.env.OPENBOT_SELF_HOSTED_API_URL;
+  else process.env.OPENBOT_SELF_HOSTED_API_URL = independentInstallation.accountUrl;
+  if (independentInstallation.signalUrl === null) delete process.env.OPENBOT_SELF_HOSTED_SIGNAL_URL;
+  else process.env.OPENBOT_SELF_HOSTED_SIGNAL_URL = independentInstallation.signalUrl;
+}
 if (serverMode || hostedServer || localServerChild) hideExceptionErrorBox();
 if (serverMode || hostedServer) keepWindowsHidden();
 // A local server has no window, so it has no Dock tile either.
 if (localServerChild && process.platform === "darwin") app.dock?.hide();
 const inviteLinkOptions = {
   allowLocalDevelopmentApiUrl: developmentRemoteRole !== null,
-  selfHostedApiOrigin: selfHostedApiOrigin(process.env.OPENBOT_AUTH_API_URL),
+  selfHostedApiOrigin: selfHostedApiOrigin(
+    INDEPENDENT_EDITION ? process.env.OPENBOT_SELF_HOSTED_API_URL : process.env.OPENBOT_AUTH_API_URL,
+  ),
 };
 const developmentRemoteDebuggingPort = !app.isPackaged
   ? readDevelopmentRemoteDebuggingPort(process.env.OPENBOT_DEV_REMOTE_DEBUGGING_PORT)
@@ -246,6 +272,8 @@ if (configureLinuxPasswordStore())
   logger.info(`No Chromium keyring for "${process.env.XDG_CURRENT_DESKTOP ?? ""}"; using gnome-libsecret.`);
 if (commandLineUserDataDirectory) {
   app.setPath("userData", resolve(commandLineUserDataDirectory));
+} else if (independentInstallation) {
+  app.setPath("userData", independentInstallation.userDataPath);
 } else if (!app.isPackaged) {
   app.setPath(
     "userData",
@@ -581,6 +609,12 @@ function attachWindowsSessionEndHandlers(window: BrowserWindow): void {
 
 function registerIpcHandlers({
   service,
+  localWorkspace,
+  mcpRegistry,
+  e2b,
+  apiChannels,
+  e2bViewers,
+  attachmentUploads,
   signInRelayClient,
   relayedMessagingInstalls,
   providerRuntimes,
@@ -647,6 +681,7 @@ function registerIpcHandlers({
   routineFeed,
   events,
   customProviderChanges,
+  customProviderModelSync,
   customAgentChanges,
   acpRegistry,
   providerDetection,
@@ -683,6 +718,10 @@ function registerIpcHandlers({
   registerIpcGroups({
     ...appIpcHandlers({
       service,
+      localWorkspace,
+      getMobileConnectAvailability: INDEPENDENT_EDITION
+        ? () => mobileConnectAvailability(centralAuth, host)
+        : undefined,
       mailbox,
       browser,
       updater,
@@ -745,6 +784,16 @@ function registerIpcHandlers({
     ...onePasswordConnectorIpcHandlers({ onePasswordConnector, remoteServers }),
     ...bitwardenConnectorIpcHandlers({ bitwardenConnector, remoteServers }),
     ...vaultIpcHandlers({ vault, getMainWindow: getDialogParent, translate: language.translate, remoteServers }),
+    ...e2bIpcHandlers({
+      e2b,
+      openViewer: e2bViewers.open,
+      closeViewer: e2bViewers.close,
+      mainRendererId: e2bViewers.mainRendererId,
+      hasEmbeddedViewer: e2bViewers.hasEmbedded,
+      setViewerBounds: e2bViewers.setBounds,
+    }),
+    ...mcpRegistryIpcHandlers(mcpRegistry),
+    ...apiChannelIpcHandlers(apiChannels, getDialogParent),
     ...billingIpcHandlers({ billing }),
     ...licenseIpcHandlers({ license }),
     ...routineFeedIpcHandlers({ routineFeed }),
@@ -752,6 +801,7 @@ function registerIpcHandlers({
     ...hostedServerIpcHandlers({ hostedServers }),
     ...localServerIpcHandlers({ localServers }),
     ...customProviderIpcHandlers(customProviderChanges),
+    ...customProviderModelSyncIpcHandlers(customProviderModelSync),
     ...customAgentIpcHandlers(customAgentChanges),
     ...acpRegistryIpcHandlers(acpRegistry, remoteServers),
     ...providerDetectionIpcHandlers({ detection: providerDetection, settings: providerDetectionSettings }),
@@ -857,6 +907,7 @@ function registerIpcHandlers({
     }),
     ...attachmentIpcHandlers({
       service,
+      uploads: attachmentUploads,
       mailbox,
       remoteServers,
       getMainWindow: getDialogParent,
@@ -940,6 +991,34 @@ function centralAuthPrincipalId(state: CentralAuthState): string | null {
 }
 
 function forwardCentralAuth(state: CentralAuthState): void {
+  if (INDEPENDENT_EDITION && !serverMode) {
+    // A cloud account event never deactivates or adopts this fork's local owner.
+    const localServices = services;
+    const principalId = centralAuthPrincipalId(state);
+    const restoreSaved = state.status === "signed_in" && activeRemotePrincipalId !== principalId;
+    activeRemotePrincipalId = principalId;
+    // A disabled service reports signed_out without revoking the saved account session.
+    const revokeSaved = state.status === "signed_out" && localServices?.centralAuth.isEnabled() === true;
+    const revoke = localServices?.host.localMobileAccountChanged(principalId, revokeSaved);
+    if (revoke && localServices)
+      void runCauseEffect(
+        revoke.pipe(
+          Effect.andThen(
+            restoreSaved
+              ? localServices.centralAuthInitialization.pipe(
+                  Effect.flatMap(() => localServices.host.restoreLocalMobilePublication()),
+                )
+              : Effect.void,
+          ),
+        ),
+      ).catch((error) => {
+        logger.error("Unable to update external access after an account change:", toLogValue(error));
+      });
+    for (const target of [windowHolder.current, ...windows.getChatWindows()]) {
+      if (target && !target.isDestroyed()) sendToRenderer(target, IPC_ENDPOINTS.auth.event, state);
+    }
+    return;
+  }
   // A local server has no account: its owner is a password member that a sign-out must not unbind.
   if (localServerChild) return;
   if (state.status === "signed_in") {
@@ -1346,6 +1425,11 @@ if (!hasSingleInstanceLock) {
           sendToRenderer(window, IPC_ENDPOINTS.app.approvalAutomation, preference);
         }
       });
+      const unsubscribeModelSync = built.customProviderModelSync.subscribe((state) => {
+        for (const window of windows.getChatWindows())
+          sendToRenderer(window, IPC_ENDPOINTS.customProviderModelSync.changed, state);
+      });
+      teardown.push(0, "model synchronization listener", unsubscribeModelSync);
       built.agentMemoryLimit.subscribe((preference) => {
         for (const window of BrowserWindow.getAllWindows()) {
           sendToRenderer(window, IPC_ENDPOINTS.app.agentMemoryLimitPreference, preference);
@@ -1534,12 +1618,26 @@ if (!hasSingleInstanceLock) {
         keepAwake.dispose();
       });
       const teamIdentity = teamStore.getIdentity();
-      if (built.serverMode) {
+      if (built.serverMode && built.centralAuth.isEnabled()) {
         const serverModeControl = built.serverMode;
         void runCauseEffect(
           built.centralAuthInitialization.pipe(Effect.flatMap(() => serverModeControl.publish())),
         ).catch((error) => logger.error("Unable to publish this server:", toLogValue(error)));
+      } else if (INDEPENDENT_EDITION && built.localWorkspace && !localServerChild) {
+        void runCauseEffect(
+          built.centralAuthInitialization.pipe(
+            Effect.flatMap(() => {
+              const state = built.centralAuth.getState();
+              if (state.status === "signed_in") return host.restoreLocalMobilePublication();
+              return host.localMobileAccountChanged(
+                null,
+                state.status === "signed_out" && built.centralAuth.isEnabled(),
+              );
+            }),
+          ),
+        ).catch((error) => logger.warn("Unable to restore external phone access:", toLogValue(error)));
       } else if (
+        !INDEPENDENT_EDITION &&
         shouldAutoStartHost({
           configured: Boolean(teamIdentity),
           enabledOnLaunch: teamIdentity?.enabledOnLaunch ?? false,

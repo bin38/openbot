@@ -1,7 +1,16 @@
-import type { AccountUsage, AccountUsageLimit, AvatarImageInput, CentralAuthState } from "@openbot/contracts/ipc";
+import type {
+  AccountUsage,
+  AccountUsageLimit,
+  AvatarImageInput,
+  CentralAuthState,
+  CentralAuthUser,
+  ServerSummary,
+} from "@openbot/contracts/ipc";
+import { INDEPENDENT_EDITION } from "@openbot/contracts/product-edition";
 import { currentText } from "@openbot/ui/text";
 import { createMemo, createSignal, createStore, flush, onCleanup, onSettled } from "solid-js";
 import { type DesktopAnalyticsProperties, desktopAnalytics } from "../../analytics";
+import { usePlatform } from "../../platform";
 import { createSimpleContext } from "../../simple-context";
 import { accountPort } from "./account-port";
 
@@ -9,6 +18,11 @@ type MobileConnectAction = DesktopAnalyticsProperties<"mobile_connect_action">["
 
 /** How long the sign-in success animation holds the account out of the view. */
 const AUTH_SUCCESS_HOLD_MS = 600;
+
+/** Display and local author identity only. It is never a remote sign-in or authorization grant. */
+export interface WorkspaceAccount extends CentralAuthUser {
+  local: boolean;
+}
 
 /**
  * Analytics only carries codes the account service is known to send, so an
@@ -59,7 +73,10 @@ function authFailureCode(value: string | undefined): string {
 const Auth = createSimpleContext({
   name: "Auth",
   init: () => {
-    const [centralAuth, setCentralAuth] = createSignal<CentralAuthState>({ status: "loading" });
+    const platform = usePlatform();
+    const [centralAuth, setCentralAuth] = createSignal<CentralAuthState>({
+      status: INDEPENDENT_EDITION ? "signed_out" : "loading",
+    });
     const [authSuccessVisible, setAuthSuccessVisible] = createSignal(false);
     const [accountUsageState, setAccountUsageState] = createStore<{
       targetKey: string | null;
@@ -104,6 +121,8 @@ const Auth = createSimpleContext({
     }
 
     onSettled(() => {
+      // This is a local state read. The main process disables transport without an owned account service.
+      // Keep real self-hosted sign-in and revocation visible without changing the local workspace identity.
       const unsubscribe = accountPort().auth.onEvent((state) => {
         flush(() => applyCentralAuthState(state));
       });
@@ -293,11 +312,36 @@ const Auth = createSimpleContext({
     });
     /** Null while the success animation holds, so the workspace mounts after it. */
     const visibleSignedInAccount = createMemo(() => (authSuccessVisible() ? null : signedInAccount()));
+    const localWorkspace = () => platform.appInfo()?.localWorkspace ?? null;
+    const workspaceAccount = createMemo<WorkspaceAccount | null>(() => {
+      if (INDEPENDENT_EDITION) {
+        const profile = localWorkspace();
+        return profile ? { ...profile, email: "", avatarUrl: null, local: true } : null;
+      }
+      const account = signedInAccount();
+      return account ? { ...account, local: false } : null;
+    });
+    const visibleWorkspaceAccount = createMemo(() =>
+      INDEPENDENT_EDITION ? workspaceAccount() : authSuccessVisible() ? null : workspaceAccount(),
+    );
+    /** A local child has its own authenticated member ID; it is not this workspace's account. */
+    function currentWorkspaceUserId(
+      server?: Pick<ServerSummary, "kind" | "thisComputer" | "currentMemberId">,
+    ): string | null {
+      if (server?.kind === "remote") {
+        return server.thisComputer ? (server.currentMemberId ?? null) : (signedInAccount()?.id ?? null);
+      }
+      return localWorkspace()?.id ?? signedInAccount()?.id ?? null;
+    }
 
     return {
       centralAuth,
       signedInAccount,
       visibleSignedInAccount,
+      localWorkspace,
+      workspaceAccount,
+      visibleWorkspaceAccount,
+      currentWorkspaceUserId,
       accountUsage,
       accountUsageRefreshRevision,
       accountUsageTargetKey,

@@ -1,0 +1,69 @@
+.cloud-computer-toolbar {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--openbot-space-2);
+  padding: var(--openbot-space-3);
+  border-bottom: 1px solid var(--openbot-border);
+}
+
+.cloud-computer-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--openbot-space-1);
+}
+
+.cloud-computer-actions svg {
+  width: var(--openbot-icon-sm);
+  height: var(--openbot-icon-sm);
+}
+
+.cloud-computer-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--openbot-bg-canvas);
+}
+
+.cloud-computer-preview {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  object-fit: contain;
+  user-select: none;
+}
+
+.cloud-computer-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--openbot-space-3);
+  padding: var(--openbot-space-6);
+  color: var(--openbot-text-muted);
+  text-align: center;
+  font-size: var(--openbot-text-sm);
+}
+
+.cloud-computer-empty > svg {
+  width: var(--openbot-icon-lg);
+  height: var(--openbot-icon-lg);
+}
+
+.cloud-computer-empty > strong {
+  color: var(--openbot-text-primary);
+  font-weight: var(--openbot-weight-medium);
+}
+
+.cloud-computer-empty > p {
+  margin: 0;
+}
+
+.cloud-computer-notice {
+  flex: none;
+  padding: var(--openbot-space-2) var(--openbot-space-3);
+}

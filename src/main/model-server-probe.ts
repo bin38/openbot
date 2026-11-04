@@ -71,6 +71,7 @@ const ModelListEnvelope = Schema.Struct({ data: Schema.Array(Schema.Unknown) });
 export const probeModels = Effect.fn("ModelServerProbe.probe")(function* (
   target: ModelServerTarget,
   timeoutMs: number,
+  fetchModels: (url: URL, init: RequestInit) => Promise<Response> = fetch,
 ): Effect.fn.Return<DetectedModel[], ProbeError> {
   const host = hostOf(target.baseUrl);
   const url = yield* Effect.try({
@@ -87,7 +88,7 @@ export const probeModels = Effect.fn("ModelServerProbe.probe")(function* (
     (controller) =>
       Effect.gen(function* () {
         const response = yield* Effect.tryPromise({
-          try: () => fetch(url, { method: "GET", headers, redirect: "manual", signal: controller.signal }),
+          try: () => fetchModels(url, { method: "GET", headers, redirect: "manual", signal: controller.signal }),
           catch: unavailable,
         });
         if (response.status >= 300 && response.status < 400) {

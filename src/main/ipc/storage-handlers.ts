@@ -39,7 +39,8 @@ import { handler, type IpcGroupHandlers, payloadHandler } from "./define-ipc-gro
 import { scopedHandler, scopedQueryHandler } from "./scoped-handler";
 
 /** The RemoteServerManager members this registrar reaches, and nothing else. */
-interface StorageRemoteServers extends Pick<OpenAttachmentDependencies["remoteServers"], "downloadAttachment"> {
+interface StorageRemoteServers
+  extends Pick<OpenAttachmentDependencies["remoteServers"], "downloadAttachment" | "downloadAttachmentToDisk"> {
   forgetCachedAttachments(serverId: string): void;
   supportsCapability(serverId: string, capability: TeamCurrentCapability): boolean;
   request<T>(

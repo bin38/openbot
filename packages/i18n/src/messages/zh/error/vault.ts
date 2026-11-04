@@ -15,6 +15,9 @@ export const messages = {
   "error.vault.expiryInvalid": "请填写有效的到期月份和年份。",
   "error.vault.contactEmpty": "请填写姓名、地址、电话号码或邮箱地址。",
   "error.vault.contactMissing": "该账单联系人已不在保险库中。",
+  "error.vault.apiKeyRequired": "请输入 API 密钥。",
+  "error.vault.apiKeyNameInvalid": "变量名只能包含大写字母 A–Z、数字和下划线，且必须以字母开头，例如 OPENAI_API_KEY。",
+  "error.vault.apiKeyNameTaken": "保险库中已有使用此变量名的 API 密钥。",
   "error.vault.csvInvalid": "该文件不是 CSV 格式的密码导出文件。",
   "error.vault.csvTooLarge": "CSV 文件过大。",
 } as const satisfies PartialTranslation<typeof source>;

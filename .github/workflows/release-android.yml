@@ -31,7 +31,7 @@ concurrency:
 jobs:
   release:
     name: Build Android and upload to Google Play
-    if: github.ref == 'refs/heads/main'
+    if: github.repository == 'nightly-labs/openbot' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     environment: release-android

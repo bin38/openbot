@@ -1,7 +1,12 @@
 import { ProviderLogo } from "@openbot/brand";
 import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import type { CustomProviderHarness, ProviderRuntimeStatus, SaveCustomProviderInput } from "@openbot/contracts/ipc";
-import { agentProviderName, CUSTOM_PROVIDER_LIMITS, DEFAULT_CUSTOM_PROVIDER_HARNESS } from "@openbot/contracts/ipc";
+import {
+  agentProviderName,
+  CUSTOM_PROVIDER_LIMITS,
+  CUSTOM_PROVIDER_LOCAL_MODEL_LIMIT,
+  DEFAULT_CUSTOM_PROVIDER_HARNESS,
+} from "@openbot/contracts/ipc";
 import {
   ArrowLeft,
   Button,
@@ -116,6 +121,7 @@ interface CustomProviderDialogProps {
    * model fields of the Team API, which has no context window.
    */
   contextWindows?: boolean | undefined;
+  modelLimit?: number | undefined;
   /**
    * Shows "Runs on", the provider that runs the endpoint. This computer only: the Team API saves an
    * endpoint without one, and the host runs it on OpenCode.
@@ -167,7 +173,18 @@ export function CustomProviderDialog(props: CustomProviderDialogProps) {
   );
 
   const errors = () =>
-    validateCustomProvider(draft, { taken: props.takenProviderIds, locked: props.providerIdLocked }, t, format);
+    validateCustomProvider(
+      draft,
+      {
+        taken: props.takenProviderIds,
+        locked: props.providerIdLocked,
+        modelLimit:
+          props.modelLimit ??
+          (props.contextWindows ? CUSTOM_PROVIDER_LOCAL_MODEL_LIMIT : CUSTOM_PROVIDER_LIMITS.models),
+      },
+      t,
+      format,
+    );
   const shown = (): CustomProviderErrors | null => (submitted() ? errors() : null);
   const busy = () => Boolean(props.busy);
   const discovery = (): ModelDiscovery => props.discovery ?? { status: "idle" };
@@ -565,7 +582,10 @@ export function CustomProviderDialog(props: CustomProviderDialogProps) {
                   addLabel={t("customProvider.model.add")}
                   columns={modelColumns()}
                   rows={draft.models}
-                  limit={CUSTOM_PROVIDER_LIMITS.models}
+                  limit={
+                    props.modelLimit ??
+                    (props.contextWindows ? CUSTOM_PROVIDER_LOCAL_MODEL_LIMIT : CUSTOM_PROVIDER_LIMITS.models)
+                  }
                   busy={busy()}
                   sectionError={shown()?.models}
                   rowError={(index) => shown()?.modelRows[index]}

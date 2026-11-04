@@ -2,6 +2,8 @@ import type { PartialTranslation } from "../../../message";
 import type { messages as source } from "../../en/error/marketplace";
 
 export const messages = {
+  "error.marketplace.localCatalogUnavailable": "无法读取或保存本地目录，原有文件已保留。",
+  "error.marketplace.localListingMissing": "本地资料库中没有此内容。请导入你拥有的副本，独立版不会从原站商店下载。",
   // Agent marketplace and agent link errors.
   "error.marketplace.timezoneInvalid": "本地时区无效。",
   "error.marketplace.installedAgentMissing": "已安装的助手已不存在。",
