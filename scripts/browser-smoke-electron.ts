@@ -28,6 +28,7 @@ import { parseBrowserToolText } from "./browser-snapshot-text";
 
 let cachedPageVersion = 1;
 let slowDocumentVersion = 0;
+let openRetryReady = false;
 // `/slow-document?action` stays open until the smoke releases it, so the navigation that the timed
 // click starts is still pending when the click reaches its deadline.
 let actionNavigationRequests = 0;
@@ -162,6 +163,14 @@ const server = createServer((request, response) => {
   }
   if (url.pathname === "/abort") {
     response.destroy();
+    return;
+  }
+  if (url.pathname === "/open-failure-retry") {
+    if (!openRetryReady) response.destroy();
+    else {
+      response.setHeader("content-type", "text/html; charset=utf-8");
+      response.end("<!doctype html><main>Open retry recovered</main>");
+    }
     return;
   }
   if (url.pathname === "/identity-frame") {
@@ -456,6 +465,7 @@ const SCENARIOS = [
   "secret-handoff",
   "popups",
   "redirect-navigation",
+  "open-failure",
 ];
 
 void main().catch((error) => {
@@ -543,6 +553,8 @@ async function main(): Promise<void> {
           await runToolBoundaryScenario(browser, origin);
         } else if (scenario === "redirect-navigation") {
           await runRedirectNavigationScenario(browser, origin);
+        } else if (scenario === "open-failure") {
+          await runOpenFailureScenario(browser, origin);
         } else if (scenario === "typing-focus") {
           await runTypingFocusScenario(browser, origin);
         } else {
@@ -1915,12 +1927,7 @@ async function main(): Promise<void> {
     }
     process.stdout.write("BrowserHost: top-level cache revalidation passed.\n");
 
-    await expectFailure(() => runCauseEffect(browser.open("file:///etc/passwd")));
-    const tabCountBeforeAbort = browser.listTabs().length;
-    await expectFailure(() => runCauseEffect(browser.open(`${origin}/abort`)));
-    if (browser.listTabs().length !== tabCountBeforeAbort) {
-      throw new Error("A failed navigation leaked a browser tab.");
-    }
+    await runOpenFailureScenario(browser, origin);
 
     const { tab: downloadPage, contents: downloadContents } = await openTabWithContents(
       browser,
@@ -2484,6 +2491,83 @@ async function runFocusScenario(browser: BrowserHost, origin: string, window: Br
   if (focusLosses !== 0) throw new Error(`Background browser actions interrupted typing ${focusLosses} times.`);
   await runCauseEffect(browser.close(backgroundTab.id));
   focusSentinel.destroy();
+}
+
+/** Human tabs stay available after an initial failure; private and tool-created failures close. */
+async function runOpenFailureScenario(browser: BrowserHost, origin: string): Promise<void> {
+  const initialIds = browser.listTabs().map((tab) => tab.id);
+  const initialIdSet = new Set(initialIds);
+  const checks: string[] = [];
+  let passed = false;
+  openRetryReady = false;
+  try {
+    await expectFailure(() => runCauseEffect(browser.open("file:///etc/passwd")));
+    assert.deepEqual(
+      browser.listTabs().map((tab) => tab.id),
+      initialIds,
+    );
+    checks.push("A refused URL creates no tab.");
+
+    const retryUrl = `${origin}/open-failure-retry`;
+    await expectFailure(() => runCauseEffect(browser.open(retryUrl)));
+    const retained = browser.listTabs().filter((tab) => !initialIdSet.has(tab.id));
+    assert.equal(retained.length, 1, "A failed human open retains exactly one tab.");
+    const tab = retained[0];
+    assert(tab, "The failed human tab is available.");
+    assert.equal(tab.url, retryUrl);
+    assert.equal(browser.activeTabId, tab.id);
+    assert.equal(tab.ownerAgentId, null);
+    checks.push("A failed human open retains the requested URL and active tab ID.");
+
+    openRetryReady = true;
+    await runCauseEffect(browser.reload(tab.id));
+    const recovered = await runCauseEffect(browser.snapshot(tab.id));
+    assert.equal(recovered.url, retryUrl);
+    assert(recovered.text.includes("Open retry recovered"));
+    assert.deepEqual(
+      browser
+        .listTabs()
+        .filter((item) => !initialIdSet.has(item.id))
+        .map((item) => item.id),
+      [tab.id],
+    );
+    checks.push("Reload recovers the failed human tab with the same ID.");
+
+    await runCauseEffect(browser.loadUrl(tab.id, `${origin}/child`));
+    assert.equal((await runCauseEffect(browser.snapshot(tab.id))).url, `${origin}/child`);
+    assert.equal(browser.activeTabId, tab.id);
+    await runCauseEffect(browser.close(tab.id));
+    assert.deepEqual(
+      browser.listTabs().map((item) => item.id),
+      initialIds,
+    );
+    checks.push("The retained tab accepts a new address and closes without leaving a tab.");
+
+    await expectFailure(() => runCauseEffect(browser.openPrivate(`${origin}/abort`)));
+    assert.deepEqual(
+      browser.listTabs().map((item) => item.id),
+      initialIds,
+    );
+    checks.push("A failed private sign-in open leaves no new tab.");
+
+    const tool = await callBrowserTool(browser, "open", { url: `${origin}/abort` });
+    assert.equal(tool.success, false, "The tool reports the failed open.");
+    assert.deepEqual(
+      browser.listTabs().map((item) => item.id),
+      initialIds,
+    );
+    checks.push("A failed dynamic browser open reports failure and leaves no new tab.");
+    passed = true;
+  } finally {
+    openRetryReady = false;
+    for (const tab of browser.listTabs()) {
+      if (!initialIdSet.has(tab.id)) await runCauseEffect(browser.close(tab.id));
+    }
+    const reportRoot = ".openbot-build/browser-open-failure";
+    await mkdir(reportRoot, { recursive: true });
+    await writeFile(join(reportRoot, "report.json"), `${JSON.stringify({ passed, checks }, null, 2)}\n`);
+  }
+  process.stdout.write("BrowserHost: human open retry and private/tool failure cleanup passed.\n");
 }
 
 /**

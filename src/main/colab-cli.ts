@@ -56,7 +56,7 @@ export async function locateColab(executable?: string): Promise<{ executable: st
   return null;
 }
 
-export function authorizationUrl(output: string): string | null {
+function authorizationUrl(output: string): string | null {
   if (!output.includes("To authorize colab-cli, visit this URL")) return null;
   for (const match of output.matchAll(/https:\/\/accounts\.google\.com\/[^\s<>"']+(?=[\t \r\n])/gu)) {
     try {

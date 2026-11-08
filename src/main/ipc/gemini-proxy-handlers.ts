@@ -12,7 +12,7 @@ import type { GeminiProxySettingsStore } from "../gemini-proxy-settings-store";
 import { PreferenceFileFailure } from "../preference-file";
 import { handler, type IpcGroupHandlers, payloadHandler } from "./define-ipc-group";
 
-export function parseGeminiProxySettings(value: unknown): SetGeminiProxySettingsInput {
+function parseGeminiProxySettings(value: unknown): SetGeminiProxySettingsInput {
   if (!isSetGeminiProxySettingsInput(value)) {
     if (
       value &&

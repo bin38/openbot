@@ -194,12 +194,14 @@ jobs:
       - name: Measure browser and MCP tool result sizes
         run: xvfb-run -a bun run bench:tool-result-size
 
-      - name: Upload the tool result size report
+      - name: Upload browser result reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: tool-result-size
-          path: .openbot-build/tool-result-size/report.json
+          name: browser-result-reports
+          path: |
+            .openbot-build/tool-result-size/report.json
+            .openbot-build/browser-open-failure/report.json
           if-no-files-found: ignore
 
   tests-desktop:
