@@ -7,3 +7,5 @@
 ### Fixed
 
 - Keep current agent and chat identities when a workspace or application proxy changes. Busy workspace changes, stale queue interruptions and failed proxy preparation do not silently switch work to another folder, turn or direct network route.
+- Fit generated local server names to the existing limit on first startup, including Macs with long hostnames. Keep saved names unchanged.
+

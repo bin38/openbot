@@ -7,7 +7,12 @@ import { join, resolve } from "node:path";
 import { createOpenBotLogger } from "@openbot/logging";
 import { Effect, Result } from "effect";
 import { CentralAuthManager } from "../src/main/central-auth-manager";
-import { independentAccountService, initializeLocalWorkspace, LOCAL_TEAM_FILE } from "../src/main/local-workspace";
+import {
+  defaultLocalServerName,
+  independentAccountService,
+  initializeLocalWorkspace,
+  LOCAL_TEAM_FILE,
+} from "../src/main/local-workspace";
 import { TeamStore } from "../src/main/team-store";
 
 const logger = createOpenBotLogger("independent-workspace-e2e");
@@ -70,12 +75,30 @@ try {
   const restarted = new TeamStore(join(directory, LOCAL_TEAM_FILE));
   await Effect.runPromise(restarted.initialize());
   const same = await Effect.runPromise(
-    initializeLocalWorkspace(restarted, { serverName: "My local workspace", ownerName: "Local owner" }),
+    initializeLocalWorkspace(restarted, {
+      serverName: defaultLocalServerName("changed-hostname"),
+      ownerName: "Local owner",
+    }),
   );
   assert.deepEqual(same, owner);
   assert.equal(restarted.getIdentity()?.serverId, store.getIdentity()?.serverId);
+  assert.equal(restarted.getIdentity()?.serverName, "My local workspace");
   assert.equal(await readFile(oldTeamPath, "utf8"), "original account-owned host bytes");
   report.checks.push("local owner and host survive restart; the original account-owned files remain unchanged");
+
+  for (const [index, hostName] of ["a".repeat(255), "---", "", "电脑"].entries()) {
+    const fresh = new TeamStore(join(directory, `hostname-${index}.json`));
+    await Effect.runPromise(fresh.initialize());
+    await Effect.runPromise(
+      initializeLocalWorkspace(fresh, {
+        serverName: defaultLocalServerName(hostName),
+        ownerName: "Local owner",
+      }),
+    );
+    assert.ok(fresh.configured);
+    assert.ok((fresh.getIdentity()?.serverName.length ?? 0) <= 32);
+  }
+  report.checks.push("new hosts accept long, empty and non-ASCII OS names without changing saved server names");
 
   const a = independentAccountService(directory, "https://account-a.example");
   const b = independentAccountService(directory, "https://account-b.example");

@@ -247,6 +247,7 @@ import { type LocalServerChildEnvironment, startLocalServerChild } from "./local
 import { LOCAL_SERVERS_FILE } from "./local-servers/local-server-registry";
 import { LocalServers } from "./local-servers/local-servers";
 import {
+  defaultLocalServerName,
   independentAccountService,
   initializeLocalWorkspace,
   LOCAL_REMOTE_SERVERS_FILE,
@@ -2352,7 +2353,7 @@ export async function createApplicationServices({
     INDEPENDENT_EDITION && !serverModeEnvironment
       ? await runCauseEffect(
           initializeLocalWorkspace(teamStore, {
-            serverName: localServerChild?.serverName ?? `${hostname()} Local`,
+            serverName: localServerChild?.serverName ?? defaultLocalServerName(hostname()),
             ownerName: localServerChild?.serverName ?? userInfo().username,
             ...(localServerChild ? { ownerUsername: "owner", ownerSecret: localServerChild.ownerSecret } : {}),
           }),

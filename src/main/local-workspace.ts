@@ -1,12 +1,21 @@
 import { createHash, randomBytes } from "node:crypto";
 import { join } from "node:path";
+import { INPUT_LIMITS } from "@openbot/contracts/input-limits";
 import type { LocalWorkspaceProfile } from "@openbot/contracts/product-edition";
+import { slugifyTeamServerName } from "@openbot/contracts/validation";
 import { Effect } from "effect";
 import { RemoteWorkflowError } from "./remote-service-effects";
 import type { TeamStore } from "./team-store";
 
 export const LOCAL_TEAM_FILE = "independent-local-team-v1.json";
 export const LOCAL_REMOTE_SERVERS_FILE = "independent-remote-servers-v1.json";
+
+/** OS hostnames can exceed the released server-name limit. Saved names are never rewritten. */
+export function defaultLocalServerName(hostName: string): string {
+  const suffix = " Local";
+  const name = `${hostName.trim().slice(0, INPUT_LIMITS.serverName - suffix.length)}${suffix}`;
+  return slugifyTeamServerName(name).length >= INPUT_LIMITS.serverNameMin ? name : "OpenBot Local";
+}
 
 /** No fallback to the upstream service, and no reuse of a session from another origin. */
 export function independentAccountService(userData: string, configuredUrl?: string) {
