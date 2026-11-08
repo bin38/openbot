@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, open, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, link, mkdir, mkdtemp, open, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createOpenBotLogger, teeLogLines } from "@openbot/logging";
@@ -120,6 +120,50 @@ try {
     );
     const tokenBefore = await readFile(authPath, "utf8");
     checks.push("Official-style OAuth code input is private, completes through stdin and creates no compute runtime.");
+
+    if (process.getuid) {
+      const sessionsCache = join(home, ".config", "colab-cli", "sessions.json");
+      const sessionsContent = '{"fixture":"unchanged"}';
+      await chmod(authPath, 0o644);
+      await writeFile(sessionsCache, sessionsContent, { mode: 0o644 });
+      await Effect.runPromise(service.refresh());
+      assert.equal((await stat(authPath)).mode & 0o777, 0o600);
+      assert.equal((await stat(sessionsCache)).mode & 0o777, 0o600);
+      assert.equal(await readFile(authPath, "utf8"), tokenBefore);
+      assert.equal(await readFile(sessionsCache, "utf8"), sessionsContent);
+
+      for (const kind of ["parent-link", "file-link", "hard-link"]) {
+        const unsafeHome = join(root, kind);
+        const external = join(root, `${kind}-external`);
+        await mkdir(external);
+        const sentinel = join(external, "token.json");
+        await writeFile(sentinel, "unchanged sentinel", { mode: 0o644 });
+        await chmod(sentinel, 0o644);
+        await mkdir(unsafeHome);
+        if (kind === "parent-link") await symlink(external, join(unsafeHome, ".config"));
+        else {
+          const cache = join(unsafeHome, ".config", "colab-cli");
+          await mkdir(cache, { recursive: true });
+          if (kind === "file-link") await symlink(sentinel, join(cache, "token.json"));
+          else await link(sentinel, join(cache, "token.json"));
+        }
+        const unsafeService = new ColabService({
+          executable,
+          homeDirectory: unsafeHome,
+          artifactsDirectory: join(root, `${kind}-artifacts`),
+        });
+        try {
+          await assert.rejects(Effect.runPromise(unsafeService.getStatus()), /could not secure the Colab CLI cache/u);
+          assert.equal(await readFile(sentinel, "utf8"), "unchanged sentinel");
+          assert.equal((await stat(sentinel)).mode & 0o777, 0o644);
+        } finally {
+          await Effect.runPromise(unsafeService.close());
+        }
+      }
+      checks.push(
+        "Official cache files become private without content changes; linked cache parents and files fail without changing their external targets.",
+      );
+    }
 
     await Effect.runPromise(service.createCpu({ name: "notebook-1" }));
     await Effect.runPromise(service.createCpu({ name: "notebook-1" }));

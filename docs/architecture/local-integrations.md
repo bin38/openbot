@@ -34,6 +34,10 @@ validates the Google authorization URL and opens it through the normal external-
 The code is submitted through stdin; cancellation stops only that login process and preserves
 saved CLI credentials.
 
+Before and after CLI operations, OpenBot makes the current user's official Colab token and session
+cache files private. Unsafe linked or foreign-owned cache paths stop the operation. File contents
+and saved login identities stay unchanged.
+
 `ColabService` owns named-runtime metadata, login state, child processes and private staging.
 Its status DTO contains no OAuth code, bearer, runtime proxy token or authenticated runtime URL.
 Session listing and login allocate no runtime. New runtime requests are CPU-only; the service

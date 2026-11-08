@@ -15,6 +15,7 @@ const keys = {
   sessionMissing: "error.colab.sessionMissing",
   proxy: "error.colab.proxy",
   allocation: "error.colab.allocation",
+  cacheUnsafe: "error.colab.cacheUnsafe",
 } as const;
 
 export class ColabFailure extends Schema.TaggedError<ColabFailure>()("ColabFailure", {

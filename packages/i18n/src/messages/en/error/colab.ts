@@ -15,4 +15,5 @@ export const messages = defineMessages("error.colab", {
   "error.colab.proxy": "The Colab CLI could not connect to the app proxy. Check the Gemini proxy settings.",
   "error.colab.allocation":
     "Colab could not allocate a runtime. Check active sessions, quota and current capacity, then try again.",
+  "error.colab.cacheUnsafe": "OpenBot could not secure the Colab CLI cache. Check its ownership and file permissions.",
 });

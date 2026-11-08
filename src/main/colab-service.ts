@@ -26,6 +26,7 @@ import {
   credentialFilePresent,
   locateColab,
   registerColabSecrets,
+  secureColabCache,
   startColabProcess,
 } from "./colab-cli";
 
@@ -163,6 +164,7 @@ export class ColabService {
     this: ColabService,
     options: Parameters<typeof startColabProcess>[0],
   ) {
+    yield* Effect.tryPromise({ try: () => secureColabCache(this.#home), catch: asColabFailure });
     return yield* Effect.acquireUseRelease(
       Effect.try({ try: () => this.#start(options), catch: asColabFailure }),
       (operation) => Effect.tryPromise({ try: () => operation.done, catch: asColabFailure }),
@@ -186,6 +188,7 @@ export class ColabService {
       args: ["version"],
       environment: this.#environment(false),
       timeoutMs: 10_000,
+      beforeResult: () => secureColabCache(this.#home),
     });
     const version = /\bVersion:\s*(\d+\.\d+\.\d+(?:[.+-][\w.-]{1,64})?)(?:\s|$)/u.exec(result.text)?.[1];
     if (!version) return null;
@@ -258,6 +261,7 @@ export class ColabService {
     const enteredRevision = this.#loginRevision;
     const cli = yield* this.#detect();
     if (!cli) return yield* colabFailure("missing");
+    yield* Effect.tryPromise({ try: () => secureColabCache(this.#home), catch: asColabFailure });
     // Detection is asynchronous. A concurrent login or cancel can take ownership while it runs.
     if (enteredRevision !== this.#loginRevision || this.#login) return yield* this.getStatus();
     const revision = ++this.#loginRevision;

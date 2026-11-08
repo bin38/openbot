@@ -91,5 +91,5 @@ must be recorded separately; fixture success does not establish them.
 The local Chinese development app detected Colab CLI `0.7.5` and displayed its saved credentials.
 A read-only runtime refresh required a fresh Google sign-in. No runtime was allocated and no
 notebook was executed. The assistant settings displayed the current working folder, folder picker
-and Shared-folder action. The final Colab fixture passed ten cases, including concurrent login,
-early stdin closure and preservation of exact external session names.
+and Shared-folder action. The final Colab fixture passed eleven cases, including concurrent login,
+early stdin closure, exact external session names and cache-permission repair without content loss.

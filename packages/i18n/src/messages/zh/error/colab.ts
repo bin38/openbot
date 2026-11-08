@@ -14,4 +14,5 @@ export const messages = {
   "error.colab.sessionMissing": "未找到这个 Colab 运行时，请刷新列表并选择仍在运行的会话。",
   "error.colab.proxy": "Colab CLI 无法连接应用内代理，请检查 Gemini 代理设置。",
   "error.colab.allocation": "Colab 暂时无法分配运行时，请检查现有会话、额度和资源供应后重试。",
+  "error.colab.cacheUnsafe": "无法保护 Colab CLI 缓存，请检查缓存的所有者和文件权限。",
 } as const satisfies PartialTranslation<typeof source>;

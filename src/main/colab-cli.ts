@@ -1,6 +1,6 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
-import { constants } from "node:fs";
-import { access, readFile, realpath, stat } from "node:fs/promises";
+import { constants, type Stats } from "node:fs";
+import { access, lstat, open, readFile, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { stripVTControlCharacters } from "node:util";
@@ -187,7 +187,7 @@ export function startColabProcess(options: {
           return reject(colabFailure(options.interactive ? "loginFailed" : "commandFailed"));
         }
         resolve({ text: redactText(stripVTControlCharacters(stdout)).slice(0, COLAB_LIMITS.output), truncated });
-      })().catch(() => reject(colabFailure("commandFailed")));
+      })().catch((error) => reject(asColabFailure(error)));
     });
   });
   return {
@@ -200,7 +200,80 @@ export function startColabProcess(options: {
   };
 }
 
+function isMissing(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
+/** Only the official current-user cache files may have their permissions tightened. */
+export async function secureColabCache(home: string): Promise<void> {
+  const uid = process.getuid?.();
+  if (uid === undefined) return;
+  try {
+    const base = await realpath(home);
+    const parents: Array<{ path: string; identity: Stats }> = [];
+    for (const path of [join(base, ".config"), join(base, ".config", "colab-cli")]) {
+      let identity: Stats;
+      try {
+        identity = await lstat(path);
+      } catch (error) {
+        if (isMissing(error)) return;
+        throw error;
+      }
+      if (!identity.isDirectory() || identity.uid !== uid || (identity.mode & 0o022) !== 0)
+        throw colabFailure("cacheUnsafe");
+      parents.push({ path, identity });
+    }
+    const checkParents = async () => {
+      for (const parent of parents) {
+        const current = await lstat(parent.path);
+        if (
+          !current.isDirectory() ||
+          current.uid !== uid ||
+          (current.mode & 0o022) !== 0 ||
+          current.dev !== parent.identity.dev ||
+          current.ino !== parent.identity.ino
+        )
+          throw colabFailure("cacheUnsafe");
+      }
+    };
+    for (const file of ["token.json", "sessions.json"]) {
+      const path = join(base, ".config", "colab-cli", file);
+      await checkParents();
+      let identity: Stats;
+      try {
+        identity = await lstat(path);
+      } catch (error) {
+        if (isMissing(error)) continue;
+        throw error;
+      }
+      if (!identity.isFile() || identity.uid !== uid || identity.nlink !== 1) throw colabFailure("cacheUnsafe");
+      const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+      try {
+        const current = await handle.stat();
+        if (
+          !current.isFile() ||
+          current.uid !== uid ||
+          current.nlink !== 1 ||
+          current.dev !== identity.dev ||
+          current.ino !== identity.ino
+        )
+          throw colabFailure("cacheUnsafe");
+        await checkParents();
+        const named = await lstat(path);
+        if (!named.isFile() || named.dev !== current.dev || named.ino !== current.ino)
+          throw colabFailure("cacheUnsafe");
+        if ((current.mode & 0o777) !== 0o600) await handle.chmod(0o600);
+      } finally {
+        await handle.close();
+      }
+    }
+  } catch {
+    throw colabFailure("cacheUnsafe");
+  }
+}
+
 export async function credentialFilePresent(home = homedir()): Promise<boolean> {
+  await secureColabCache(home);
   try {
     await access(join(home, ".config", "colab-cli", "token.json"), constants.R_OK);
     return true;
@@ -211,6 +284,7 @@ export async function credentialFilePresent(home = homedir()): Promise<boolean> 
 
 /** Register only known authentication fields; no token or credential object is returned. */
 export async function registerColabSecrets(home: string, register: (values: string[]) => void): Promise<void> {
+  await secureColabCache(home);
   for (const file of ["token.json", "sessions.json"]) {
     try {
       const path = join(home, ".config", "colab-cli", file);
