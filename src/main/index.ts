@@ -99,6 +99,7 @@ import { messagingIpcHandlers } from "./ipc/messaging-handlers";
 import { notificationIpcHandlers } from "./ipc/notification-handlers";
 import { onePasswordConnectorIpcHandlers } from "./ipc/onepassword-connector-handlers";
 import { pluginIpcHandlers } from "./ipc/plugin-handlers";
+import { projectWorkspacesIpcHandlers } from "./ipc/project-workspaces-handlers";
 import { providerAdminIpcHandlers } from "./ipc/provider-admin-handlers";
 import { providerDetectionIpcHandlers } from "./ipc/provider-detection-handlers";
 import { providerIpcHandlers } from "./ipc/provider-handlers";
@@ -691,6 +692,7 @@ function registerIpcHandlers({
   providerDetectionSettings,
   geminiProxySettings,
   geminiProxyBridge,
+  projectWorkspaces,
   colab,
   marketplaceAgents,
   agentTemplates,
@@ -818,6 +820,7 @@ function registerIpcHandlers({
     }),
     ...agentWorkspacesIpcHandlers({
       service,
+      inspectProject: (path) => projectWorkspaces.inspectPath(path),
       chooseDirectory: async (current) => {
         const options = {
           title: language.translate("agentSettings.workspace.choose"),
@@ -834,6 +837,17 @@ function registerIpcHandlers({
       },
     }),
     ...colabIpcHandlers({ colab, openLink }),
+    ...projectWorkspacesIpcHandlers({
+      projects: projectWorkspaces,
+      service,
+      conversationSender: () => host.conversationSender(),
+      chooseDirectory: async () => {
+        const options = { properties: ["openDirectory" as const] };
+        const parent = getDialogParent();
+        const result = parent ? await dialog.showOpenDialog(parent, options) : await dialog.showOpenDialog(options);
+        return result.canceled ? null : (result.filePaths[0] ?? null);
+      },
+    }),
     ...marketplaceAgentIpcHandlers({ marketplaceAgents }),
     ...agentTemplateIpcHandlers({
       agentTemplates,

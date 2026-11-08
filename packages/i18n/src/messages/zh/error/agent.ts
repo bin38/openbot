@@ -7,6 +7,12 @@ export const messages = {
   "error.agent.workspaceReserved": "请选择 OpenBot 默认目录、共享目录和应用目录之外的项目文件夹。",
   "error.agent.workspaceInUse": "其他助手正在使用重叠的工作区，请选择独立文件夹。",
   "error.agent.workspaceBusy": "请等待此助手的工作结束后，再更改工作区。",
+  "error.agent.projectListUnreadable": "无法读取已保存的项目列表，原列表未被修改。",
+  "error.agent.projectUnknown": "项目已不在列表中，请重新选择它的文件夹。",
+  "error.agent.projectUnavailable": "项目文件夹不可用或位置已变化，请重新选择。",
+  "error.agent.projectInspectFailed": "无法识别这个项目，请重试。",
+  "error.agent.projectSaveFailed": "无法保存项目列表，请重试。",
+  "error.agent.projectListFull": "项目列表已满，请先从列表移除一个项目。",
   "error.agent.historyUnavailable":
     "该请求的历史记录不可用，请重新读取最近的历史，或在频道工作中使用 channel_history。",
   "error.agent.toolRequestInvalid": "工具发现参数无效。请使用声明的 schema 和原始的完整工具名。",

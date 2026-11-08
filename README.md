@@ -45,6 +45,14 @@ and [independent plugins](docs/independent-plugins.md).
 
 ## Independent workspace and Google tools
 
+When creating an assistant on this computer, **项目工作区** selects a remembered project or an
+existing folder. OpenBot shows its Git root and branch, detected instruction files and project skill
+locations before creation. The first message runs in the selected folder. Several assistants can
+select the same project; their identities and chats stay separate while their project files are shared.
+The managed private folder remains an option. Existing assistant settings can select or restore a
+workspace and refresh its project details. Removing a project from the list does not delete files or
+change assistants already using it. Project selection does not install or synchronize skills.
+
 Each assistant has its own managed working folder. On this computer, open the assistant settings
 and use **工作区** to select an existing project or restore its managed folder. Switching keeps
 the original files and conversation; it is available only when the assistant has no active or

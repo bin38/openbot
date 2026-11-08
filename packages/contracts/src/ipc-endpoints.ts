@@ -49,6 +49,13 @@ import type {
 } from "./ipc-e2b";
 import type { GeminiProxySettings, SetGeminiProxySettingsInput } from "./ipc-gemini-proxy";
 import type { McpRegistryPage, McpRegistryQuery } from "./ipc-mcp-registry";
+import type {
+  AssignProjectWorkspaceInput,
+  CreateProjectAgentInput,
+  ProjectWorkspace,
+  ProjectWorkspaceContext,
+  ProjectWorkspaceInfo,
+} from "./ipc-project-workspaces";
 import type { ServerAuditLog } from "./ipc-server-audit";
 import type {
   AttachmentUploadId,
@@ -1040,9 +1047,18 @@ export const IPC_ENDPOINTS = {
   },
   agentWorkspaces: {
     get: request<string, AgentWorkspaceInfo>()("agent-workspaces:get"),
+    inspect: request<string, ProjectWorkspaceContext>()("agent-workspaces:inspect"),
     choose: request<string, AgentWorkspaceInfo | null>()("agent-workspaces:choose"),
     reset: request<string, AgentWorkspaceInfo>()("agent-workspaces:reset"),
     open: request<OpenAgentWorkspaceInput, void>()("agent-workspaces:open"),
+  },
+  projectWorkspaces: {
+    list: request<undefined, ProjectWorkspace[]>()("project-workspaces:list"),
+    choose: request<undefined, ProjectWorkspaceInfo | null>()("project-workspaces:choose"),
+    inspect: request<string, ProjectWorkspaceInfo>()("project-workspaces:inspect"),
+    forget: request<string, void>()("project-workspaces:forget"),
+    create: request<CreateProjectAgentInput, ClientAgentSummary>()("project-workspaces:create"),
+    assign: request<AssignProjectWorkspaceInput, AgentWorkspaceInfo>()("project-workspaces:assign"),
   },
   colab: {
     getStatus: request<undefined, ColabSnapshot>()("colab:get-status"),
@@ -2100,6 +2116,7 @@ export const IPC_GROUP_PATHS = {
   providerDetection: "providerDetection",
   geminiProxy: "geminiProxy",
   agentWorkspaces: "agentWorkspaces",
+  projectWorkspaces: "projectWorkspaces",
   colab: "colab",
   customAgents: "customAgents",
   acpRegistry: "acpRegistry",

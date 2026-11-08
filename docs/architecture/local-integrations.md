@@ -6,7 +6,8 @@ Team API fields or remote account-service storage.
 ## Assistant working folders
 
 `agent-workspaces.ts` validates canonical existing directories. It rejects reserved OpenBot roots,
-overlapping workspaces and non-directory paths. `AgentStore` keeps the selected `workspacePath`
+nested overlaps with another assistant and non-directory paths. Several assistants can explicitly
+select the same external project. Managed folders remain private. `AgentStore` keeps the selected `workspacePath`
 and an internal `workspaceBinding.originalPath` for the managed folder. The binding is omitted
 from public agent summaries. Existing records without a binding keep their managed behavior;
 there is no SQL schema migration.
@@ -25,6 +26,25 @@ creation and editing reuse the existing member selector and show that members re
 working folders. Shared is the existing host-wide delivery location, not a physical merge of the
 member directories. Workspace selection is not a new OS sandbox; the existing access mode still
 defines the provider's file permissions.
+
+`ProjectWorkspaces` stores remembered canonical paths and names in the local
+`openbot-project-workspaces-v1.json`. Native folder selection supplies new paths; renderer requests
+use saved project IDs. Invalid or newer saved records stay read-only. Forgetting a choice removes
+only its list entry. The local creation endpoint binds the project before preparation and the first
+message; failure cleanup removes only the assistant's managed data.
+
+`project-context.ts` reads fixed Git metadata commands without a shell, optional index locks,
+fsmonitor, remote access or status filters. Output and execution time are bounded. It discovers
+instruction and `SKILL.md` locations from the working directory up to the Git root using filesystem
+metadata only. It does not read those instruction bodies or claim that every detected file is loaded
+by the provider. Plain folders also work; unavailable Git and missing folders have separate states.
+Codex retains native instruction and `.agents/skills` discovery. Ancestor skills are shown in the
+overview; existing skill previews and tags retain their workspace-containment rules.
+
+Automatic bundled-skill synchronization targets managed workspaces only. External-project prompts
+keep assistant persona and private bookkeeping separate from project instructions, and preserve
+other assistants' changes. Changing the project refreshes skill suggestions; selecting the current
+project again does not reset provider context. No Git worktree is created automatically.
 
 ## Colab CLI
 

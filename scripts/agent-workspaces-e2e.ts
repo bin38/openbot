@@ -95,7 +95,10 @@ try {
     "A chosen project becomes the workspace without moving files, public identity, history or old local file links.",
   );
 
-  await assert.rejects(runCauseEffect(store.setWorkspace(second.id, projectA)), /overlapping workspace/u);
+  await runCauseEffect(store.setWorkspace(second.id, projectA));
+  assert.equal((await runCauseEffect(store.workspaceInfo(second.id))).path, projectA);
+  assert.equal((await runCauseEffect(store.workspaceInfo(first.id))).path, projectA);
+  await runCauseEffect(store.setWorkspace(second.id, null));
   const nested = join(projectA, "nested");
   await mkdir(nested);
   await assert.rejects(runCauseEffect(store.setWorkspace(second.id, nested)), /overlapping workspace/u);
@@ -110,7 +113,9 @@ try {
   );
   assert.equal((await runCauseEffect(store.workspaceInfo(first.id))).path, projectA);
   assert.equal(store.list().find((agent) => agent.id === second.id)?.workspacePath, second.workspacePath);
-  checks.push("Overlapping/reserved folders and a busy-before-commit guard preserve the existing workspace.");
+  checks.push(
+    "Shared project selection is explicit; nested/reserved folders and a busy-before-commit guard preserve existing workspaces.",
+  );
 
   await runCauseEffect(store.setWorkspace(second.id, projectB));
   const channelStore = new ChannelStore(database);

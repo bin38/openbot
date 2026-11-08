@@ -3,7 +3,7 @@ import { defineMessages } from "../../message";
 export const messages = defineMessages("agentSettings", {
   "agentSettings.workspace.title": "Workspace",
   "agentSettings.workspace.description":
-    "Each agent keeps one working folder. Channels combine agents without merging their folders.",
+    "Each agent uses one working folder. Agents can share a selected project; channels do not merge their folders.",
   "agentSettings.workspace.current": "Working folder",
   "agentSettings.workspace.managed": "Uses this agent's separate default folder.",
   "agentSettings.workspace.custom": "Uses the local project folder you selected.",
@@ -19,6 +19,7 @@ export const messages = defineMessages("agentSettings", {
   "agentSettings.workspace.readFailed": "Could not read the workspace settings.",
   "agentSettings.workspace.saveFailed": "Could not change the workspace.",
   "agentSettings.workspace.openFailed": "Could not open the workspace.",
+  "agentSettings.workspace.refresh": "Refresh workspace details",
   "agentSettings.session.title": "Provider settings",
   "agentSettings.session.readFailed": "Could not read provider settings.",
   "agentSettings.session.pending": "Saved changes apply before the next turn.",

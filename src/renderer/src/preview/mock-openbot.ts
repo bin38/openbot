@@ -6,9 +6,12 @@ import { AGENT_MEMORY_CONTEXT_BUDGET_BYTES, essentialMemoryBytes } from "@openbo
 import type {
   AcpRegistryEntry,
   AgentSessionSettings,
+  CreateAgentInput,
   HiddenAgentsSnapshot,
   McpSignInApp,
   McpSignInAppState,
+  ProjectWorkspace,
+  ProjectWorkspaceContext,
   ServerNotificationLevel,
 } from "@openbot/contracts/ipc";
 import {
@@ -634,6 +637,32 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
   let hostedSites = clone(STORY_HOSTED_SITES);
   let detectionSettings: ProviderDetectionSettings = clone(DEFAULT_PROVIDER_DETECTION_SETTINGS);
   let geminiProxySettings: GeminiProxySettings = clone(DEFAULT_GEMINI_PROXY_SETTINGS);
+  let projectChoices: ProjectWorkspace[] = [
+    { id: "preview-project", name: "animation-project", path: "/preview/projects/animation-project" },
+  ];
+  const managedWorkspacePaths = new Map(agents.map((agent) => [agent.id, agent.workspacePath]));
+  function projectContext(path: string, repository = true): ProjectWorkspaceContext {
+    return {
+      path,
+      name: path.split("/").at(-1) || path,
+      available: true,
+      git: repository
+        ? { status: "repository", root: path, branch: "main", commit: "abc1234", worktree: false }
+        : { status: "none" },
+      instructions: repository ? [{ path: `${path}/AGENTS.md`, fileName: "AGENTS.md", scope: "project" }] : [],
+      skills: repository
+        ? [
+            {
+              slug: "animation",
+              path: `${path}/.agents/skills/animation/SKILL.md`,
+              folder: ".agents/skills",
+              scope: "project",
+            },
+          ]
+        : [],
+      truncated: false,
+    };
+  }
   let colabSnapshot: ColabSnapshot = {
     installed: true,
     cliPath: "colab",
@@ -1115,6 +1144,35 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
       : mockChannels.listChannelRoutineRuns({ channelId: owner.id, routineId, limit }),
   );
   const billingPlans = previewBillingServers();
+
+  async function createPreviewAgent(input: CreateAgentInput, workspacePath?: string): Promise<ClientAgentSummary> {
+    const agent = createAgentSummary({
+      name: input.name,
+      title: "",
+      description: input.description,
+      avatarSeed: input.avatarSeed,
+      avatarHue: input.avatarHue,
+      ...(input.provider === undefined ? {} : { provider: input.provider }),
+      ...(input.model === undefined ? {} : { model: input.model }),
+      ...(input.reasoningEffort === undefined ? {} : { reasoningEffort: input.reasoningEffort }),
+    });
+    managedWorkspacePaths.set(agent.id, agent.workspacePath);
+    if (workspacePath) agent.workspacePath = workspacePath;
+    agents = [...agents, agent];
+    queues.set(agent.id, emptyQueue(agent.id));
+    emitAgentEvent({ type: "agents-changed", agents });
+    try {
+      await api.agent.sendMessage({ agentId: agent.id, text: input.initialMessage, attachmentDraftIds: [] });
+      return clone(agent);
+    } catch (error) {
+      agents = agents.filter((candidate) => candidate.id !== agent.id);
+      queues.delete(agent.id);
+      managedWorkspacePaths.delete(agent.id);
+      delete snapshots[agent.id];
+      emitAgentEvent({ type: "agents-changed", agents });
+      throw error;
+    }
+  }
 
   const api: OpenBotDesktopApi = {
     getAppInfo: async () => clone(appInfo),
@@ -1703,15 +1761,56 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
         return {
           agentId: id,
           path: agent.workspacePath,
-          managedPath: agent.workspacePath,
+          managedPath: managedWorkspacePaths.get(id) ?? agent.workspacePath,
           sharedPath: "/preview/OpenBot/Shared",
-          custom: false,
+          custom: (managedWorkspacePaths.get(id) ?? agent.workspacePath) !== agent.workspacePath,
           available: true,
         };
       },
       choose: async () => null,
-      reset: async (id) => api.agentWorkspaces.get(id),
+      inspect: async (id) => {
+        const info = await api.agentWorkspaces.get(id);
+        return projectContext(info.path, info.custom);
+      },
+      reset: async (id) => {
+        const agent = requireMockAgent(id);
+        agent.workspacePath = managedWorkspacePaths.get(id) ?? agent.workspacePath;
+        emitAgentEvent({ type: "agents-changed", agents });
+        return api.agentWorkspaces.get(id);
+      },
       open: async () => undefined,
+    },
+    projectWorkspaces: {
+      list: async () => clone(projectChoices),
+      choose: async () => {
+        const project = projectChoices[0] ?? {
+          id: "preview-project",
+          name: "animation-project",
+          path: "/preview/projects/animation-project",
+        };
+        if (!projectChoices.length) projectChoices = [project];
+        return { ...clone(project), context: projectContext(project.path) };
+      },
+      inspect: async (id) => {
+        const project = projectChoices.find((item) => item.id === id);
+        if (!project) throw new Error(sourceText("error.agent.projectUnknown"));
+        return { ...clone(project), context: projectContext(project.path) };
+      },
+      forget: async (id) => {
+        projectChoices = projectChoices.filter((project) => project.id !== id);
+      },
+      create: async ({ projectId, input }) => {
+        const project = await api.projectWorkspaces.inspect(projectId);
+        return createPreviewAgent(input, project.path);
+      },
+      assign: async ({ projectId, agentId }) => {
+        const project = await api.projectWorkspaces.inspect(projectId);
+        const agent = requireMockAgent(agentId);
+        if (!managedWorkspacePaths.has(agentId)) managedWorkspacePaths.set(agentId, agent.workspacePath);
+        agent.workspacePath = project.path;
+        emitAgentEvent({ type: "agents-changed", agents });
+        return api.agentWorkspaces.get(agentId);
+      },
     },
     colab: {
       getStatus: async () => clone(colabSnapshot),
@@ -2418,31 +2517,7 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
         if (!isAgentSummary(updated)) throw new Error("Mock profile agent has an unknown provider.");
         return { agent: { ...updated, avatarUrl: null }, layout };
       },
-      createAgent: async (input) => {
-        const agent = createAgentSummary({
-          name: input.name,
-          title: "",
-          description: input.description,
-          avatarSeed: input.avatarSeed,
-          avatarHue: input.avatarHue,
-          ...(input.provider === undefined ? {} : { provider: input.provider }),
-          ...(input.model === undefined ? {} : { model: input.model }),
-          ...(input.reasoningEffort === undefined ? {} : { reasoningEffort: input.reasoningEffort }),
-        });
-        agents = [...agents, agent];
-        queues.set(agent.id, emptyQueue(agent.id));
-        emitAgentEvent({ type: "agents-changed", agents });
-        try {
-          await api.agent.sendMessage({ agentId: agent.id, text: input.initialMessage, attachmentDraftIds: [] });
-          return clone(agent);
-        } catch (error) {
-          agents = agents.filter((candidate) => candidate.id !== agent.id);
-          queues.delete(agent.id);
-          delete snapshots[agent.id];
-          emitAgentEvent({ type: "agents-changed", agents });
-          throw error;
-        }
-      },
+      createAgent: (input) => createPreviewAgent(input),
       duplicateAgent: async (agentId) => {
         const source = agents.find((agent) => agent.id === agentId);
         if (!source) throw new Error("Agent not found");

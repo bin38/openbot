@@ -290,6 +290,7 @@ import { probeModels } from "./model-server-probe";
 import { NotificationPreferenceStore } from "./notification-preference-store";
 import { OnePasswordConnectorService } from "./onepassword-connector-service";
 import { OnePasswordConnectorStore } from "./onepassword-connector-store";
+import { PROJECT_WORKSPACES_FILE, ProjectWorkspaces } from "./project-workspaces";
 import { PromptCacheTtlPreferenceStore } from "./prompt-cache-ttl-preference-store";
 import { ProviderAccountsHost } from "./provider-accounts-host";
 import { createProviderCliAppVersionStore } from "./provider-cli-app-version-store";
@@ -683,6 +684,7 @@ export interface ApplicationServices {
   providerDetectionSettings: ProviderDetectionSettingsStore;
   geminiProxySettings: GeminiProxySettingsStore;
   geminiProxyBridge: GeminiProxyBridge;
+  projectWorkspaces: ProjectWorkspaces;
   colab: ColabService;
   marketplaceAgents: AgentMarketplaceService;
   agentTemplates: AgentTemplateService;
@@ -1120,6 +1122,11 @@ export async function createApplicationServices({
   // change nothing.
   performance.mark("openbot:services.pre-store");
   await runCauseEffect(store.initialize());
+  const projectWorkspaces = new ProjectWorkspaces({
+    path: join(app.getPath("userData"), PROJECT_WORKSPACES_FILE),
+    validateDirectory: (path) => store.validateProjectWorkspace(path),
+  });
+  await Effect.runPromise(projectWorkspaces.load());
   performance.mark("openbot:services.store");
   // Closing copies the write-ahead log into the database file and removes it. A step that passed its
   // limit, such as a slow agent stop, still writes, so the close waits a short time for it.
@@ -1145,9 +1152,10 @@ export async function createApplicationServices({
     undefined,
     DATA_SKILL_SLUG,
   );
-  if (!INDEPENDENT_EDITION) await Effect.runPromise(managedSkills.syncAll(store.list()));
-  await Effect.runPromise(skillCreator.syncAll(store.list()));
-  await Effect.runPromise(dataSkill.syncAll(store.list()));
+  const managedWorkspaceAgents = store.list().filter((agent) => store.isManagedWorkspace(agent.id));
+  if (!INDEPENDENT_EDITION) await Effect.runPromise(managedSkills.syncAll(managedWorkspaceAgents));
+  await Effect.runPromise(skillCreator.syncAll(managedWorkspaceAgents));
+  await Effect.runPromise(dataSkill.syncAll(managedWorkspaceAgents));
   performance.mark("openbot:services.skills");
   const hostedSites = new HostedSiteDesktopService(centralAuth, () => {
     // Read at request time: the team store is created later, and the server can register after launch.
@@ -1905,6 +1913,7 @@ export async function createApplicationServices({
     bundledExecutables: providerRuntimes.bundledExecutables(),
     prepareAgentWorkspace: (agent) =>
       Effect.gen(function* () {
+        if (!store.isManagedWorkspace(agent.id)) return;
         if (!INDEPENDENT_EDITION) yield* managedSkills.syncAgent(agent);
         yield* skillCreator.syncAgent(agent);
         yield* dataSkill.syncAgent(agent);
@@ -3715,6 +3724,7 @@ export async function createApplicationServices({
     providerDetectionSettings,
     geminiProxySettings,
     geminiProxyBridge,
+    projectWorkspaces,
     colab,
     marketplaceAgents,
     agentTemplates,

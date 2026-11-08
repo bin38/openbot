@@ -13,6 +13,7 @@ import { desktopAnalytics } from "../../analytics";
 import { toAgentProfile, withoutAgent } from "../../app-message-projection";
 import { createStoredProfile } from "../../app-stored-values";
 import { useNavigation } from "../../navigation";
+import { projectWorkspacesPort } from "../../project-workspaces-port";
 import { createScopeGuard } from "../../scope-lifetime";
 import { createSimpleContext } from "../../simple-context";
 import { useTurns } from "../../turns";
@@ -54,6 +55,8 @@ const AgentActions = createSimpleContext({
       agentSetupOpen,
       setAgentSetupOpen,
       agentSetupDraft,
+      agentSetupProject,
+      setAgentSetupProject,
       setAgentSetupError,
       creatingAgent,
       setCreatingAgent,
@@ -112,21 +115,35 @@ const AgentActions = createSimpleContext({
       if (creatingAgent()) return;
       const analytics = desktopAnalytics.scope();
       const submitted = { ...draft };
+      const serverId = activeServerId();
+      const project = activeServer()?.kind === "local" ? agentSetupProject() : null;
       setCreatingAgent(true);
       setAgentSetupError(null);
       try {
-        const newAgent = addNewAgent(await requestNewAgent(submitted));
+        const stored = project
+          ? await projectWorkspacesPort().create({ projectId: project.id, input: newAgentInput(submitted, true) })
+          : await agentsPort().agent.createAgent(
+              newAgentInput(
+                submitted,
+                activeServer()?.kind !== "remote" || activeServerSupportsCapability(TEAM_AGENT_CREATE_MODEL_CAPABILITY),
+              ),
+              serverId,
+            );
+        if (!scopeIsCurrent() || activeServerId() !== serverId) return;
+        const newAgent = addNewAgent(stored);
+        setAgentSetupProject(null);
         setAgentSetupOpen(false);
         clearDirectSelection();
         setActiveAgentId(newAgent.id);
         const properties = analyticsAgentProperties(newAgent.id);
         analytics.track("agent_action", { action: "create", result: "succeeded", ...(properties ?? {}) });
       } catch (error) {
+        if (!scopeIsCurrent() || activeServerId() !== serverId) return;
         analytics.track("agent_action", { action: "create", result: "failed", failure_code: "create_failed" });
         const { t, errorMessage } = currentText();
         setAgentSetupError(errorMessage(error, t("agent.error.createFailed")));
       } finally {
-        setCreatingAgent(false);
+        if (scopeIsCurrent() && activeServerId() === serverId) setCreatingAgent(false);
       }
     }
 

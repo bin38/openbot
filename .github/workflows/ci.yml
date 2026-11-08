@@ -609,6 +609,18 @@ jobs:
         if: ${{ !cancelled() }}
         run: bun scripts/agent-workspaces-e2e.ts
 
+      - name: Run project metadata discovery E2E
+        if: ${{ !cancelled() }}
+        run: bun scripts/project-context-e2e.ts
+
+      - name: Run remembered project workspace E2E
+        if: ${{ !cancelled() }}
+        run: bun scripts/project-workspaces-e2e.ts
+
+      - name: Run project assistant creation E2E
+        if: ${{ !cancelled() }}
+        run: bun scripts/project-agent-creation-e2e.ts
+
       - name: Run the Colab service fixture E2E
         if: ${{ !cancelled() }}
         run: bun scripts/colab-service-e2e.ts
@@ -684,6 +696,9 @@ jobs:
             .openbot-build/api-channel-tools-e2e/report.json
             .openbot-build/independent-workspace-e2e/report.json
             .openbot-build/agent-workspaces-e2e/report.json
+            .openbot-build/project-context-e2e/report.json
+            .openbot-build/project-workspaces-e2e/report.json
+            .openbot-build/project-agent-creation-e2e/report.json
             .openbot-build/colab-service-e2e/report.json
             .openbot-build/independent-network-e2e/report.json
             .openbot-build/independent-runtime-source-e2e/report.json

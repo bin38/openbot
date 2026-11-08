@@ -979,6 +979,7 @@ export class ThreadLifecycle {
             // Provider sessions bind their working directory. Changing it must replace the
             // private context while the public chat and its saved history remain the same.
             agent.workspacePath,
+            ...(this.#store.isManagedWorkspace(agent.id) ? [] : ["project-workspace-v1"]),
             ...(workspaceAccessEnforced(agent) ? ["workspace"] : []),
             // The folders that the instructions name: a drive that is ejected or connected changes them.
             ...(folders.length ? [["folders", ...folders]] : []),
@@ -1153,6 +1154,7 @@ export class ThreadLifecycle {
       homeSkills,
       httpMcpServers: mcpServers.some((config) => config.transport === "http"),
       instructionsFileName: instructionsFile.fileName,
+      projectWorkspace: !this.#store.isManagedWorkspace(agent.id),
       instructionsFile: instructionsFile.file,
     };
     const instructions = developerInstructions(

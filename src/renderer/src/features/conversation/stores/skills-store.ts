@@ -20,24 +20,28 @@ export function createSkillsStore(deps: SkillsStoreDeps) {
     installedSkillsRequestKey(deps.props.agent?.id, deps.props.server, deps.props.skillsMarketplaceOpen === true),
   );
   createEffect(
-    () => `${deps.props.server?.id ?? "local"}\0${deps.props.server?.connectionSequence ?? 0}`,
+    () =>
+      `${deps.props.server?.id ?? "local"}\0${deps.props.server?.connectionSequence ?? 0}\0${deps.props.agent?.id ?? ""}\0${deps.props.agent?.workspacePath ?? ""}`,
     (source) => {
-      const [serverId = "", connectionSequenceText] = source.split("\0");
+      const [serverId = "", connectionSequenceText, agentId = "", workspacePath = ""] = source.split("\0");
       const failedAttempt = failedInstalledSkillsAttempt;
       if (
         failedAttempt?.serverId === serverId &&
-        failedAttempt.sourceId === `${serverId}\0${untrack(() => deps.props.agent?.id) ?? ""}` &&
+        failedAttempt.sourceId === `${serverId}\0${agentId}\0${workspacePath}` &&
         failedAttempt.connectionSequence !== Number(connectionSequenceText)
       ) {
         setInstalledSkillsRetry((retry) => retry + 1);
       }
     },
   );
-  const refreshKey = createMemo(
-    () =>
-      `${installedSkillsSource()}\0${installedSkillsRetry()}\0${deps.props.activeTurnId ?? ""}\0${deps.settingsOpen()}`,
-  );
-  createEffect(refreshKey, (source) => {
+  const refreshKey = createMemo(() => ({
+    source: installedSkillsSource(),
+    retry: installedSkillsRetry(),
+    activeTurnId: deps.props.activeTurnId ?? "",
+    settingsOpen: deps.settingsOpen(),
+    workspacePath: deps.props.agent?.workspacePath ?? "",
+  }));
+  createEffect(refreshKey, ({ source, workspacePath }) => {
     const request = ++installedSkillsRequest;
     const [serverId = "", agentId, support, visibility] = source.split("\0");
     if (!agentId) {
@@ -47,13 +51,14 @@ export function createSkillsStore(deps: SkillsStoreDeps) {
       setInstalledSkillsLoadFailed(false);
       return;
     }
-    if (visibility === "hidden") return;
-    const sourceId = `${serverId}\0${agentId}`;
+    const sourceId = `${serverId}\0${agentId}\0${workspacePath}`;
     if (installedSkillsSourceId !== sourceId) {
       installedSkillsSourceId = sourceId;
+      failedInstalledSkillsAttempt = undefined;
       setInstalledSkills([]);
       setInstalledSkillsLoadFailed(false);
     }
+    if (visibility === "hidden") return;
     if (support === "unsupported") {
       failedInstalledSkillsAttempt = undefined;
       setInstalledSkills([]);
@@ -74,7 +79,7 @@ export function createSkillsStore(deps: SkillsStoreDeps) {
         if (request !== installedSkillsRequest) return;
         failedInstalledSkillsAttempt = { serverId, sourceId, connectionSequence };
         setInstalledSkillsLoadFailed(true);
-        // Preserve an already loaded same-agent catalog when a refresh fails.
+        // Preserve an already loaded same-agent, same-workspace catalog when a refresh fails.
       });
   });
 

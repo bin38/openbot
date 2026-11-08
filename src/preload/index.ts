@@ -278,6 +278,12 @@ import {
   decodeMessagingOverviewReply,
   decodeTelegramOverviewReply,
 } from "./messaging-decoding";
+import {
+  decodeOptionalProjectWorkspaceInfo,
+  decodeProjectWorkspaceContext,
+  decodeProjectWorkspaceInfo,
+  decodeProjectWorkspaces,
+} from "./project-workspaces-decoding";
 import { decodeProviderRuntimeSnapshot } from "./provider-runtime";
 import { decodeRoutineFlowCanvas, decodeRoutineFlowLink } from "./routine-flow-decoding";
 import {
@@ -1130,9 +1136,18 @@ const openbotApi: OpenBotDesktopApi = {
   }),
   agentWorkspaces: bridgeGroup(IPC_ENDPOINTS.agentWorkspaces, {
     get: decodeAgentWorkspaceInfo,
+    inspect: decodeProjectWorkspaceContext,
     choose: decodeOptionalAgentWorkspaceInfo,
     reset: decodeAgentWorkspaceInfo,
     open: decodeVoid,
+  }),
+  projectWorkspaces: bridgeGroup(IPC_ENDPOINTS.projectWorkspaces, {
+    list: decodeProjectWorkspaces,
+    choose: decodeOptionalProjectWorkspaceInfo,
+    inspect: decodeProjectWorkspaceInfo,
+    forget: decodeVoid,
+    create: decodeAgent,
+    assign: decodeAgentWorkspaceInfo,
   }),
   colab: bridgeGroup(IPC_ENDPOINTS.colab, {
     getStatus: decodeColabSnapshot,

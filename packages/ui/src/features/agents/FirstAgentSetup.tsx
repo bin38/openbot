@@ -13,6 +13,7 @@ import type {
 } from "@openbot/contracts/ipc";
 import type { AppTextKey, AppTranslate } from "@openbot/i18n";
 import { Button, Field, Input, Textarea } from "@openbot/ui";
+import type { JSX } from "@solidjs/web";
 import { createSignal, For, onSettled, Show } from "solid-js";
 import { AVATAR_HUE_CHOICES, avatarCandidateSeeds, avatarHeadColor, avatarHueSwatch } from "../../bloub-avatar";
 import { ProviderModelPicker } from "../../components/ProviderModelPicker";
@@ -53,6 +54,9 @@ export interface FirstAgentSetupProps {
   suggestions: FirstAgentSuggestion[];
   mode?: "first" | "additional";
   submitting?: boolean;
+  submitDisabled?: boolean;
+  /** The local consumer supplies its project controls and owns their state. */
+  projectSelector?: JSX.Element;
   error?: string | null;
   /** The live catalog behind the model picker. Absent, the form keeps no model choice. */
   modelOptions?: ClientAgentModelOption[] | undefined;
@@ -179,7 +183,10 @@ export function FirstAgentSetup(props: FirstAgentSetupProps) {
   const [canScrollSuggestionsForward, setCanScrollSuggestionsForward] = createSignal(false);
   const [draggingSuggestions, setDraggingSuggestions] = createSignal(false);
   const canSubmit = () =>
-    Boolean(props.value.name.trim()) && !instructionsTooLong(props.value.purpose) && !props.submitting;
+    Boolean(props.value.name.trim()) &&
+    !instructionsTooLong(props.value.purpose) &&
+    !props.submitting &&
+    !props.submitDisabled;
   const displayName = () => props.value.name.trim() || t("agent.setup.nameFallback");
 
   function updateSuggestionFades(): void {
@@ -443,6 +450,7 @@ export function FirstAgentSetup(props: FirstAgentSetupProps) {
           </fieldset>
 
           <div class="first-agent-fields">
+            {props.projectSelector}
             <Field label={t("agent.setup.name")} required>
               <Input
                 value={props.value.name}

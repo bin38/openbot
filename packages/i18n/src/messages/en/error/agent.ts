@@ -7,6 +7,12 @@ export const messages = defineMessages("error.agent", {
   "error.agent.workspaceReserved": "Use a project folder outside OpenBot's managed, shared and application folders.",
   "error.agent.workspaceInUse": "Another agent uses an overlapping workspace. Select a separate folder.",
   "error.agent.workspaceBusy": "Wait until this agent finishes its work before changing the workspace.",
+  "error.agent.projectListUnreadable": "The saved project list could not be read. It has not been changed.",
+  "error.agent.projectUnknown": "This project is no longer in the list. Choose its folder again.",
+  "error.agent.projectUnavailable": "The project folder is unavailable or its location changed. Choose it again.",
+  "error.agent.projectInspectFailed": "OpenBot could not inspect this project. Try again.",
+  "error.agent.projectSaveFailed": "OpenBot could not save the project list. Try again.",
+  "error.agent.projectListFull": "Remove a project from the list before adding another.",
   "error.agent.historyUnavailable":
     "History is unavailable for this request. Read recent history again, or use channel_history for channel work.",
   "error.agent.toolRequestInvalid":

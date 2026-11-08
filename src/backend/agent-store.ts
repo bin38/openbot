@@ -351,6 +351,14 @@ export class AgentStore {
     return this.#state.agents.map(publicAgent);
   }
 
+  isManagedWorkspace(agentId: string): boolean {
+    return this.#requireAgent(agentId).workspaceBinding === undefined;
+  }
+
+  validateProjectWorkspace(path: string): Effect.Effect<string, StoredStateFailure> {
+    return this.#workspaces.project(path);
+  }
+
   readonly workspaceInfo = Effect.fn("AgentStore.workspaceInfo")(function* (this: AgentStore, agentId: string) {
     const agent = yield* storedSync(() => this.#requireAgent(agentId));
     return yield* this.#workspaces.info(agent);
@@ -367,6 +375,11 @@ export class AgentStore {
           this.#requireAgent(agentId);
           beforeCommit?.();
         });
+        if (
+          agent.workspacePath === selected.path &&
+          agent.workspaceBinding?.originalPath === selected.binding?.originalPath
+        )
+          return publicAgent(agent);
         const previous = {
           workspacePath: agent.workspacePath,
           workspaceBinding: agent.workspaceBinding,

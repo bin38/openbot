@@ -1,19 +1,32 @@
-import type { AgentWorkspaceInfo } from "@openbot/contracts/ipc";
+import type { AgentWorkspaceInfo, ProjectWorkspaceContext, ProjectWorkspaceInfo } from "@openbot/contracts/ipc";
 import { Button, Field, Input, Text } from "@openbot/ui";
 import { SettingsLinkGroup } from "@openbot/ui/components/SettingsPanel";
+import { ProjectWorkspaceDetails } from "@openbot/ui/features/agents/ProjectWorkspaceDetails";
 import { useText } from "@openbot/ui/text";
 import { createEffect, createStore, onSettled, Show } from "solid-js";
+import { projectWorkspacesPort } from "../../project-workspaces-port";
+import { createScopeGuard } from "../../scope-lifetime";
+import { useAgents } from "../agents/agents-context";
+import { ProjectWorkspacePicker } from "../agents/ProjectWorkspacePicker";
+import { useServers } from "../servers/servers-context";
 import { agentWorkspacesPort } from "./agent-workspaces-port";
 
 /** The current agent's local working folder. Switching keeps all old files in place. */
 export function AgentWorkspaceSettings(props: { agentId: string; workspacePath: string; working: boolean }) {
   const { t, errorMessage } = useText();
+  const { activeServerId } = useServers();
+  const { agentList } = useAgents();
+  const scopeIsCurrent = createScopeGuard();
   const [state, setState] = createStore<{
     info: AgentWorkspaceInfo | null;
+    context: ProjectWorkspaceContext | null;
+    selected: ProjectWorkspaceInfo | null;
     pending: boolean;
     error: string | null;
-  }>({ info: null, pending: true, error: null });
+  }>({ info: null, context: null, selected: null, pending: true, error: null });
   let generation = 0;
+  const current = (request: number, serverId: string, agentId: string) =>
+    scopeIsCurrent() && request === generation && activeServerId() === serverId && props.agentId === agentId;
   createEffect(
     () => `${props.agentId}\0${props.workspacePath}`,
     (signature) => {
@@ -25,51 +38,84 @@ export function AgentWorkspaceSettings(props: { agentId: string; workspacePath: 
   });
 
   async function load(agentId: string): Promise<void> {
-    const current = ++generation;
+    const request = ++generation;
+    const serverId = activeServerId();
     setState((draft) => {
       draft.pending = true;
       draft.error = null;
+      if (draft.info?.agentId !== agentId) {
+        draft.info = null;
+        draft.context = null;
+        draft.selected = null;
+      }
     });
     try {
       const info = await agentWorkspacesPort().get(agentId);
-      if (current === generation)
+      if (current(request, serverId, agentId))
         setState((draft) => {
           draft.info = info;
+          draft.context = null;
+          draft.selected = null;
         });
+      if (!current(request, serverId, agentId)) return;
+      const context = await agentWorkspacesPort().inspect(agentId);
+      if (!current(request, serverId, agentId)) return;
+      const projects = await projectWorkspacesPort().list();
+      if (current(request, serverId, agentId)) {
+        const project = projects.find((entry) => entry.path === context.path);
+        setState((draft) => {
+          draft.context = context;
+          draft.selected = project ? { ...project, context } : null;
+        });
+      }
     } catch (error) {
-      if (current === generation)
+      if (current(request, serverId, agentId))
         setState((draft) => {
           draft.error = errorMessage(error, t("agentSettings.workspace.readFailed"));
         });
     } finally {
-      if (current === generation)
+      if (current(request, serverId, agentId))
         setState((draft) => {
           draft.pending = false;
         });
     }
   }
 
-  async function change(action: "choose" | "reset"): Promise<void> {
+  async function change(action: "reset" | ProjectWorkspaceInfo): Promise<void> {
     if (state.pending || props.working) return;
+    if (action !== "reset" && action.path === (state.info?.path ?? props.workspacePath)) {
+      setState((draft) => {
+        draft.selected = action;
+        draft.context = action.context;
+      });
+      return;
+    }
     const agentId = props.agentId;
-    const current = ++generation;
+    const request = ++generation;
+    const serverId = activeServerId();
     setState((draft) => {
       draft.pending = true;
       draft.error = null;
     });
     try {
-      const info = await agentWorkspacesPort()[action](agentId);
-      if (info && current === generation)
+      const info =
+        action === "reset"
+          ? await agentWorkspacesPort().reset(agentId)
+          : await projectWorkspacesPort().assign({ agentId, projectId: action.id });
+      if (current(request, serverId, agentId))
         setState((draft) => {
           draft.info = info;
+          draft.selected = action === "reset" ? null : action;
+          draft.context = action === "reset" ? null : action.context;
         });
+      if (current(request, serverId, agentId)) await load(agentId);
     } catch (error) {
-      if (current === generation)
+      if (current(request, serverId, agentId))
         setState((draft) => {
           draft.error = errorMessage(error, t("agentSettings.workspace.saveFailed"));
         });
     } finally {
-      if (current === generation)
+      if (current(request, serverId, agentId))
         setState((draft) => {
           draft.pending = false;
         });
@@ -78,11 +124,12 @@ export function AgentWorkspaceSettings(props: { agentId: string; workspacePath: 
 
   async function open(location: "current" | "managed" | "shared"): Promise<void> {
     const agentId = props.agentId;
-    const current = generation;
+    const request = generation;
+    const serverId = activeServerId();
     try {
       await agentWorkspacesPort().open({ agentId, location });
     } catch (error) {
-      if (current === generation)
+      if (current(request, serverId, agentId))
         setState((draft) => {
           draft.error = errorMessage(error, t("agentSettings.workspace.openFailed"));
         });
@@ -105,13 +152,38 @@ export function AgentWorkspaceSettings(props: { agentId: string; workspacePath: 
         <Show when={props.working}>
           <Text tone="muted">{t("agentSettings.workspace.busy")}</Text>
         </Show>
-        <Button
-          variant="outline"
-          size="sm"
+        <ProjectWorkspacePicker
+          serverId={activeServerId()}
+          value={state.selected}
           disabled={state.pending || props.working}
-          onClick={() => void change("choose")}
+          allowManaged={false}
+          showDetails={false}
+          onChange={async (project) => {
+            if (project) await change(project);
+            else
+              setState((draft) => {
+                draft.selected = null;
+              });
+          }}
+        />
+        <Show when={state.context}>
+          {(context) => (
+            <ProjectWorkspaceDetails
+              context={context()}
+              sharedWith={agentList()
+                .filter((agent) => agent.id !== props.agentId && agent.workspacePath === context().path)
+                .map((agent) => agent.name)}
+            />
+          )}
+        </Show>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={state.pending}
+          onClick={() => void load(props.agentId)}
         >
-          {t("agentSettings.workspace.choose")}
+          {t("agentSettings.workspace.refresh")}
         </Button>
         <Show when={state.info?.custom}>
           <Button

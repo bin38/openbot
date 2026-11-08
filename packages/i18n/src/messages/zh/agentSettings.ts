@@ -3,7 +3,8 @@ import type { messages as source } from "../en/agentSettings";
 
 export const messages = {
   "agentSettings.workspace.title": "工作区",
-  "agentSettings.workspace.description": "每个助手保留独立的工作目录。群聊组合多个助手，不会合并它们的文件夹。",
+  "agentSettings.workspace.description":
+    "每个助手使用一个工作目录，也可以选择同一项目共享文件。群聊组合助手时不会合并文件夹。",
   "agentSettings.workspace.current": "工作目录",
   "agentSettings.workspace.managed": "使用此助手独立的默认文件夹。",
   "agentSettings.workspace.custom": "使用你选择的本机项目文件夹。",
@@ -18,6 +19,7 @@ export const messages = {
   "agentSettings.workspace.readFailed": "无法读取工作区设置。",
   "agentSettings.workspace.saveFailed": "无法更改工作区。",
   "agentSettings.workspace.openFailed": "无法打开工作区。",
+  "agentSettings.workspace.refresh": "刷新工作区详情",
   "agentSettings.session.title": "服务商设置",
   "agentSettings.session.readFailed": "无法读取服务商设置。",
   "agentSettings.session.pending": "已保存的更改将在下一轮开始前生效。",

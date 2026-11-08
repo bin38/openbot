@@ -453,10 +453,14 @@ server can change it.
 
 - `~/OpenBot/Agents` contains one workspace per agent. A profile written by a release before the
   bot-to-agent rename holds them under `~/OpenBot/Bots`; the application moves them on first launch.
-  A local owner can select an existing project as an agent's working folder. OpenBot keeps the
+  A local owner can select an existing project as an agent's working folder. OpenBot remembers
+  selected project names and paths locally, and detects Git root/branch and instruction/skill file
+  locations without fetching a remote repository or reading those files for the project overview.
+  Several agents can share a selected project. The project picker does not install skills or change
+  project content. OpenBot keeps the
   original managed folder and stores the binding in local agent metadata. It does not move or
-  delete that project when the binding changes or the agent is removed. Groups keep member
-  workspaces separate; workspace selection itself is not an operating-system sandbox.
+  delete that project when the binding changes or the agent is removed. Groups retain each member's
+  selected workspace; workspace selection itself is not an operating-system sandbox.
 - `~/OpenBot/Shared` contains managed transfers shared between agents, and
   `~/OpenBot/Shared/Data/agent-data.db` holds the records the agents keep for themselves between tasks.
   Every agent on this computer can read and write every table in that file, and the user can delete any

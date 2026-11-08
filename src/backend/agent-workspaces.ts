@@ -36,6 +36,8 @@ const requireSeparateWorkspace = Effect.fn("AgentWorkspaces.requireSeparate")(fu
   for (const other of agents) {
     if (other.id === ownerId) continue;
     const otherPath = yield* canonicalOrMissing(other.workspacePath);
+    // A project can be selected by several assistants. Managed folders remain private.
+    if (other.workspaceBinding && otherPath === selected) continue;
     if (isPathInside(otherPath, selected) || isPathInside(selected, otherPath))
       return yield* new StoredStateFailure({ cause: new Error(sourceText("error.agent.workspaceInUse")) });
   }
@@ -49,6 +51,20 @@ interface WorkspaceRoots {
   data: string;
 }
 
+const existingDirectory = Effect.fn("AgentWorkspaces.existingDirectory")(function* (path: string) {
+  if (!isAbsolute(path) || path.length > INPUT_LIMITS.path || /\p{Cc}/u.test(path))
+    return yield* new StoredStateFailure({ cause: new Error(sourceText("error.agent.workspaceInvalid")) });
+  const selected = yield* storedIO(() => realpath(path)).pipe(
+    Effect.catch(() =>
+      Effect.fail(new StoredStateFailure({ cause: new Error(sourceText("error.agent.workspaceUnavailable")) })),
+    ),
+  );
+  const metadata = yield* storedIO(() => lstat(selected));
+  if (!metadata.isDirectory())
+    return yield* new StoredStateFailure({ cause: new Error(sourceText("error.agent.workspaceUnavailable")) });
+  return selected;
+});
+
 /** Chooses existing workspaces without moving files or owning external directories. */
 export class AgentWorkspacePaths {
   readonly #roots: WorkspaceRoots;
@@ -59,6 +75,23 @@ export class AgentWorkspacePaths {
   original(agent: WorkspaceAgent): string {
     return agent.workspaceBinding?.originalPath ?? agent.workspacePath;
   }
+
+  readonly project = Effect.fn("AgentWorkspaces.project")(function* (this: AgentWorkspacePaths, path: string) {
+    const selected = yield* existingDirectory(path);
+    yield* this.#requireProjectRoot(selected);
+    return selected;
+  }).bind(this);
+
+  readonly #requireProjectRoot = Effect.fn("AgentWorkspaces.requireProjectRoot")(function* (
+    this: AgentWorkspacePaths,
+    selected: string,
+  ) {
+    for (const root of Object.values(this.#roots)) {
+      const reserved = yield* canonicalOrMissing(root);
+      if (isPathInside(reserved, selected) || isPathInside(selected, reserved))
+        return yield* new StoredStateFailure({ cause: new Error(sourceText("error.agent.workspaceReserved")) });
+    }
+  });
 
   readonly info = Effect.fn("AgentWorkspaces.info")(function* (this: AgentWorkspacePaths, agent: WorkspaceAgent) {
     const available = yield* storedIO(() => lstat(agent.workspacePath)).pipe(
@@ -103,28 +136,13 @@ export class AgentWorkspacePaths {
       yield* storedIO(() => mkdir(originalPath, { recursive: true, mode: 0o700 }));
       return { path: originalPath, binding: undefined };
     }
-    if (!isAbsolute(path) || path.length > INPUT_LIMITS.path || path.includes("\0"))
-      return yield* new StoredStateFailure({ cause: new Error(sourceText("error.agent.workspaceInvalid")) });
-    const selected = yield* storedIO(() => realpath(path)).pipe(
-      Effect.catch(() =>
-        Effect.fail(new StoredStateFailure({ cause: new Error(sourceText("error.agent.workspaceUnavailable")) })),
-      ),
-    );
-    const metadata = yield* storedIO(() => lstat(selected));
-    if (!metadata.isDirectory())
-      return yield* new StoredStateFailure({
-        cause: new Error(sourceText("error.agent.workspaceUnavailable")),
-      });
+    const selected = yield* existingDirectory(path);
     const original = yield* canonicalOrMissing(this.original(agent));
     if (selected === original) {
       yield* requireSeparateWorkspace(selected, agent.id, agents);
       return { path: this.original(agent), binding: undefined };
     }
-    for (const root of Object.values(this.#roots)) {
-      const reserved = yield* canonicalOrMissing(root);
-      if (isPathInside(reserved, selected) || isPathInside(selected, reserved))
-        return yield* new StoredStateFailure({ cause: new Error(sourceText("error.agent.workspaceReserved")) });
-    }
+    yield* this.#requireProjectRoot(selected);
     yield* requireSeparateWorkspace(selected, agent.id, agents);
     return { path: selected, binding: { originalPath: this.original(agent) } };
   }).bind(this);

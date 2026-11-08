@@ -9,6 +9,7 @@ import { useServers } from "../servers/servers-context";
 import { useAgentActions } from "./agent-actions";
 import { resolveCreationModel } from "./agent-creation-model";
 import { useAgents } from "./agents-context";
+import { ProjectWorkspacePicker } from "./ProjectWorkspacePicker";
 
 /**
  * The create-an-agent form, which takes over the conversation pane instead of
@@ -20,6 +21,8 @@ export function WorkspaceAgentSetup() {
     agentList,
     agentSetupDraft,
     setAgentSetupDraft,
+    agentSetupProject,
+    setAgentSetupProject,
     agentSetupError,
     creatingAgent,
     cancelAgentSetup,
@@ -67,6 +70,7 @@ export function WorkspaceAgentSetup() {
    * also stops it, so the development default's level does not replace the user's.
    */
   const [modelTouched, setModelTouched] = createSignal(false);
+  const [projectPending, setProjectPending] = createSignal(false);
   createEffect(
     () => ({
       touched: modelTouched(),
@@ -101,6 +105,25 @@ export function WorkspaceAgentSetup() {
       suggestions={FIRST_AGENT_SUGGESTIONS}
       mode={agentList().length === 0 ? "first" : "additional"}
       submitting={creatingAgent()}
+      submitDisabled={
+        projectPending() || (activeServer()?.kind === "local" && agentSetupProject()?.context.available === false)
+      }
+      projectSelector={
+        activeServer()?.kind === "local" ? (
+          <ProjectWorkspacePicker
+            serverId={activeServer()?.id ?? ""}
+            value={agentSetupProject()}
+            disabled={creatingAgent()}
+            sharedWith={agentList()
+              .filter((agent) => agent.workspacePath === agentSetupProject()?.path)
+              .map((agent) => agent.name)}
+            onChange={(project) => {
+              setAgentSetupProject(project);
+            }}
+            onPendingChange={setProjectPending}
+          />
+        ) : undefined
+      }
       error={agentSetupError()}
       modelOptions={createModelSupported() ? modelOptions() : undefined}
       agentStatus={agentStatus()}

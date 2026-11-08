@@ -2423,6 +2423,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
     configure?: (agent: AgentSummary) => Effect.Effect<AgentSummary, AgentLifecycleFailed>,
     profileOperationId?: string,
     sender?: ConversationMessageSender,
+    projectWorkspacePath?: string,
   ) {
     const initialMessage = yield* lifecycleStep("validate initial message", () => {
       const text = input.initialMessage.trim();
@@ -2438,6 +2439,15 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       );
     const result = yield* Effect.result(
       Effect.gen({ self: this }, function* () {
+        if (projectWorkspacePath !== undefined) {
+          agent = yield* this.#store
+            .setWorkspace(agent.id, projectWorkspacePath)
+            .pipe(
+              Effect.mapError(
+                (failure) => new AgentLifecycleFailed({ operation: "bind project workspace", cause: failure.cause }),
+              ),
+            );
+        }
         yield* this.#prepareAgentWorkspace(agent);
         agent = yield* this.#assignNewAgentModel(agent, input, true);
         if (configure) agent = yield* configure(agent);
@@ -2742,6 +2752,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
         }),
         () =>
           Effect.gen({ self: this }, function* () {
+            const previous = yield* this.getAgentWorkspace(agentId);
             const agent = yield* this.#store
               .setWorkspace(agentId, path, idle)
               .pipe(
@@ -2749,8 +2760,11 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
                   (failure) => new AgentLifecycleFailed({ operation: "set workspace", cause: failure.cause }),
                 ),
               );
-            this.#conversation.unloadAgentThreads(agent.id);
-            this.#emit({ type: "agents-changed", agents: this.listAgents() });
+            const custom = !this.#store.isManagedWorkspace(agent.id);
+            if (previous.path !== agent.workspacePath || previous.custom !== custom) {
+              this.#conversation.unloadAgentThreads(agent.id);
+              this.#emit({ type: "agents-changed", agents: this.listAgents() });
+            }
             return yield* this.getAgentWorkspace(agent.id);
           }),
         () =>

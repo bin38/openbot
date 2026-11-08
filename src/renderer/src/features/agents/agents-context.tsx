@@ -5,6 +5,7 @@ import type {
   ClientAgentModelOption,
   ClientAgentSummary,
   HiddenAgent,
+  ProjectWorkspaceInfo,
   UpdateAgentInput,
 } from "@openbot/contracts/ipc";
 import { PROVIDER_ACCOUNTS_CAPABILITY } from "@openbot/contracts/team-protocol/provider-accounts-v1";
@@ -93,6 +94,7 @@ const Agents = createSimpleContext({
     const [agentChatOpenRevision, setAgentChatOpenRevision] = createSignal(0);
     const [agentSetupOpen, setAgentSetupOpen] = createSignal(false);
     const [agentSetupDraft, setAgentSetupDraft] = createSignal<FirstAgentDraft>(createFirstAgentDraft());
+    const [agentSetupProject, setAgentSetupProject] = createSignal<ProjectWorkspaceInfo | null>(null);
     const [agentSetupError, setAgentSetupError] = createSignal<string | null>(null);
     const [creatingAgent, setCreatingAgent] = createSignal(false);
     /**
@@ -297,6 +299,7 @@ const Agents = createSimpleContext({
       if (agentSetupOpen()) return;
       setDirectTyping(false);
       setAgentSetupDraft(createFirstAgentDraft());
+      setAgentSetupProject(null);
       setAgentSetupError(null);
       openedAgentChatId = null;
       setAgentSetupOpen(true);
@@ -307,6 +310,7 @@ const Agents = createSimpleContext({
       setAgentSetupOpen(false);
       setAgentSetupError(null);
       setAgentSetupDraft(createFirstAgentDraft());
+      setAgentSetupProject(null);
     }
 
     async function updateAgent(agentId: string, updates: Omit<UpdateAgentInput, "agentId">): Promise<void> {
@@ -404,6 +408,8 @@ const Agents = createSimpleContext({
       setAgentSetupOpen,
       agentSetupDraft,
       setAgentSetupDraft,
+      agentSetupProject,
+      setAgentSetupProject,
       agentSetupError,
       setAgentSetupError,
       creatingAgent,
