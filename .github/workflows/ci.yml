@@ -592,6 +592,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: bun scripts/independent-dev-launch-e2e.ts
 
+      - name: Run the independent mobile launcher recovery E2E
+        if: ${{ !cancelled() }}
+        run: bun scripts/independent-mobile-launcher-e2e.ts
+
       - name: Run the independent marketplace E2E
         if: ${{ !cancelled() }}
         run: bun scripts/independent-marketplace-e2e.ts
@@ -616,6 +620,14 @@ jobs:
         if: ${{ !cancelled() }}
         run: bun scripts/provider-account-models-e2e.ts
 
+      - name: Run the Gemini proxy process E2E
+        if: ${{ !cancelled() }}
+        run: bun scripts/gemini-proxy-e2e.ts
+
+      - name: Run the Gemini proxy settings persistence E2E
+        if: ${{ !cancelled() }}
+        run: bun scripts/gemini-proxy-settings-e2e.ts
+
       - name: Run the independent deployment source E2E
         if: ${{ !cancelled() }}
         run: bun scripts/independent-deployment-e2e.ts
@@ -637,12 +649,15 @@ jobs:
             .openbot-build/independent-network-e2e/report.json
             .openbot-build/independent-runtime-source-e2e/report.json
             .openbot-build/independent-dev-launch-e2e/report.json
+            .openbot-build/independent-mobile-launcher-e2e/report.json
             .openbot-build/independent-marketplace-e2e/report.json
             .openbot-build/independent-account-api-e2e/report.json
             .openbot-build/independent-account-worker-e2e/report.json
             .openbot-build/local-mobile-publication-e2e/report.json
             .openbot-build/cloudflare-turn-e2e/report.json
             .openbot-build/provider-account-models-e2e/report.json
+            .openbot-build/gemini-proxy-e2e/report.json
+            .openbot-build/gemini-proxy-settings-e2e/report.json
             .openbot-build/independent-deployment-e2e/report.json
           if-no-files-found: ignore
 

@@ -216,6 +216,7 @@ import {
   ExternalLinkOpener,
   type ExternalLinkPreferenceStore,
 } from "./external-link-opener";
+import { GEMINI_PROXY_SETTINGS_FILE, GeminiProxySettingsStore } from "./gemini-proxy-settings-store";
 import { githubAppConfig, githubAppStorageFile } from "./github-connector-config";
 import { GitHubConnectorService } from "./github-connector-service";
 import { GitHubConnectorStore } from "./github-connector-store";
@@ -675,6 +676,7 @@ export interface ApplicationServices {
   acpRegistry: AcpRegistry;
   providerDetection: ProviderDetection;
   providerDetectionSettings: ProviderDetectionSettingsStore;
+  geminiProxySettings: GeminiProxySettingsStore;
   marketplaceAgents: AgentMarketplaceService;
   agentTemplates: AgentTemplateService;
   agentImport: AgentImportService;
@@ -1463,6 +1465,8 @@ export async function createApplicationServices({
   );
   performance.mark("openbot:services.preferences");
   await runCauseEffect(providerDetectionSettings.load());
+  const geminiProxySettings = new GeminiProxySettingsStore(join(app.getPath("userData"), GEMINI_PROXY_SETTINGS_FILE));
+  await runCauseEffect(geminiProxySettings.load());
   const providerDetection = await Effect.runPromise(
     createProviderDetection({
       settings: providerDetectionSettings,
@@ -1881,6 +1885,7 @@ export async function createApplicationServices({
     developmentDefaults: appVariant === "dev",
     credentials: {
       apiKey: (provider) => providerCredentials.get(provider),
+      geminiProxySettings: () => geminiProxySettings.get(),
       // Read at each Claude spawn, so a change from Server settings applies to the next process.
       promptCacheTtl: () => promptCacheTtl.get().ttl,
       // `configs()`, not `list()`: this is the one path the API keys travel, and it ends at the
@@ -3671,6 +3676,7 @@ export async function createApplicationServices({
     acpRegistry,
     providerDetection,
     providerDetectionSettings,
+    geminiProxySettings,
     marketplaceAgents,
     agentTemplates,
     agentImport,

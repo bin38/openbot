@@ -22,8 +22,10 @@ import {
   mkdirSync,
   mkdtempSync,
   openSync,
+  readdirSync,
   readFileSync,
   realpathSync,
+  renameSync,
   rmdirSync,
   unlinkSync,
   writeFileSync,
@@ -79,6 +81,16 @@ const resourcesSchema = z.object({
   turnKeyId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/u),
   tunnelId: z.uuid(),
 });
+const launcherChildSchema = z.object({ component: z.enum(["signal", "tunnel"]), pid: z.int().min(2) });
+const launcherLockSchema = z.object({
+  launcherPid: z.int().min(2),
+  startedAt: z.iso.datetime(),
+  projectRoot: z.string(),
+  children: z.array(launcherChildSchema).max(2).default([]),
+  released: z.boolean().default(false),
+});
+type LauncherLockRecord = z.infer<typeof launcherLockSchema>;
+type MobileComponent = z.infer<typeof launcherChildSchema>["component"];
 const jwkSchema = z.object({
   kty: z.literal("EC"),
   crv: z.literal("P-256"),
@@ -434,6 +446,139 @@ function removeOwnedFile(path: string, inode: number) {
   }
 }
 
+function absentProcess(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch (error) {
+    // A live reused PID, EPERM or another uncertain result never permits recovery.
+    return error instanceof Error && "code" in error && error.code === "ESRCH";
+  }
+}
+
+function launcherRecord(path: string, projectRoot: string): LauncherLockRecord {
+  try {
+    const record = launcherLockSchema.parse(JSON.parse(privateFile(path).toString("utf8")));
+    if (record.projectRoot !== projectRoot) fail();
+    return record;
+  } catch {
+    throw new MobileLauncherError("The local mobile launcher lock is unreadable or belongs to another project.");
+  }
+}
+
+function latestLauncherLock(directory: string): { generation: number; path: string } | null {
+  let current: { generation: number; path: string } | null = null;
+  for (const name of readdirSync(directory)) {
+    const match = /^mobile-run\.(\d+)\.lock$/u.exec(name);
+    if (!match) continue;
+    const generation = Number(match[1]);
+    if (!Number.isSafeInteger(generation) || generation < 1) fail();
+    if (!current || generation > current.generation) current = { generation, path: join(directory, name) };
+  }
+  if (current) return current;
+  const legacy = join(directory, "mobile-run.lock");
+  try {
+    lstatSync(legacy);
+    return { generation: 0, path: legacy };
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function publishLauncherRecord(path: string, record: LauncherLockRecord, replace: boolean): boolean {
+  const staging = `${path}.${randomBytes(12).toString("hex")}.tmp`;
+  const descriptor = openSync(staging, "wx", 0o600);
+  try {
+    writeFileSync(descriptor, `${JSON.stringify(record)}\n`);
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
+  try {
+    if (replace) renameSync(staging, path);
+    else linkSync(staging, path);
+    return true;
+  } catch (error) {
+    if (!replace && isExisting(error)) return false;
+    throw error;
+  } finally {
+    if (existsSync(staging)) unlinkSync(staging);
+  }
+}
+
+/** Immutable generation paths prevent competing restarts from removing a newer owner's lock. */
+export async function acquireIndependentMobileLock(
+  projectRoot: string,
+  ports: { signalPort: number; healthPort: number },
+): Promise<{ recordChild(component: MobileComponent, pid: number): void; release(): void }> {
+  const directory = privateDirectory(projectRoot);
+  const record: LauncherLockRecord = {
+    launcherPid: process.pid,
+    startedAt: new Date().toISOString(),
+    projectRoot,
+    children: [],
+    released: false,
+  };
+  let path: string;
+  for (;;) {
+    const current = latestLauncherLock(directory);
+    if (current) {
+      const holder = launcherRecord(current.path, projectRoot);
+      if (
+        !holder.released &&
+        (!absentProcess(holder.launcherPid) || holder.children.some((child) => !absentProcess(child.pid)))
+      )
+        throw new MobileLauncherError("Another local mobile launcher or its child still owns the lock.");
+    }
+    await availablePort(ports.signalPort);
+    await availablePort(ports.healthPort);
+    const generation = (current?.generation ?? 0) + 1;
+    if (!Number.isSafeInteger(generation)) fail();
+    path = join(directory, `mobile-run.${generation}.lock`);
+    if (!publishLauncherRecord(path, record, false)) continue;
+    if (current) logger.info("A previous mobile launcher record was retained.", { generation: current.generation });
+    break;
+  }
+  const update = () => {
+    const holder = launcherRecord(path, projectRoot);
+    if (holder.launcherPid !== record.launcherPid || holder.startedAt !== record.startedAt || holder.released)
+      throw new MobileLauncherError("The local mobile launcher lock changed while services were running.");
+    publishLauncherRecord(path, record, true);
+  };
+  return {
+    recordChild(component, pid) {
+      record.children.push({ component, pid });
+      update();
+    },
+    release() {
+      record.released = true;
+      update();
+    },
+  };
+}
+
+/** Reports process outcomes without copying child output, arguments or environment into a log. */
+export function startIndependentMobileChild(
+  component: MobileComponent,
+  command: string,
+  args: string[],
+  options: { projectRoot: string; environment: NodeJS.ProcessEnv; requestedStop: () => boolean; stopped: () => void },
+): ChildProcess {
+  const child = spawn(command, args, { cwd: options.projectRoot, env: options.environment, stdio: "ignore" });
+  child.once("error", () => {
+    logger.error("A local mobile service could not start.", { component });
+    options.stopped();
+  });
+  child.once("exit", (code, signal) => {
+    const details = { component, pid: child.pid ?? null, code, signal, requestedStop: options.requestedStop() };
+    if (details.requestedStop) logger.info("A local mobile service stopped.", details);
+    else logger.warn("A local mobile service stopped unexpectedly.", details);
+    options.stopped();
+  });
+  return child;
+}
+
 /** Starts two owned children in the foreground. It installs no service and changes no network configuration. */
 export async function runIndependentMobile(projectRoot = projectDirectory): Promise<void> {
   const config = prepareIndependentMobile(projectRoot);
@@ -454,16 +599,7 @@ export async function runIndependentMobile(projectRoot = projectDirectory): Prom
   if (turn.uid !== config.turnKeyId || tunnel.id !== config.tunnelId) fail();
   const bun = executable("bun");
   const cloudflared = executable("cloudflared");
-  const lockFile = join(directory, "mobile-run.lock");
-  let lock: number;
-  try {
-    lock = openSync(lockFile, "wx", 0o600);
-  } catch {
-    throw new MobileLauncherError(
-      "Another local mobile launcher owns the lock. Confirm it has stopped before removing the lock.",
-    );
-  }
-  const lockIdentity = fstatSync(lock);
+  const lock = await acquireIndependentMobileLock(projectRoot, config);
   const children: ChildProcess[] = [];
   let runtimeDirectory: string | null = null;
   let tokenFile: string | null = null;
@@ -471,30 +607,32 @@ export async function runIndependentMobile(projectRoot = projectDirectory): Prom
   let tunnelConfigFile: string | null = null;
   let tunnelConfigInode: number | null = null;
   let requestedStop = false;
+  let stoppingChildren = false;
   let finish: () => void = () => {};
   const finished = new Promise<void>((resolveFinished) => {
     finish = resolveFinished;
   });
-  const requestStop = () => {
+  const requestStop = (signal: "SIGINT" | "SIGTERM") => {
+    logger.info("The local mobile launcher received a stop signal.", { signal });
     requestedStop = true;
     finish();
   };
-  process.once("SIGINT", requestStop);
-  process.once("SIGTERM", requestStop);
-  const startChild = (command: string, args: string[], environment: NodeJS.ProcessEnv) => {
-    const child = spawn(command, args, { cwd: projectRoot, env: environment, stdio: "ignore" });
+  const interrupt = () => requestStop("SIGINT");
+  const terminate = () => requestStop("SIGTERM");
+  process.once("SIGINT", interrupt);
+  process.once("SIGTERM", terminate);
+  const startChild = (component: MobileComponent, command: string, args: string[], environment: NodeJS.ProcessEnv) => {
+    const child = startIndependentMobileChild(component, command, args, {
+      projectRoot,
+      environment,
+      requestedStop: () => requestedStop || stoppingChildren,
+      stopped: finish,
+    });
     children.push(child);
-    child.once("error", () => finish());
-    child.once("exit", () => finish());
+    if (child.pid) lock.recordChild(component, child.pid);
     return child;
   };
   try {
-    writeFileSync(
-      lock,
-      `${JSON.stringify({ launcherPid: process.pid, startedAt: new Date().toISOString(), projectRoot })}\n`,
-    );
-    await availablePort(config.signalPort);
-    await availablePort(config.healthPort);
     if (requestedStop) return;
     runtimeDirectory = mkdtempSync(join(directory, "mobile-runtime-"));
     tokenFile = join(runtimeDirectory, "tunnel-token");
@@ -504,7 +642,7 @@ export async function runIndependentMobile(projectRoot = projectDirectory): Prom
     tunnelConfigFile = join(runtimeDirectory, "cloudflared.json");
     writeFileSync(tunnelConfigFile, "{}\n", { flag: "wx", mode: 0o600 });
     tunnelConfigInode = lstatSync(tunnelConfigFile).ino;
-    const signal = startChild(bun, ["--no-env-file", join(projectRoot, "remote/api/src/index.ts")], {
+    const signal = startChild("signal", bun, ["--no-env-file", join(projectRoot, "remote/api/src/index.ts")], {
       ...childEnvironment(),
       OPENBOT_SELF_HOSTED_API_URL: config.accountUrl,
       REMOTE_TLS_DISABLED: "true",
@@ -524,6 +662,7 @@ export async function runIndependentMobile(projectRoot = projectDirectory): Prom
     await waitForSignal(signal, config.signalPort);
     if (requestedStop) return;
     startChild(
+      "tunnel",
       cloudflared,
       ["tunnel", "--config", tunnelConfigFile, "--no-autoupdate", "run", "--token-file", tokenFile],
       childEnvironment(),
@@ -532,8 +671,9 @@ export async function runIndependentMobile(projectRoot = projectDirectory): Prom
     await finished;
     if (!requestedStop) throw new MobileLauncherError("A local mobile connection service stopped.");
   } finally {
-    process.removeListener("SIGINT", requestStop);
-    process.removeListener("SIGTERM", requestStop);
+    process.removeListener("SIGINT", interrupt);
+    process.removeListener("SIGTERM", terminate);
+    stoppingChildren = true;
     for (const child of children.reverse()) await stopChild(child);
     if (tokenFile && tokenInode !== null) removeOwnedFile(tokenFile, tokenInode);
     if (tunnelConfigFile && tunnelConfigInode !== null) removeOwnedFile(tunnelConfigFile, tunnelConfigInode);
@@ -544,8 +684,7 @@ export async function runIndependentMobile(projectRoot = projectDirectory): Prom
         /* Keep unexpected files. */
       }
     }
-    closeSync(lock);
-    removeOwnedFile(lockFile, lockIdentity.ino);
+    lock.release();
     logger.info("Local mobile connection services stopped.");
   }
 }

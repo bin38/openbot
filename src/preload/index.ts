@@ -166,6 +166,7 @@ import {
   decodeExternalLinkBrowsers,
   decodeExternalLinkFallback,
   decodeExternalLinkPreference,
+  decodeGeminiProxySettings,
   decodeGitHubConnectorRepositories,
   decodeGitHubConnectorStatus,
   decodeHostedServer,
@@ -1120,6 +1121,10 @@ const openbotApi: OpenBotDesktopApi = {
     delete: decodeCustomAgentResult,
     check: decodeCustomAgentCheckResult,
     usage: decodeCustomAgentUsage,
+  }),
+  geminiProxy: bridgeGroup(IPC_ENDPOINTS.geminiProxy, {
+    getSettings: decodeGeminiProxySettings,
+    setSettings: decodeGeminiProxySettings,
   }),
   providerDetection: bridgeGroup(IPC_ENDPOINTS.providerDetection, {
     scanModelServers: decodeDetectedModelServers,

@@ -506,6 +506,16 @@ The server has no `--version`, so staging writes `antigravity-package.json` and
 `verifyInstalledRuntime` reads the version from that file (`versionFile`). OpenBot never searches
 `PATH`, because the Antigravity editor installs an `antigravity` command that is not this server.
 
+The local-only `geminiProxy` IPC preference supplies a getter in `ProviderClientContext`.
+`gemini-proxy-environment.ts` applies it last in Gemini process environments, including default
+and added-account sign-in, profile clients and per-session processes. The app environment is not
+mutated. HTTP, HTTPS, WebSocket and supported gRPC proxy variables use the configured address;
+only loopback addresses bypass it. A changed enabled address is part of the confined-client key
+and account-check freshness, so an idle-released shared process cannot retain an old route.
+Saving schedules the existing Gemini-only idle restart. Credentials, quotas and public chat
+identity remain intact. An unreadable saved preference blocks Gemini instead of falling back to
+a direct connection. These settings have no released Team API field.
+
 The server offers its Claude and GPT models only to a client whose `initialize` `clientInfo.name` is
 `zed`, `xcode`, `jetbrains.*` or `android studio*` (`supports_third_party_models` in 1.4.3). Other
 clients get only the Gemini models. So `ANTIGRAVITY_ACP_FLAVOR.clientInfo` sends the name `zed` and

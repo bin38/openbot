@@ -35,6 +35,22 @@ export const messages = defineMessages("provider", {
   "provider.status.off": "Off",
   "provider.gemini.hostSignIn":
     "To connect Gemini, open OpenBot on the host and select Connect in Server settings > Providers. Google sign-in needs a browser on that host. Remote sign-in is not supported.",
+  "provider.geminiProxy.title": "Gemini proxy",
+  "provider.geminiProxy.description":
+    "All Gemini accounts on this computer share this setting. Local callbacks and internal connections stay direct.",
+  "provider.geminiProxy.enabled": "Require this proxy",
+  "provider.geminiProxy.enabledDescription": "Send Gemini's external requests through this proxy without TUN.",
+  "provider.geminiProxy.address": "HTTP proxy address",
+  "provider.geminiProxy.addressHelp": "Use an HTTP or HTTPS address without a username, password or path.",
+  "provider.geminiProxy.addressInvalid":
+    "Enter a valid HTTP or HTTPS proxy address without credentials, a path or query parameters.",
+  "provider.geminiProxy.scopeNote":
+    "This covers Gemini sign-in requests, model discovery and conversations. The external Google sign-in webpage and component downloads keep their current network settings. Your proxy app still chooses its routes.",
+  "provider.geminiProxy.reset": "Reset changes",
+  "provider.geminiProxy.saved":
+    "Saved. Gemini reconnects after its current tasks finish. Other providers are unchanged.",
+  "provider.geminiProxy.loadFailed": "Could not load the Gemini proxy settings.",
+  "provider.geminiProxy.saveFailed": "Could not save the Gemini proxy settings.",
 
   // Which account tier the OpenCode row runs on. It shows only while it adds to the runtime
   // badge: a saved key leaves the runtime "Connected" to speak for the row.

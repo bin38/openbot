@@ -114,6 +114,7 @@ interface ProviderSettingsSectionProps {
   usage?: readonly AccountUsageProviderRow[] | undefined;
   onDetailChange?: ((detail: ProviderSettingsDetail | null) => void) | undefined;
   promptCache?: ProviderPromptCache | undefined;
+  providerDetailExtra?: ((provider: AgentProviderId) => JSX.Element) | undefined;
 }
 
 /** The provider list of the computer the agents run on, with its custom endpoint dialogs. */
@@ -273,6 +274,7 @@ function ProviderSettingsSection(props: ProviderSettingsSectionProps) {
         menuMount={props.selectMount}
         onDetailChange={props.onDetailChange}
         promptCache={props.promptCache}
+        providerDetailExtra={props.providerDetailExtra}
         footer={
           <>
             <Show when={props.providerDetection}>
@@ -459,6 +461,8 @@ function ProviderSettingsDialogs(props: {
 export interface HostProviderSettings {
   /** Saved default for new local agents. Remote host settings do not change this computer's default. */
   defaultProvider?: DefaultProviderSettings | undefined;
+  /** Optional controls that belong to this host, without a shared transport contract. */
+  providerDetailExtra?: ((provider: AgentProviderId) => JSX.Element) | undefined;
   agentStatus: AgentStatus;
   providerRuntimeStatuses?: Partial<Record<AgentProviderId, ProviderRuntimeStatus>> | undefined;
   providerAvailableVersions?: Partial<Record<AgentProviderId, string | null>> | undefined;
@@ -586,6 +590,7 @@ export function HostProviderSettingsPanel(
         usage={props.usage}
         onDetailChange={props.onDetailChange}
         promptCache={promptCache()}
+        providerDetailExtra={props.providerDetailExtra}
         detectionSettings={
           <Show when={props.detectionSettings}>
             {(value) => (

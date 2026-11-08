@@ -78,6 +78,7 @@ import { registerIpcGroups } from "./ipc/define-ipc-group";
 import { dynamicIslandIpcHandlers } from "./ipc/dynamic-island-handlers";
 import { e2bIpcHandlers } from "./ipc/e2b-handlers";
 import { eventsIpcHandlers } from "./ipc/events-handlers";
+import { geminiProxyIpcHandlers } from "./ipc/gemini-proxy-handlers";
 import { githubConnectorIpcHandlers } from "./ipc/github-connector-handlers";
 import { hostAdminIpcHandlers } from "./ipc/host-admin-handlers";
 import { hostedServerIpcHandlers } from "./ipc/hosted-server-handlers";
@@ -686,6 +687,7 @@ function registerIpcHandlers({
   acpRegistry,
   providerDetection,
   providerDetectionSettings,
+  geminiProxySettings,
   marketplaceAgents,
   agentTemplates,
   agentImport,
@@ -805,6 +807,10 @@ function registerIpcHandlers({
     ...customAgentIpcHandlers(customAgentChanges),
     ...acpRegistryIpcHandlers(acpRegistry, remoteServers),
     ...providerDetectionIpcHandlers({ detection: providerDetection, settings: providerDetectionSettings }),
+    ...geminiProxyIpcHandlers({
+      settings: geminiProxySettings,
+      restartGemini: () => service.restartProvider("antigravity").pipe(Effect.asVoid),
+    }),
     ...marketplaceAgentIpcHandlers({ marketplaceAgents }),
     ...agentTemplateIpcHandlers({
       agentTemplates,

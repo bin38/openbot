@@ -5,6 +5,7 @@ import {
   type AccountUsageLimit,
   agentProviderDescriptor,
   DEFAULT_PROVIDER_ACCOUNT_ID,
+  type GeminiProxySettings,
   MAX_PROVIDER_ACCOUNTS,
   type ProviderAccountState,
   type ProviderAccountStatus,
@@ -15,10 +16,11 @@ import {
 import { CLAUDE_API_KEY_ACCOUNT_ID } from "@openbot/contracts/team-protocol/claude-api-key-v1";
 import { sourceText } from "@openbot/i18n/source";
 import { createOpenBotLogger } from "@openbot/logging";
-import { Cause, Effect, Fiber, Schema, type Scope } from "effect";
+import { Cause, Effect, Fiber, Result, Schema, type Scope } from "effect";
 import { startAcpAuthentication } from "./../acp-sign-in";
 import type { AgentClient } from "./../agent-client";
 import { type AgentCliInfo, cliPathEnvironment, cliSpawnTarget } from "./../cli";
+import { geminiProxyEnvironment, geminiProxyFingerprint } from "../gemini-proxy-environment";
 import type { AccountReadResult, ModelListResponse } from "./../protocol";
 import { ProviderSignInError } from "../provider-client-effects";
 import { type ProviderAccountSupport, requireProviderDriver } from "./../provider-drivers";
@@ -55,6 +57,8 @@ interface AccountState {
 /** What the accounts need from the provider runtime. */
 export interface ProviderAccountsHost {
   scope(): Scope.Scope;
+  /** Only Gemini uses this setting; account homes and other provider environments stay separate. */
+  geminiProxySettings?(): GeminiProxySettings;
   /** The CLI of the provider's own sign-in, or undefined when it is not connected. */
   cli(provider: AgentProviderId): AgentCliInfo | undefined;
   defaultEmail(provider: AgentProviderId): string | null;
@@ -104,6 +108,7 @@ export class ProviderAccounts {
   /** Accounts whose first sign-in runs. A cancel removes them with their folder. */
   readonly #added = new Set<string>();
   readonly #checks = new Map<string, Fiber.Fiber<void>>();
+  readonly #checkedGeminiProxy = new Map<string, string | null>();
   /** The last usage reading of each account, with the usage reset credits it counted. */
   readonly #usage = new Map<string, { limit: AccountUsageLimit; resetCredits: number | null | undefined }>();
   /** Paces the usage reads of each account. A new key resets it, and a removed account drops it. */
@@ -206,6 +211,10 @@ export class ProviderAccounts {
     if (!support) return yield* accountFailure(sourceText("error.provider.accountsUnsupported", { provider: name }));
     const cli = this.#host.cli(provider);
     if (!cli) return yield* accountFailure(sourceText("error.provider.accountNeedsConnection", { provider: name }));
+    const proxyEnvironment = yield* Effect.try({
+      try: () => (provider === "antigravity" ? geminiProxyEnvironment(this.#host.geminiProxySettings?.()) : {}),
+      catch: (cause) => new ProviderAccountFailed({ cause }),
+    });
     let account: StoredProviderAccount;
     const added = accountId === null;
     if (added) {
@@ -243,7 +252,12 @@ export class ProviderAccounts {
           const login = yield* startAcpAuthentication({
             executable: cli.executable,
             argv: command.argv,
-            env: { ...cliPathEnvironment(cli), ...command.env, ...this.environment(account) },
+            env: {
+              ...cliPathEnvironment(cli),
+              ...command.env,
+              ...this.environment(account),
+              ...proxyEnvironment,
+            },
             methodId: command.methodId,
             timeoutMs: command.timeoutMs,
             ...(added ? {} : { logout: true }),
@@ -385,6 +399,22 @@ export class ProviderAccounts {
     if (!this.#support(provider)) return Effect.void;
     return Effect.gen({ self: this }, function* () {
       yield* this.#ensureKeyAccount(provider);
+      let proxyFingerprint: string | null = null;
+      if (provider === "antigravity") {
+        const loaded = yield* Effect.result(
+          Effect.try({
+            try: () => geminiProxyFingerprint(this.#host.geminiProxySettings?.()),
+            catch: (cause) => new ProviderAccountFailed({ cause }),
+          }),
+        );
+        if (Result.isFailure(loaded)) {
+          logger.warn("Could not read Gemini's account proxy configuration.", {
+            message: this.#message(provider, loaded.failure),
+          });
+          return;
+        }
+        proxyFingerprint = loaded.success;
+      }
       const now = Date.now();
       yield* Effect.forEach(
         this.#store
@@ -393,7 +423,8 @@ export class ProviderAccounts {
             (account) =>
               !this.#signIns.has(account.id) &&
               !this.#checks.has(account.id) &&
-              now - (this.#states.get(account.id)?.checkedAt ?? 0) >= ACCOUNT_CHECK_TTL_MS,
+              (now - (this.#states.get(account.id)?.checkedAt ?? 0) >= ACCOUNT_CHECK_TTL_MS ||
+                (provider === "antigravity" && this.#checkedGeminiProxy.get(account.id) !== proxyFingerprint)),
           ),
         (account) => this.#startCheck(account),
         { discard: true },
@@ -584,6 +615,13 @@ export class ProviderAccounts {
       );
     if (this.#states.get(account.id)?.state !== "connecting")
       this.#setState(account.id, { state: "checking", message: null });
+    if (provider === "antigravity") {
+      const proxyFingerprint = yield* Effect.try({
+        try: () => geminiProxyFingerprint(this.#host.geminiProxySettings?.()),
+        catch: (cause) => new ProviderAccountFailed({ cause }),
+      });
+      this.#checkedGeminiProxy.set(account.id, proxyFingerprint);
+    }
     yield* Effect.acquireUseRelease(
       this.#host.authenticate(provider, cli, this.environment(account), afterSignIn),
       ({ client, account: signedIn }) =>
@@ -748,6 +786,7 @@ export class ProviderAccounts {
   }
 
   #forget(accountId: string): void {
+    this.#checkedGeminiProxy.delete(accountId);
     this.#states.delete(accountId);
     this.#models.delete(accountId);
     this.#usage.delete(accountId);

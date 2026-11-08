@@ -2,6 +2,9 @@ import type { PartialTranslation } from "../../../message";
 import type { messages as source } from "../../en/error/provider";
 
 export const messages = {
+  "error.provider.geminiProxyUrl": "请填写 HTTP 或 HTTPS 代理地址，不要包含账号密码、路径或查询参数。",
+  "error.provider.geminiProxySettingsReadOnly":
+    "无法读取已保存的 Gemini 代理设置。恢复配置文件前，Gemini 将暂停连接，不会改用直连。",
   "error.provider.modelSyncFailed": "OpenBot 无法更新模型同步记录，请重试。",
   "error.provider.localModelsTooMany": "本地渠道最多可保存 {max} 个模型。",
   // Provider, provider runtime and custom endpoint errors.

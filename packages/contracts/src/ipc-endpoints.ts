@@ -37,6 +37,7 @@ import type {
   E2bViewerBoundsInput,
   SaveE2bSettingsInput,
 } from "./ipc-e2b";
+import type { GeminiProxySettings } from "./ipc-gemini-proxy";
 import type { McpRegistryPage, McpRegistryQuery } from "./ipc-mcp-registry";
 import type { ServerAuditLog } from "./ipc-server-audit";
 import type {
@@ -1023,6 +1024,10 @@ export const IPC_ENDPOINTS = {
   },
   // Local model servers and ACP agents on this computer. Main makes every request, and a scan sends
   // no key. A joined host is never scanned.
+  geminiProxy: {
+    getSettings: request<undefined, GeminiProxySettings>()("gemini-proxy:get-settings"),
+    setSettings: request<GeminiProxySettings, GeminiProxySettings>()("gemini-proxy:set-settings"),
+  },
   providerDetection: {
     scanModelServers: request<undefined, DetectedModelServer[]>()("provider-detection:scan-model-servers"),
     discoverModels: request<DiscoverModelsInput, DiscoverModelsResult>()("provider-detection:discover-models"),
@@ -2063,6 +2068,7 @@ export const IPC_GROUP_PATHS = {
   customProviders: "customProviders",
   customProviderModelSync: "customProviderModelSync",
   providerDetection: "providerDetection",
+  geminiProxy: "geminiProxy",
   customAgents: "customAgents",
   acpRegistry: "acpRegistry",
   providerAdmin: "providerAdmin",

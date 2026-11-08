@@ -1,6 +1,9 @@
 import { defineMessages } from "../../../message";
 
 export const messages = defineMessages("error.provider", {
+  "error.provider.geminiProxyUrl": "Enter an HTTP or HTTPS proxy address without credentials, a path or a query.",
+  "error.provider.geminiProxySettingsReadOnly":
+    "OpenBot cannot read the saved Gemini proxy settings. Gemini is blocked until the file is restored; no direct connection is used.",
   "error.provider.modelSyncFailed": "OpenBot could not update the saved model synchronization state. Try again.",
   "error.provider.localModelsTooMany": "This local endpoint supports at most {max} saved models.",
   // Provider, provider runtime and custom endpoint errors.

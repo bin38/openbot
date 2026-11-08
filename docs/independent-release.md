@@ -20,12 +20,11 @@ without building. The public service resource contains only a version and the tw
 Private account credentials, API keys, operator signing keys and databases are not packaged.
 
 Gemini 1.4.5 uses a local WebSocket harness. On macOS with a system SOCKS proxy, its bundled
-Python can fail to match the proxy exception `localhost` against `localhost:<port>`. The result
-is an `Internal error` during model discovery. If this occurs, keep all existing proxy exceptions
-and add `localhost:*` in the active network service's proxy settings. This keeps local harness
-traffic direct and preserves the system's other bypass rules. A proxy manager may restore its own
-list when it restarts; add the same exception to that manager's settings if needed. OpenBot does
-not change system proxy settings or replace native proxy rules with environment variables.
+Python can fail to match `localhost:<port>` against the system bypass list. In the local Gemini
+provider page, enable its dedicated proxy and enter the HTTP proxy address, such as
+`http://127.0.0.1:7897`. Gemini's network clients then use that route, while local harness and
+callback traffic stays direct. The setting persists across app restarts and needs no TUN mode
+or system proxy change. The proxy application still controls its own forwarding rules.
 
 This local build is ad-hoc signed, not Apple-notarized. It does not claim the original publisher's
 Apple team or Universal Links domain. Fuses, renderer isolation, native component checks and the
@@ -54,3 +53,15 @@ Signal and Cloudflare Tunnel remain separate operator services. This installer d
 system login service or put Tunnel/TURN secrets in the app. Keep the operator service process
 running; after a Mac restart, start it with `scripts/run-independent-mobile.ts --start` before
 using external phone connections.
+
+An operator can run the same `--start` command through a macOS user LaunchAgent, with `RunAtLoad`,
+`KeepAlive`, and a restart throttle. Install that login service only with the user's approval. Keep
+credentials in the existing private operator files, never in the plist. The service still needs
+this checkout, its toolchain and private configuration at their configured paths. It does not keep
+a sleeping Mac online.
+
+The launcher keeps numbered `mobile-run.<generation>.lock` records. It can recover after an absent
+owner only when no recorded child is alive and both local service ports are free. A live or
+ambiguous owner is not replaced. Prior records remain available, and child exits log only the
+component, process ID, exit code and signal. A Signal outage does not expire an authenticated phone
+session; a short pairing code's expiry applies only before that code is redeemed.

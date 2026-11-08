@@ -84,6 +84,7 @@ import {
   DEFAULT_CUSTOM_PROVIDER_HARNESS,
   DEFAULT_DYNAMIC_ISLAND_PREFERENCE,
   DEFAULT_EXTERNAL_LINK_PREFERENCE,
+  DEFAULT_GEMINI_PROXY_SETTINGS,
   DEFAULT_MACHINE_ALERT_SETTINGS,
   DEFAULT_MEMORY_REVIEW_INTERVAL,
   DEFAULT_PROMPT_CACHE_TTL,
@@ -103,6 +104,7 @@ import {
   type ExternalLinkPreference,
   type FilePreview,
   folderInside,
+  type GeminiProxySettings,
   type HostedSiteSummary,
   type HostStatus,
   hostAgentMemoryLimit,
@@ -630,6 +632,7 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
   let agentCounter = agents.length;
   let hostedSites = clone(STORY_HOSTED_SITES);
   let detectionSettings: ProviderDetectionSettings = clone(DEFAULT_PROVIDER_DETECTION_SETTINGS);
+  let geminiProxySettings: GeminiProxySettings = clone(DEFAULT_GEMINI_PROXY_SETTINGS);
   let customAgents: CustomAgentSummary[] = [];
   const registryEntry: AcpRegistryEntry = {
     id: "example-acp",
@@ -1662,6 +1665,13 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
         ),
     },
     // Preview reaches no local server, so a scan finds nothing and a model list is empty.
+    geminiProxy: {
+      getSettings: async () => clone(geminiProxySettings),
+      setSettings: async (settings) => {
+        geminiProxySettings = clone(settings);
+        return clone(geminiProxySettings);
+      },
+    },
     providerDetection: {
       scanModelServers: async () => [],
       scanAgents: async () => [],

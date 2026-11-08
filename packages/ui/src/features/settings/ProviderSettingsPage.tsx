@@ -157,6 +157,8 @@ export interface ProviderSettingsPageProps extends ProviderRowHost {
   onDetailChange?: ((detail: ProviderSettingsDetail | null) => void) | undefined;
   /** On the Claude page. Only for a host with `prompt-cache-ttl-v1` that this account administers. */
   promptCache?: ProviderPromptCache | undefined;
+  /** Host-specific controls. The consumer owns their state and platform access. */
+  providerDetailExtra?: ((provider: AgentProviderId) => JSX.Element) | undefined;
   /** Below the list: what the host found, and the other agents the user can add. */
   footer?: JSX.Element;
 }
@@ -481,6 +483,8 @@ type PageProps = ProviderSettingsPageProps & { option: ProviderPickerOption };
 function ProviderPage(props: PageProps) {
   const { t, format } = useText();
   const row = createProviderRow(() => props.option, props);
+  const providerId = createMemo(() => props.option.id);
+  const detailExtra = createMemo(() => props.providerDetailExtra);
   const usedBy = () => props.option.usedBy ?? [];
   /** The pill in the page header. Only one state shows: the problem first, then the connection. */
   const header = (): { status: IntegrationStatus; label: string } => {
@@ -536,6 +540,7 @@ function ProviderPage(props: PageProps) {
           {(cache) => <PromptCacheSection cache={cache()} disabled={props.disabled} menuMount={props.menuMount} />}
         </Show>
       </Show>
+      {detailExtra()?.(providerId())}
       <UseSection {...props} row={row} />
       <DownloadSection {...props} row={row} />
     </>

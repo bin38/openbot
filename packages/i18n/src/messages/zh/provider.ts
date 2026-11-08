@@ -36,6 +36,19 @@ export const messages = {
   "provider.status.off": "已关闭",
   "provider.gemini.hostSignIn":
     "要连接 Gemini，请在主机上打开 OpenBot，然后在“服务器设置 > 服务商”中选择“连接”。Google 登录需要该主机上有浏览器，不支持远程登录。",
+  "provider.geminiProxy.title": "Gemini 专用代理",
+  "provider.geminiProxy.description": "这台电脑上的所有 Gemini 账号共用此设置。本机回调和内部连接保持直连。",
+  "provider.geminiProxy.enabled": "强制使用代理",
+  "provider.geminiProxy.enabledDescription": "让 Gemini 的外部请求使用此代理，无需开启 TUN。",
+  "provider.geminiProxy.address": "HTTP 代理地址",
+  "provider.geminiProxy.addressHelp": "填写 HTTP 或 HTTPS 代理地址，不含账号、密码或路径。",
+  "provider.geminiProxy.addressInvalid": "请输入有效的 HTTP 或 HTTPS 代理地址，不要包含账号、密码、路径或查询参数。",
+  "provider.geminiProxy.scopeNote":
+    "适用于 Gemini 的登录请求、模型发现和对话。外部 Google 登录网页和组件下载仍使用原有网络设置；代理软件仍按自己的规则选择线路。",
+  "provider.geminiProxy.reset": "重置更改",
+  "provider.geminiProxy.saved": "已保存。Gemini 会在当前任务结束后重新连接，其他服务商不受影响。",
+  "provider.geminiProxy.loadFailed": "无法读取 Gemini 代理设置。",
+  "provider.geminiProxy.saveFailed": "无法保存 Gemini 代理设置。",
 
   // Which account tier the OpenCode row runs on. It shows only while it adds to the runtime
   // badge: a saved key leaves the runtime "Connected" to speak for the row.

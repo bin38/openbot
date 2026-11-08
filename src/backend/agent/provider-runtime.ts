@@ -47,6 +47,7 @@ import {
 } from "./../cli";
 import { readCursorUsage } from "./../cursor-usage";
 import { causeHelpers } from "../effect-boundary";
+import { geminiProxyEnvironment, geminiProxyFingerprint } from "../gemini-proxy-environment";
 import type { SignInRegion } from "../kimi-region";
 import { McpHandoffLog } from "./../mcp-handoff-log";
 import { providerMcpServerName } from "./../mcp-provider-shapes";
@@ -561,6 +562,9 @@ export class ProviderRuntime implements ProviderPort {
     this.#providerAccounts = options.accounts
       ? new ProviderAccounts(options.accounts, {
           scope: () => this.#scope,
+          ...(this.#credentials.geminiProxySettings
+            ? { geminiProxySettings: this.#credentials.geminiProxySettings }
+            : {}),
           cli: (provider) =>
             this.#clients.has(provider) || this.#released.has(provider) ? this.#cli.get(provider) : undefined,
           defaultEmail: (provider) => this.#accounts.get(provider)?.email ?? null,
@@ -1521,6 +1525,10 @@ export class ProviderRuntime implements ProviderPort {
           .pipe(toProviderOperationFailed);
         return this.status();
       case "acp-authenticate": {
+        const proxyEnvironment =
+          provider === "antigravity"
+            ? yield* providerStep(() => geminiProxyEnvironment(this.#credentials.geminiProxySettings?.()))
+            : {};
         // A Reconnect of a Google sign-in signs out first: the saved token would answer it with no
         // browser page. A saved key wins over Google, so it keeps the token. A provider that the idle
         // timer released is still connected.
@@ -1543,7 +1551,10 @@ export class ProviderRuntime implements ProviderPort {
             return startAcpAuthentication({
               executable: cli.executable,
               argv: signIn.argv,
-              env: { ...signIn.env },
+              env: {
+                ...signIn.env,
+                ...proxyEnvironment,
+              },
               methodId: signIn.methodId,
               timeoutMs: signIn.timeoutMs,
               ...(fresh
@@ -2345,7 +2356,7 @@ export class ProviderRuntime implements ProviderPort {
     yield* checkAgentFolders(agent);
     const own = this.#ownProcessFor(agent);
     const current = this.#confined.get(agent.id);
-    const key = own ? this.#confinedKey(provider, own) : null;
+    const key = own ? yield* providerStep(() => this.#confinedKey(provider, own)) : null;
     if (current && current.key === key) {
       current.lastUsed = Date.now();
       return current.client;
@@ -2400,6 +2411,7 @@ export class ProviderRuntime implements ProviderPort {
       own.confinement?.writableRoots ?? null,
       own.confinement?.excludedFolders ?? null,
       own.account?.id ?? null,
+      provider === "antigravity" ? geminiProxyFingerprint(this.#credentials.geminiProxySettings?.()) : null,
     ]);
   }
 

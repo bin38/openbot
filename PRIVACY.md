@@ -1118,6 +1118,13 @@ account that you add after the first keeps them in a folder of its own in OpenBo
 Remove deletes that folder. OpenBot does not read, copy, or upload these files. Google's terms apply: <https://antigravity.google/terms>.
 Gemini agents stay on this computer: OpenBot does not show them to team members.
 
+The local Gemini settings can route the provider's HTTP clients through an HTTP or HTTPS proxy.
+The proxy address is stored in `openbot-gemini-proxy-v1.json` in the app data folder; credentials
+in that address are not accepted. Only Gemini child processes and their sign-in processes receive
+these proxy settings. Local callback and harness connections remain direct. Other providers, the
+system proxy, the external browser sign-in page and runtime downloads keep their existing routes.
+The selected proxy controls its own forwarding rules. OpenBot does not disable TLS validation.
+
 To show the remaining Gemini quota in Usage, OpenBot sends the server's `/usage` command in a
 session that no agent uses. The server asks Google for the quota of the signed-in account; the
 command contains no conversation, file, or model data. The server keeps that session with its other

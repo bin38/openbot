@@ -49,6 +49,7 @@ import { useServerSelection } from "./features/servers/server-selection";
 import { useServerSettings } from "./features/servers/server-settings";
 import { useServerSwitch } from "./features/servers/server-switch";
 import { useServers } from "./features/servers/servers-context";
+import { GeminiProxySettings } from "./features/settings/GeminiProxySettings";
 import type { HostProviderSettings } from "./features/settings/ProviderSettingsSection";
 import { useSettings } from "./features/settings/settings-context";
 import { settingsPort } from "./features/settings/settings-port";
@@ -551,6 +552,8 @@ function ServerSettings() {
     registryApis.set(server.id, api);
     return api;
   }
+  const localProviderDetailExtra: NonNullable<HostProviderSettings["providerDetailExtra"]> = (provider) =>
+    provider === "antigravity" ? <GeminiProxySettings /> : undefined;
   const providerSettings = (server: ServerSummary): HostProviderSettings | undefined => {
     const local = server.kind === "local";
     if (!server.active || (!local && server.id !== providerAdminServerId())) return undefined;
@@ -560,6 +563,7 @@ function ServerSettings() {
      */
     const endpoints = local ? localEndpoints : hostCustomProviders;
     return {
+      providerDetailExtra: local ? localProviderDetailExtra : undefined,
       get defaultProvider() {
         const state = setupState();
         return local && state ? { ...state, save: saveSetup } : undefined;

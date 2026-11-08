@@ -54,6 +54,7 @@ import {
   type ExternalLinkBrowsers,
   type ExternalLinkFallback,
   type ExternalLinkPreference,
+  type GeminiProxySettings,
   type GitHubConnectorRepositories,
   type GitHubConnectorStatus,
   type HostedSiteList,
@@ -80,6 +81,7 @@ import {
   isDetectedAcpAgent,
   isDetectedModelServer,
   isDiscoverModelsResult,
+  isGeminiProxySettings,
   isProviderDetectionSettings,
   isRemoteDesktopSetupStatus,
   isRemoteDesktopTestStatus,
@@ -743,6 +745,11 @@ export function decodeDiscoverModelsResult(value: unknown): DiscoverModelsResult
 export function decodeProviderDetectionSettings(value: unknown): ProviderDetectionSettings {
   if (!isProviderDetectionSettings(value)) throw new Error("Invalid detection settings response.");
   return value;
+}
+
+export function decodeGeminiProxySettings(value: unknown): GeminiProxySettings {
+  if (!isGeminiProxySettings(value)) throw new Error("Invalid Gemini proxy settings response.");
+  return { enabled: value.enabled, proxyUrl: value.proxyUrl };
 }
 
 export function decodeNullablePath(value: unknown): string | null {

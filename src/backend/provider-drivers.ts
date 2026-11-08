@@ -8,6 +8,7 @@ import {
   type AgentProviderId,
   customProviderOfModel,
   DEFAULT_PROMPT_CACHE_TTL,
+  type GeminiProxySettings,
   type KeyOnlyProviderId,
   type PromptCacheTtl,
 } from "@openbot/contracts/ipc";
@@ -55,6 +56,7 @@ import {
 import { clineFreeModels } from "./cline-free-models";
 import { readCursorUsage } from "./cursor-usage";
 import { CustomAcpAgentsClient, type CustomAgentConfig, type CustomAgentSource } from "./custom-acp-agents-client";
+import { geminiProxyEnvironment } from "./gemini-proxy-environment";
 import { GrokAgentClient } from "./grok-client";
 import { isPythonKimiCli, kimiPythonLoginEnv, kimiPythonSavedRegionEnv, type SignInRegion } from "./kimi-region";
 import type { McpOAuthAuthority } from "./mcp-oauth-provider";
@@ -223,6 +225,7 @@ function antigravityKeyOptions(context: ProviderClientContext, agentEnvironment:
         ...(agentEnvironment ? context.agentEnvironment?.() : {}),
         ...account,
         ...(saved ? { GEMINI_API_KEY: saved } : {}),
+        ...geminiProxyEnvironment(context.geminiProxySettings?.()),
       };
     },
     redactValues: () => {
@@ -406,6 +409,8 @@ function confineKimiTarget(
  */
 export interface ProviderClientContext {
   apiKey(provider: AgentProviderId): string | null;
+  /** Local Gemini-only proxy settings, read again for each process and account. */
+  readonly geminiProxySettings?: () => GeminiProxySettings;
   /** Durable provider-history ports, selected by the external provider id. */
   readonly history?: (provider: AgentProviderId) => AcpHistoryPersistence | undefined;
   readonly customProviders: CustomProviderSource;
