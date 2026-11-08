@@ -138,6 +138,7 @@
     "dev:memory": "bun scripts/dev-automation/cli.ts memory",
     "dev:bench": "tsx scripts/dev-automation/bench.ts",
     "bench:browser-tools": "tsx scripts/browser-tools-bench.ts",
+    "bench:tool-result-size": "bun scripts/tool-result-size-bench.ts",
     "dev:status": "bun scripts/dev-stack.ts status",
     "dev:verify": "bun scripts/dev-verify.ts",
     "dev:mobile": "bun scripts/dev-mobile.ts",

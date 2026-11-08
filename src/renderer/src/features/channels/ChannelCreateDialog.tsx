@@ -137,7 +137,11 @@ export function ChannelCreateDialog() {
                           <ChannelMemberRow
                             agent={agent}
                             fallbackName={agent.name}
-                            description={agent.description}
+                            description={
+                              agent.workspacePath
+                                ? t("channel.members.workspace", { path: agent.workspacePath })
+                                : agent.description
+                            }
                             leading={
                               <Checkbox
                                 id={`channel-member-${agent.id}`}

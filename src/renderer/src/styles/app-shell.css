@@ -3021,7 +3021,15 @@ textarea {
    space. The row's label and tooltip still name the action. */
 @container (max-width: 300px) {
   .agent-row-wait-chip:has(.agent-row-wait-chip-label) {
-    padding: 1px 5px;
+    width: 18px;
+    height: 18px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .agent-row-wait-chip:has(.agent-row-wait-chip-label) svg {
+    width: 12px;
+    height: 12px;
   }
 
   .agent-row-wait-chip-label {

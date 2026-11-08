@@ -40,12 +40,21 @@ export const messages = defineMessages("provider", {
     "All Gemini accounts on this computer share this setting. Local callbacks and internal connections stay direct.",
   "provider.geminiProxy.enabled": "Require this proxy",
   "provider.geminiProxy.enabledDescription": "Send Gemini's external requests through this proxy without TUN.",
-  "provider.geminiProxy.address": "HTTP proxy address",
-  "provider.geminiProxy.addressHelp": "Use an HTTP or HTTPS address without a username, password or path.",
+  "provider.geminiProxy.address": "Proxy address",
+  "provider.geminiProxy.addressHelp": "Use HTTP, HTTPS or SOCKS5. Put credentials in the separate fields below.",
   "provider.geminiProxy.addressInvalid":
-    "Enter a valid HTTP or HTTPS proxy address without credentials, a path or query parameters.",
+    "Enter a valid HTTP, HTTPS or SOCKS5 proxy address without credentials, a path or query parameters.",
   "provider.geminiProxy.scopeNote":
-    "This covers Gemini sign-in requests, model discovery and conversations. The external Google sign-in webpage and component downloads keep their current network settings. Your proxy app still chooses its routes.",
+    "This covers Gemini sign-in requests, model discovery and conversations. The external Google sign-in webpage and component downloads keep their current network settings.",
+  "provider.geminiProxy.username": "SOCKS5 username",
+  "provider.geminiProxy.authHelp": "Optional SOCKS5 authentication. Leave these fields empty for HTTP proxies.",
+  "provider.geminiProxy.usernameSaved": "A username is saved. Leave this field empty to keep it for the same address.",
+  "provider.geminiProxy.password": "SOCKS5 password",
+  "provider.geminiProxy.passwordHelp":
+    "The password is encrypted on this computer and is never sent back to this page.",
+  "provider.geminiProxy.passwordSaved":
+    "A password is saved. Leave this field empty to keep it for the same address and username.",
+  "provider.geminiProxy.clearPassword": "Remove the saved SOCKS5 credentials",
   "provider.geminiProxy.reset": "Reset changes",
   "provider.geminiProxy.saved":
     "Saved. Gemini reconnects after its current tasks finish. Other providers are unchanged.",

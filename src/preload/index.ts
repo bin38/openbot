@@ -125,6 +125,7 @@ import {
   decodeTables,
 } from "./agent-decoding";
 import { decodeScopedAgentEvent } from "./agent-event-decoding";
+import { decodeAgentWorkspaceInfo, decodeOptionalAgentWorkspaceInfo } from "./agent-workspaces-decoding";
 import {
   decodeApiChannelDefinition,
   decodeApiChannelRun,
@@ -227,6 +228,7 @@ import {
   decodeBrowserDockShown,
 } from "./browser-dock-decoding";
 import { clipboardFiles } from "./clipboard-files";
+import { decodeColabCommandResult, decodeColabSnapshot } from "./colab-decoding";
 import {
   decodeComputerUseHighlightPlacement,
   decodeComputerUsePermissionApp,
@@ -1125,6 +1127,26 @@ const openbotApi: OpenBotDesktopApi = {
   geminiProxy: bridgeGroup(IPC_ENDPOINTS.geminiProxy, {
     getSettings: decodeGeminiProxySettings,
     setSettings: decodeGeminiProxySettings,
+  }),
+  agentWorkspaces: bridgeGroup(IPC_ENDPOINTS.agentWorkspaces, {
+    get: decodeAgentWorkspaceInfo,
+    choose: decodeOptionalAgentWorkspaceInfo,
+    reset: decodeAgentWorkspaceInfo,
+    open: decodeVoid,
+  }),
+  colab: bridgeGroup(IPC_ENDPOINTS.colab, {
+    getStatus: decodeColabSnapshot,
+    refresh: decodeColabSnapshot,
+    startLogin: decodeColabSnapshot,
+    openAuthorization: decodeVoid,
+    openHome: decodeVoid,
+    submitLoginCode: decodeColabSnapshot,
+    cancelLogin: decodeColabSnapshot,
+    createCpu: decodeColabSnapshot,
+    stop: decodeColabSnapshot,
+    openSession: decodeVoid,
+    execute: decodeColabCommandResult,
+    listFiles: decodeColabCommandResult,
   }),
   providerDetection: bridgeGroup(IPC_ENDPOINTS.providerDetection, {
     scanModelServers: decodeDetectedModelServers,

@@ -21,10 +21,13 @@ Private account credentials, API keys, operator signing keys and databases are n
 
 Gemini 1.4.5 uses a local WebSocket harness. On macOS with a system SOCKS proxy, its bundled
 Python can fail to match `localhost:<port>` against the system bypass list. In the local Gemini
-provider page, enable its dedicated proxy and enter the HTTP proxy address, such as
-`http://127.0.0.1:7897`. Gemini's network clients then use that route, while local harness and
-callback traffic stays direct. The setting persists across app restarts and needs no TUN mode
-or system proxy change. The proxy application still controls its own forwarding rules.
+provider page, enable its dedicated proxy and enter an HTTP/HTTPS or SOCKS5 address. SOCKS5
+authentication uses separate write-only fields and encrypted storage. OpenBot prepares a private
+loopback HTTP bridge for Gemini and the Colab CLI, so their HTTP clients do not need a SOCKS
+library. Local harness and callback traffic stays direct. The setting persists across app
+restarts and needs no TUN mode or system proxy change. External browser pages and component
+downloads retain their existing route. Never put operator proxy credentials in a build resource,
+release note or plist.
 
 This local build is ad-hoc signed, not Apple-notarized. It does not claim the original publisher's
 Apple team or Universal Links domain. Fuses, renderer isolation, native component checks and the

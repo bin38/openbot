@@ -749,7 +749,12 @@ export function decodeProviderDetectionSettings(value: unknown): ProviderDetecti
 
 export function decodeGeminiProxySettings(value: unknown): GeminiProxySettings {
   if (!isGeminiProxySettings(value)) throw new Error("Invalid Gemini proxy settings response.");
-  return { enabled: value.enabled, proxyUrl: value.proxyUrl };
+  return {
+    enabled: value.enabled,
+    proxyUrl: value.proxyUrl,
+    ...(value.hasUsername === undefined ? {} : { hasUsername: value.hasUsername }),
+    ...(value.hasPassword === undefined ? {} : { hasPassword: value.hasPassword }),
+  };
 }
 
 export function decodeNullablePath(value: unknown): string | null {

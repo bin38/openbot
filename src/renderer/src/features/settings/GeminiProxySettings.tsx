@@ -2,6 +2,7 @@ import {
   DEFAULT_GEMINI_PROXY_SETTINGS,
   type GeminiProxySettings as GeminiProxyValue,
   normalizeGeminiProxyUrl,
+  type SetGeminiProxySettingsInput,
 } from "@openbot/contracts/ipc";
 import {
   Button,
@@ -21,10 +22,12 @@ import { geminiProxyPort } from "./gemini-proxy-port";
 
 interface GeminiProxyForm {
   saved: GeminiProxyValue | null;
-  draft: GeminiProxyValue;
+  draft: SetGeminiProxySettingsInput;
   pending: "load" | "save" | null;
   error: string | null;
   savedNotice: boolean;
+  password: string;
+  clearPassword: boolean;
 }
 
 /** Local Gemini preferences. The provider page owns this form's lifetime. */
@@ -36,11 +39,17 @@ export function GeminiProxySettings() {
     pending: "load",
     error: null,
     savedNotice: false,
+    password: "",
+    clearPassword: false,
   });
   let generation = 0;
   const dirty = () =>
     state.saved !== null &&
-    (state.saved.enabled !== state.draft.enabled || state.saved.proxyUrl !== state.draft.proxyUrl);
+    (state.saved.enabled !== state.draft.enabled ||
+      state.saved.proxyUrl !== state.draft.proxyUrl ||
+      Boolean(state.draft.username) ||
+      Boolean(state.password) ||
+      state.clearPassword);
   const invalidAddress = () => normalizeGeminiProxyUrl(state.draft.proxyUrl) === null;
   const disabled = () => state.pending !== null || state.saved === null;
 
@@ -78,7 +87,7 @@ export function GeminiProxySettings() {
     };
   });
 
-  function edit(change: Partial<GeminiProxyValue>): void {
+  function edit(change: Partial<SetGeminiProxySettingsInput>): void {
     setState((draft) => {
       Object.assign(draft.draft, change);
       draft.error = null;
@@ -91,6 +100,8 @@ export function GeminiProxySettings() {
     if (!saved || state.pending) return;
     setState((draft) => {
       draft.draft = { ...saved };
+      draft.password = "";
+      draft.clearPassword = false;
       draft.error = null;
       draft.savedNotice = false;
     });
@@ -99,7 +110,13 @@ export function GeminiProxySettings() {
   async function save(): Promise<void> {
     if (disabled() || !dirty() || invalidAddress()) return;
     const current = generation;
-    const next = { enabled: state.draft.enabled, proxyUrl: state.draft.proxyUrl.trim() };
+    const next = {
+      enabled: state.draft.enabled,
+      proxyUrl: state.draft.proxyUrl.trim(),
+      username: state.draft.username ?? "",
+      password: state.password,
+      clearPassword: state.clearPassword,
+    };
     setState((draft) => {
       draft.pending = "save";
       draft.error = null;
@@ -112,6 +129,8 @@ export function GeminiProxySettings() {
         draft.saved = { ...saved };
         draft.draft = { ...saved };
         draft.savedNotice = true;
+        draft.password = "";
+        draft.clearPassword = false;
       });
     } catch (error) {
       if (current === generation)
@@ -178,6 +197,71 @@ export function GeminiProxySettings() {
             </Field>
           </ItemContent>
         </Item>
+        <Item>
+          <ItemContent>
+            <Field
+              label={t("provider.geminiProxy.username")}
+              description={
+                state.saved?.hasUsername ? t("provider.geminiProxy.usernameSaved") : t("provider.geminiProxy.authHelp")
+              }
+            >
+              <Input
+                type="password"
+                value={state.draft.username ?? ""}
+                onValueChange={(username) => edit({ username })}
+                disabled={disabled()}
+                maxlength={255}
+                autocomplete="off"
+                spellcheck={false}
+              />
+            </Field>
+          </ItemContent>
+        </Item>
+        <Item>
+          <ItemContent>
+            <Field
+              label={t("provider.geminiProxy.password")}
+              description={
+                state.saved?.hasPassword
+                  ? t("provider.geminiProxy.passwordSaved")
+                  : t("provider.geminiProxy.passwordHelp")
+              }
+            >
+              <Input
+                type="password"
+                value={state.password}
+                onValueChange={(password) =>
+                  setState((draft) => {
+                    draft.password = password;
+                    draft.error = null;
+                    draft.savedNotice = false;
+                  })
+                }
+                disabled={disabled() || state.clearPassword}
+                maxlength={255}
+                autocomplete="new-password"
+              />
+            </Field>
+          </ItemContent>
+        </Item>
+        <Show when={state.saved?.hasUsername || state.saved?.hasPassword}>
+          <SwitchField
+            label={t("provider.geminiProxy.clearPassword")}
+            checked={state.clearPassword}
+            disabled={disabled()}
+            onChange={(clearPassword) =>
+              setState((draft) => {
+                draft.clearPassword = clearPassword;
+                if (clearPassword) {
+                  draft.draft.username = "";
+                  draft.password = "";
+                }
+                draft.error = null;
+                draft.savedNotice = false;
+              })
+            }
+          />
+        </Show>
       </ItemGroup>
       <Text variant="caption" tone="muted">
         {t("provider.geminiProxy.scopeNote")}

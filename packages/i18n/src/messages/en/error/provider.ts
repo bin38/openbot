@@ -1,6 +1,18 @@
 import { defineMessages } from "../../../message";
 
 export const messages = defineMessages("error.provider", {
+  "error.provider.geminiProxyAddress":
+    "Enter an HTTP, HTTPS or SOCKS5 proxy address without credentials, a path or a query.",
+  "error.provider.geminiProxyNewAddress":
+    "The proxy address or username changed. Enter its password again, or remove the saved password.",
+  "error.provider.geminiProxyCredentials": "Enter both the SOCKS5 username and password, or remove both.",
+  "error.provider.geminiProxySocksCredentials":
+    "These authentication fields are for SOCKS5. Remove them before using an HTTP proxy.",
+  "error.provider.geminiProxySecureStorage":
+    "OpenBot cannot save this proxy password because secure storage is unavailable.",
+  "error.provider.geminiProxyUnavailable": "The local Gemini proxy is unavailable. Restart OpenBot and try again.",
+  "error.provider.geminiProxyRestartRequired":
+    "Restart OpenBot before changing the proxy again. Existing connections are kept until the app closes.",
   "error.provider.geminiProxyUrl": "Enter an HTTP or HTTPS proxy address without credentials, a path or a query.",
   "error.provider.geminiProxySettingsReadOnly":
     "OpenBot cannot read the saved Gemini proxy settings. Gemini is blocked until the file is restored; no direct connection is used.",

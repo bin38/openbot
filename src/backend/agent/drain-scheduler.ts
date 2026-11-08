@@ -128,7 +128,7 @@ export interface DrainSchedulerOptions {
   conversation: ConversationRuntime;
   providers: ProviderRuntime;
   duplication: DuplicationGate;
-  profileSave: ProfileSave;
+  profileSave: Pick<ProfileSave, "mayDrain">;
   compaction: ContextCompaction;
   routines: RoutineScheduler;
   threads: ThreadLifecycle;
@@ -161,7 +161,7 @@ export class DrainScheduler {
   readonly #conversation: ConversationRuntime;
   readonly #providers: ProviderRuntime;
   readonly #duplication: DuplicationGate;
-  readonly #profileSave: ProfileSave;
+  readonly #profileSave: Pick<ProfileSave, "mayDrain">;
   readonly #compaction: ContextCompaction;
   readonly #routines: RoutineScheduler;
   readonly #threads: ThreadLifecycle;

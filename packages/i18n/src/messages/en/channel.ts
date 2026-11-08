@@ -1,6 +1,9 @@
 import { defineMessages } from "../../message";
 
 export const messages = defineMessages("channel", {
+  "channel.members.workspacesSeparate":
+    "Each member keeps its own workspace. Use the shared delivery folder to exchange files.",
+  "channel.members.workspace": "Workspace: {path}",
   "channel.activity.one": "{name} is working",
   "channel.activity.many": "{names} and {last} are working",
   "channel.activity.status": "{sentence}: {label}",

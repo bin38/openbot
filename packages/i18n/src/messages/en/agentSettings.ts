@@ -1,6 +1,24 @@
 import { defineMessages } from "../../message";
 
 export const messages = defineMessages("agentSettings", {
+  "agentSettings.workspace.title": "Workspace",
+  "agentSettings.workspace.description":
+    "Each agent keeps one working folder. Channels combine agents without merging their folders.",
+  "agentSettings.workspace.current": "Working folder",
+  "agentSettings.workspace.managed": "Uses this agent's separate default folder.",
+  "agentSettings.workspace.custom": "Uses the local project folder you selected.",
+  "agentSettings.workspace.choose": "Choose a folder",
+  "agentSettings.workspace.reset": "Restore default folder",
+  "agentSettings.workspace.open": "Open workspace",
+  "agentSettings.workspace.openManaged": "Open retained default folder",
+  "agentSettings.workspace.openShared": "Open shared delivery folder",
+  "agentSettings.workspace.keepFiles":
+    "Switching leaves every file in its original folder. A copy gets its own default workspace and does not copy the selected project.",
+  "agentSettings.workspace.busy": "Wait until this agent finishes its work before changing the workspace.",
+  "agentSettings.workspace.unavailable": "This folder is unavailable. Choose another folder or restore the default.",
+  "agentSettings.workspace.readFailed": "Could not read the workspace settings.",
+  "agentSettings.workspace.saveFailed": "Could not change the workspace.",
+  "agentSettings.workspace.openFailed": "Could not open the workspace.",
   "agentSettings.session.title": "Provider settings",
   "agentSettings.session.readFailed": "Could not read provider settings.",
   "agentSettings.session.pending": "Saved changes apply before the next turn.",

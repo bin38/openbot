@@ -2,6 +2,8 @@ import type { PartialTranslation } from "../../message";
 import type { messages as source } from "../en/channel";
 
 export const messages = {
+  "channel.members.workspacesSeparate": "成员各自保留独立工作区，通过共享交付目录交换文件。",
+  "channel.members.workspace": "工作区：{path}",
   "channel.activity.one": "{name} 正在工作",
   "channel.activity.many": "{names} 和 {last} 正在工作",
   "channel.activity.status": "{sentence}：{label}",

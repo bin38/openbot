@@ -24,6 +24,7 @@ import {
   ToolListChangedNotificationSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { McpServerConfig } from "@openbot/contracts/ipc";
+import { isDynamicRecord } from "@openbot/contracts/runtime-values";
 import { sourceText } from "@openbot/i18n/source";
 import { createOpenBotLogger, redactText } from "@openbot/logging";
 import { Effect } from "effect";
@@ -400,6 +401,10 @@ interface ResourceHit {
   authorization: string | undefined;
   rowKey: string | undefined;
   userAgent: string | undefined;
+  mcpMethod: string | undefined;
+  mcpName: string | undefined;
+  routedParameter: string | undefined;
+  cookie: string | undefined;
 }
 
 /**
@@ -424,6 +429,11 @@ async function startResourceServer(authorizationServer: string) {
       authorization: request.headers.authorization,
       rowKey: typeof rowKey === "string" ? rowKey : undefined,
       userAgent: request.headers["user-agent"],
+      mcpMethod: typeof request.headers["mcp-method"] === "string" ? request.headers["mcp-method"] : undefined,
+      mcpName: typeof request.headers["mcp-name"] === "string" ? request.headers["mcp-name"] : undefined,
+      routedParameter:
+        typeof request.headers["mcp-param-fixture"] === "string" ? request.headers["mcp-param-fixture"] : undefined,
+      cookie: request.headers.cookie,
     });
     for (const waiter of waiters.splice(0)) waiter();
     const metadata = /^\/\.well-known\/oauth-protected-resource(\/.*)$/u.exec(url.pathname)?.[1];
@@ -668,13 +678,30 @@ async function proxyCases(auth: Awaited<ReturnType<typeof startAuthorizationServ
       assert.ok(endpoint.authorization);
       return { url: endpoint.url, bearer: endpoint.authorization };
     };
-    const connect = async (url: string, bearer: string) => {
+    const connect = async (url: string, bearer: string, routing = false) => {
       const client = new Client({ name: "e2e-provider", version: "1.0.0" });
       clients.push(client);
       await client.connect(
         asTransport(
           new StreamableHTTPClientTransport(new URL(url), {
             requestInit: { headers: { authorization: `Bearer ${bearer}` } },
+            ...(routing
+              ? {
+                  fetch: (input, init) => {
+                    const headers = new Headers(init?.headers);
+                    if (typeof init?.body === "string") {
+                      const body = JSON.parse(init.body);
+                      if (isDynamicRecord(body) && typeof body.method === "string")
+                        headers.set("mcp-method", body.method);
+                      if (isDynamicRecord(body) && isDynamicRecord(body.params) && typeof body.params.name === "string")
+                        headers.set("mcp-name", body.params.name);
+                    }
+                    headers.set("mcp-param-fixture", "tenant-a");
+                    headers.set("cookie", "fixture-cookie");
+                    return fetch(input, { ...init, headers });
+                  },
+                }
+              : {}),
           }),
         ),
       );
@@ -714,7 +741,7 @@ async function proxyCases(auth: Awaited<ReturnType<typeof startAuthorizationServ
     const handoff = { proxiedRows: Object.keys(codex.servers).length, tokensInPayload: false, bearerRedacted: true };
 
     // A tool call goes through, and the server gets the row's header and the token from this process.
-    const client = await connect(directRoute.url, directRoute.bearer);
+    const client = await connect(directRoute.url, directRoute.bearer, true);
     const notified = new Promise<void>((done) =>
       client.setNotificationHandler(ToolListChangedNotificationSchema, () => done()),
     );
@@ -722,6 +749,12 @@ async function proxyCases(auth: Awaited<ReturnType<typeof startAuthorizationServ
     const upstream = resource.hits.filter((hit) => hit.path === "/mcp" && hit.method === "POST");
     assert.ok(upstream.length > 0);
     assert.ok(upstream.every((hit) => hit.authorization === "Bearer access-on-file" && hit.rowKey === "row-secret"));
+    assert.ok(
+      upstream.some(
+        (hit) => hit.mcpMethod === "tools/call" && hit.mcpName === "echo" && hit.routedParameter === "tenant-a",
+      ),
+    );
+    assert.ok(upstream.every((hit) => hit.cookie === undefined));
     const echo = { text: "through", upstreamToken: "access-on-file", rowHeaderUpstream: true };
 
     // The server sees OpenBot as the client, not the provider, and the agent of the route by name.
@@ -729,7 +762,7 @@ async function proxyCases(auth: Awaited<ReturnType<typeof startAuthorizationServ
       name: "openbot",
       title,
       version: "9.9.9-e2e",
-      websiteUrl: "https://openbot.run",
+      websiteUrl: "http://localhost/",
     });
     assert.deepEqual(resource.clients.at(-1), openbotClient("OpenBot"));
     assert.ok(upstream.every((hit) => hit.userAgent === "OpenBot/9.9.9-e2e"));

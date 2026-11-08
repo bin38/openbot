@@ -157,6 +157,14 @@ import {
   parseBrowserToolCall,
 } from "./browser-tools";
 import { runCauseEffect } from "./effect-boundary";
+import {
+  BROWSER_STRING_MORE,
+  BROWSER_VALUE_MORE,
+  BROWSER_VALUE_TEXT_LIMIT,
+  cutModelText,
+  jsonStringFit,
+  type ModelTextCut,
+} from "./model-text-limit";
 import type { DynamicToolCallParams, DynamicToolResult } from "./protocol";
 import { isRecord } from "./protocol";
 import type { VaultCardSecret } from "./vault-items";
@@ -752,7 +760,7 @@ export class BrowserHost {
     ownerAgentId: string | null = null,
     focus = false,
   ): Effect.fn.Return<BrowserTab, BrowserOperationError> {
-    return yield* this.#open(url, ownerThreadId, ownerAgentId, focus);
+    return yield* this.#open(url, ownerThreadId, ownerAgentId, focus, false);
   }).bind(this);
 
   /**
@@ -766,7 +774,7 @@ export class BrowserHost {
   ): Effect.fn.Return<BrowserTab, BrowserOperationError> {
     const privateSession = session.fromPartition(`openbot-private-${randomUUID()}`, { cache: false });
     this.#configureSession(privateSession);
-    return yield* this.#open(url, null, null, false, privateSession);
+    return yield* this.#open(url, null, null, false, true, privateSession);
   }).bind(this);
 
   readonly #open = Effect.fn("BrowserHost.openTab")(function* (
@@ -775,6 +783,7 @@ export class BrowserHost {
     ownerThreadId: string | null,
     ownerAgentId: string | null,
     focus: boolean,
+    closeOnFailure: boolean,
     privateSession?: Session,
   ): Effect.fn.Return<BrowserTab, BrowserOperationError> {
     if (!this.#hasTabCapacity(ownerThreadId, ownerAgentId)) {
@@ -824,7 +833,7 @@ export class BrowserHost {
             const error = operationFailure.cause;
             // The user entered an address before the first page loaded: that load is the tab's page now.
             if (this.#tabs.get(tab.id) === tab && tab.loadGeneration !== loadGeneration) return;
-            if (this.#tabs.get(tab.id) === tab) {
+            if (this.#tabs.get(tab.id) === tab && (closeOnFailure || tab.contents.isDestroyed())) {
               this.#unmountView(tab.view);
               this.#tabs.delete(tab.id);
               this.#userControlTabIds.delete(tab.id);
@@ -1554,7 +1563,7 @@ export class BrowserHost {
         yield* browserSync(() => this.#requireNoFilledCard(tab, "Browser screenshot"));
         const image = yield* boundEngineOperation(
           tab,
-          tab.engine.screenshot(target, Date.now() + 10_000),
+          tab.engine.screenshot(target, Date.now() + 10_000, true),
           10_000,
           "Browser screenshot timed out.",
           keepQueueBlocked,
@@ -1777,7 +1786,7 @@ export class BrowserHost {
   readonly #toolHandlers: BrowserToolHandlers = {
     open: ({ args }, params) =>
       Effect.gen({ self: this }, function* () {
-        const tab = yield* this.open(args.url, params.threadId, params.ownerAgentId ?? null);
+        const tab = yield* this.#open(args.url, params.threadId, params.ownerAgentId ?? null, false, true);
         this.#controls.updateTab(params, tab.id);
         return textResult({ tab });
       }),
@@ -1825,7 +1834,7 @@ export class BrowserHost {
                   }
                   const image = yield* boundEngineOperation(
                     tab,
-                    tab.engine.screenshot(),
+                    tab.engine.screenshot(undefined, undefined, true),
                     10_000,
                     "Browser screenshot timed out.",
                     keepQueueBlocked,
@@ -1900,7 +1909,7 @@ export class BrowserHost {
     evaluate: ({ args }, params) =>
       Effect.gen({ self: this }, function* () {
         yield* browserSync(() => this.#requireToolTab(params, args.tabId));
-        return textResult(
+        return valueTextResult(
           yield* this.#runEvaluation(
             args.tabId,
             args.expression,
@@ -2006,6 +2015,7 @@ export class BrowserHost {
           ...snapshotTextResult({
             tabId,
             ...result,
+            ...boundedScriptValue(result.value),
             ...(result.error === undefined ? {} : { error: redactText(result.error) }),
             ...(snapshotError === undefined ? {} : { snapshotError }),
             // A page can put a typed card value in its address, as in the tab list.
@@ -3527,6 +3537,46 @@ function textResult(value: unknown): DynamicToolResult {
   };
 }
 
+/**
+ * An evaluated value as JSON text. Text past the model limit is cut, with a note that says how to read
+ * more. A string is cut in its own characters, so that the note counts what the model returned.
+ */
+function valueTextResult(value: BrowserJsonValue): DynamicToolResult {
+  const text = JSON.stringify(value);
+  let shown = text;
+  if (isString(value)) {
+    const cut = cutStringValue(value);
+    if (cut) shown = `${JSON.stringify(cut.text)}\n${cut.note}`;
+  } else {
+    const cut = cutModelText(text, BROWSER_VALUE_TEXT_LIMIT, BROWSER_VALUE_MORE);
+    if (cut) shown = `${cut.text}\n${cut.note}`;
+  }
+  return { success: true, contentItems: [{ type: "inputText", text: shown }] };
+}
+
+/** The start of a string whose JSON form is past the model limit, and a note in characters of the string. */
+function cutStringValue(value: string): ModelTextCut | null {
+  if (JSON.stringify(value).length <= BROWSER_VALUE_TEXT_LIMIT) return null;
+  return cutModelText(value, jsonStringFit(value, BROWSER_VALUE_TEXT_LIMIT), BROWSER_STRING_MORE);
+}
+
+/**
+ * A script value whose JSON is past the model limit becomes a string, and `valueCut` says so. The model
+ * reads that string with its escapes, so the cut is the longest start whose escaped form fits. A string
+ * value is cut in its own characters; another value is cut in characters of its JSON.
+ */
+function boundedScriptValue(value: BrowserJsonValue | undefined): { value?: string; valueCut?: string } {
+  if (value === undefined) return {};
+  if (isString(value)) {
+    const cut = cutStringValue(value);
+    return cut ? { value: cut.text, valueCut: cut.note } : {};
+  }
+  const json = JSON.stringify(value);
+  if (json.length <= BROWSER_VALUE_TEXT_LIMIT) return {};
+  const cut = cutModelText(json, jsonStringFit(json, BROWSER_VALUE_TEXT_LIMIT), BROWSER_VALUE_MORE);
+  return cut ? { value: cut.text, valueCut: cut.note } : {};
+}
+
 /** An action that closed its tab returns this in place of a snapshot. */
 type ClosedTabResult = { tabId: string; closed: true; openerTabId?: string };
 
@@ -3540,7 +3590,13 @@ type SnapshotToolPayload =
       Partial<Pick<BrowserCardFillResult, "unconfirmed">> & {
         snapshot: BrowserSnapshot | ClosedTabResult | DialogTabResult | null;
       })
-  | (BrowserScriptResult & { tabId: string; snapshotError?: string; url?: string; snapshot?: BrowserSnapshot });
+  | (BrowserScriptResult & {
+      tabId: string;
+      valueCut?: string;
+      snapshotError?: string;
+      url?: string;
+      snapshot?: BrowserSnapshot;
+    });
 
 function snapshotTextResult(value: SnapshotToolPayload): DynamicToolResult {
   return {

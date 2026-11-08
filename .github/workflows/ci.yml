@@ -191,6 +191,17 @@ jobs:
       - name: Run the browser ambiguous targets E2E
         run: xvfb-run -a bun run test:browser-ambiguous-targets
 
+      - name: Measure browser and MCP tool result sizes
+        run: xvfb-run -a bun run bench:tool-result-size
+
+      - name: Upload the tool result size report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tool-result-size
+          path: .openbot-build/tool-result-size/report.json
+          if-no-files-found: ignore
+
   tests-desktop:
     # ubuntu-latest gives 4 vCPUs, so vitest runs 3 workers and the job is
     # CPU-bound. The suite is split across shards that run as their own
@@ -438,6 +449,14 @@ jobs:
         if: ${{ !cancelled() }}
         run: bun run test:routine-report-failure
 
+      - name: Run the routine wake recovery E2E test
+        if: ${{ !cancelled() }}
+        run: bun scripts/routine-wake-recovery-e2e.ts
+
+      - name: Run the queued message Send now E2E test
+        if: ${{ !cancelled() }}
+        run: bun scripts/queue-send-now-e2e.ts
+
       - name: Run the agent webhook routine E2E test
         if: ${{ !cancelled() }}
         run: bun run test:agent-webhook-routine
@@ -489,6 +508,10 @@ jobs:
       - name: Run the MCP sign-in client refusal E2E test
         if: ${{ !cancelled() }}
         run: bun run test:mcp-sign-in-client-refused
+
+      - name: Run the MCP OAuth E2E test
+        if: ${{ !cancelled() }}
+        run: bun run test:mcp-oauth
 
       - name: Run the unreadable MCP server row E2E test
         if: ${{ !cancelled() }}
@@ -580,6 +603,14 @@ jobs:
         if: ${{ !cancelled() }}
         run: bun scripts/independent-workspace-e2e.ts
 
+      - name: Run the per-agent workspace E2E
+        if: ${{ !cancelled() }}
+        run: bun scripts/agent-workspaces-e2e.ts
+
+      - name: Run the Colab service fixture E2E
+        if: ${{ !cancelled() }}
+        run: bun scripts/colab-service-e2e.ts
+
       - name: Run the independent network E2E
         if: ${{ !cancelled() }}
         run: bun scripts/independent-network-e2e.ts
@@ -628,6 +659,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: bun scripts/gemini-proxy-settings-e2e.ts
 
+      - name: Run the authenticated Gemini SOCKS5 E2E
+        if: ${{ !cancelled() }}
+        run: bun scripts/gemini-socks5-e2e.ts
+
       - name: Run the independent deployment source E2E
         if: ${{ !cancelled() }}
         run: bun scripts/independent-deployment-e2e.ts
@@ -646,6 +681,8 @@ jobs:
             .openbot-build/api-channels-e2e/report.json
             .openbot-build/api-channel-tools-e2e/report.json
             .openbot-build/independent-workspace-e2e/report.json
+            .openbot-build/agent-workspaces-e2e/report.json
+            .openbot-build/colab-service-e2e/report.json
             .openbot-build/independent-network-e2e/report.json
             .openbot-build/independent-runtime-source-e2e/report.json
             .openbot-build/independent-dev-launch-e2e/report.json
@@ -658,6 +695,7 @@ jobs:
             .openbot-build/provider-account-models-e2e/report.json
             .openbot-build/gemini-proxy-e2e/report.json
             .openbot-build/gemini-proxy-settings-e2e/report.json
+            .openbot-build/gemini-socks5-e2e/report.json
             .openbot-build/independent-deployment-e2e/report.json
           if-no-files-found: ignore
 
@@ -695,6 +733,8 @@ jobs:
             .openbot-build/usage-read-pacing-e2e/
             .openbot-build/routine-fresh-session-e2e/
             .openbot-build/routine-report-failure-e2e/
+            .openbot-build/routine-wake-recovery-e2e/report.json
+            .openbot-build/queue-send-now-e2e/report.json
             .openbot-build/agent-webhook-routine-e2e/
             .openbot-build/agent-channel-manage-e2e/
             .openbot-build/agent-profile-accounts-e2e/
@@ -707,6 +747,7 @@ jobs:
             .openbot-build/mp4-attachment-e2e/
             .openbot-build/svg-attachment-e2e/
             .openbot-build/agent-mcp-tools-e2e/
+            .openbot-build/mcp-oauth-e2e/report.json
             .openbot-build/mcp-server-unreadable-row-e2e/
             .openbot-build/agent-update-agents-e2e/
             .openbot-build/antigravity-usage-e2e/
@@ -752,6 +793,10 @@ jobs:
       - name: Run the Codex login shell PATH E2E test
         if: ${{ !cancelled() }}
         run: bun run test:codex:login-path
+
+      - name: Run the Codex transport fallback E2E test
+        if: ${{ !cancelled() }}
+        run: bun run test:codex-transport-fallback
 
       - name: Run the Antigravity login shell PATH E2E test
         if: ${{ !cancelled() }}
@@ -805,6 +850,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: bun run test:muse-instructions-once
 
+      - name: Run the Muse sign-in reason E2E test
+        if: ${{ !cancelled() }}
+        run: bun scripts/muse-sign-in-reason-e2e.ts
+
       - name: Run the provider conformance E2E test
         if: ${{ !cancelled() }}
         run: bun run test:provider-conformance
@@ -854,6 +903,7 @@ jobs:
             .openbot-build/custom-acp-agent-e2e/
             .openbot-build/custom-acp-agent-login-path-e2e/
             .openbot-build/codex-login-path-e2e/
+            .openbot-build/codex-transport-fallback-e2e/report.json
             .openbot-build/antigravity-login-path-e2e/
             .openbot-build/antigravity-mcp-load-failure-e2e/
             .openbot-build/antigravity-expired-token-e2e/
@@ -867,6 +917,7 @@ jobs:
             .openbot-build/grok-steer-e2e/
             .openbot-build/pi-steer-e2e/
             .openbot-build/muse-instructions-once-e2e/
+            .openbot-build/muse-sign-in-reason-e2e/report.json
             .openbot-build/provider-conformance-e2e/
             .openbot-build/opencode-expired-key-e2e/
             .openbot-build/opencode-downgraded-session-e2e/

@@ -64,6 +64,7 @@ import {
   type ClientAgentSummary,
   CONTEXT_RESET_ITEM_TYPE,
   CONVERSATION_MEMORY_CHANGES_ITEM_TYPE,
+  type ColabSnapshot,
   type ComputerUseState,
   type ConversationMessage,
   type ConversationReadState,
@@ -633,6 +634,19 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
   let hostedSites = clone(STORY_HOSTED_SITES);
   let detectionSettings: ProviderDetectionSettings = clone(DEFAULT_PROVIDER_DETECTION_SETTINGS);
   let geminiProxySettings: GeminiProxySettings = clone(DEFAULT_GEMINI_PROXY_SETTINGS);
+  let colabSnapshot: ColabSnapshot = {
+    installed: true,
+    cliPath: "colab",
+    version: "0.7.5",
+    credentialsPresent: false,
+    connected: false,
+    loginPhase: "idle",
+    canOpenAuthorization: false,
+    message: null,
+    sessions: [],
+    unmanagedSessions: 0,
+    refreshedAt: null,
+  };
   let customAgents: CustomAgentSummary[] = [];
   const registryEntry: AcpRegistryEntry = {
     id: "example-acp",
@@ -1668,9 +1682,81 @@ export function createMockOpenBot(options: MockOpenBotOptions = {}): MockOpenBot
     geminiProxy: {
       getSettings: async () => clone(geminiProxySettings),
       setSettings: async (settings) => {
-        geminiProxySettings = clone(settings);
+        const sameAddress = geminiProxySettings.proxyUrl === settings.proxyUrl;
+        geminiProxySettings = {
+          enabled: settings.enabled,
+          proxyUrl: settings.proxyUrl,
+          ...(!settings.clearPassword && (settings.username || (sameAddress && geminiProxySettings.hasUsername))
+            ? { hasUsername: true }
+            : {}),
+          ...(!settings.clearPassword && (settings.password || (sameAddress && geminiProxySettings.hasPassword))
+            ? { hasPassword: true }
+            : {}),
+        };
         return clone(geminiProxySettings);
       },
+    },
+    agentWorkspaces: {
+      get: async (id) => {
+        const agent = agents.find((one) => one.id === id);
+        if (!agent) throw new Error(sourceText("error.agent.gone"));
+        return {
+          agentId: id,
+          path: agent.workspacePath,
+          managedPath: agent.workspacePath,
+          sharedPath: "/preview/OpenBot/Shared",
+          custom: false,
+          available: true,
+        };
+      },
+      choose: async () => null,
+      reset: async (id) => api.agentWorkspaces.get(id),
+      open: async () => undefined,
+    },
+    colab: {
+      getStatus: async () => clone(colabSnapshot),
+      refresh: async () => {
+        colabSnapshot.refreshedAt = Date.now();
+        return clone(colabSnapshot);
+      },
+      startLogin: async () => {
+        colabSnapshot.loginPhase = "waiting-code";
+        colabSnapshot.canOpenAuthorization = true;
+        return clone(colabSnapshot);
+      },
+      openAuthorization: async () => undefined,
+      openHome: async () => undefined,
+      submitLoginCode: async () => {
+        colabSnapshot = {
+          ...colabSnapshot,
+          loginPhase: "connected",
+          connected: true,
+          credentialsPresent: true,
+          canOpenAuthorization: false,
+        };
+        return clone(colabSnapshot);
+      },
+      cancelLogin: async () => {
+        colabSnapshot.loginPhase = "idle";
+        colabSnapshot.canOpenAuthorization = false;
+        return clone(colabSnapshot);
+      },
+      createCpu: async (input) => {
+        colabSnapshot.sessions.push({
+          name: input.name ?? "preview-cpu",
+          hardware: "CPU",
+          shape: "default",
+          state: "idle",
+        });
+        return clone(colabSnapshot);
+      },
+      stop: async ({ session }) => {
+        colabSnapshot.sessions = colabSnapshot.sessions.filter((one) => one.name !== session);
+        return clone(colabSnapshot);
+      },
+      openSession: async () => undefined,
+      execute: async () => ({ text: "2", truncated: false }),
+      listFiles: async () => ({ text: "[]", truncated: false }),
     },
     providerDetection: {
       scanModelServers: async () => [],

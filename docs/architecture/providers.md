@@ -506,15 +506,22 @@ The server has no `--version`, so staging writes `antigravity-package.json` and
 `verifyInstalledRuntime` reads the version from that file (`versionFile`). OpenBot never searches
 `PATH`, because the Antigravity editor installs an `antigravity` command that is not this server.
 
-The local-only `geminiProxy` IPC preference supplies a getter in `ProviderClientContext`.
-`gemini-proxy-environment.ts` applies it last in Gemini process environments, including default
-and added-account sign-in, profile clients and per-session processes. The app environment is not
-mutated. HTTP, HTTPS, WebSocket and supported gRPC proxy variables use the configured address;
-only loopback addresses bypass it. A changed enabled address is part of the confined-client key
-and account-check freshness, so an idle-released shared process cannot retain an old route.
-Saving schedules the existing Gemini-only idle restart. Credentials, quotas and public chat
-identity remain intact. An unreadable saved preference blocks Gemini instead of falling back to
-a direct connection. These settings have no released Team API field.
+The local-only `geminiProxy` preference is loaded before `AgentService`. Its store returns public
+saved-state flags and keeps encrypted SOCKS5 credentials private. `GeminiProxyBridge` prepares the
+effective route: existing unauthenticated HTTP settings retain their address; SOCKS5 uses an
+authenticated loopback HTTP/CONNECT listener. Per-configuration local tokens bind immutable
+upstream snapshots, so active turns can finish when settings change. Fresh clients are blocked
+until preparation succeeds. `gemini-socks5-connection.ts` owns bounded RFC 1928/1929 handshakes,
+remote name resolution and cancellation. No upstream credential reaches a provider environment.
+
+`gemini-proxy-environment.ts` applies the effective HTTP route last in Gemini environments,
+including default and added-account sign-in, profiles and per-session processes. Only loopback
+addresses bypass it. The effective route fingerprint is part of confined-client keys and account
+check freshness. Saving schedules the existing Gemini-only idle restart, preserving credentials,
+quota state and public chat identity. The Colab service reads the same effective route for its own
+processes. The app environment, external browser pages and download routes are not changed.
+Teardown closes Colab/provider processes before the bridge. These settings have no released Team
+API field. See [local workspace and Colab ownership](local-integrations.md).
 
 The server offers its Claude and GPT models only to a client whose `initialize` `clientInfo.name` is
 `zed`, `xcode`, `jetbrains.*` or `android studio*` (`supports_third_party_models` in 1.4.3). Other

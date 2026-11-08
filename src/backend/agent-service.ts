@@ -24,6 +24,7 @@ import type {
   AgentTaskReadState,
   AgentTasksSnapshot,
   AgentWaitsSnapshot,
+  AgentWorkspaceInfo,
   AskSideQuestionInput,
   AttachmentDataInput,
   AvatarImageInput,
@@ -153,6 +154,7 @@ import {
 import { BootRecovery } from "./agent/boot-recovery";
 import { BrowserUploads } from "./agent/browser-uploads";
 import type { ChatVisualPreviewHost } from "./agent/chat-visual-preview";
+import type { ColabTools } from "./agent/colab-tools";
 import { ContextCompaction } from "./agent/context-compaction";
 import { ConversationReader } from "./agent/conversation-reader";
 import { ConversationRuntime } from "./agent/conversation-runtime";
@@ -328,6 +330,7 @@ export interface AgentServiceOptions {
   saveProviderUse?: (provider: AgentProvider, on: boolean) => Effect.Effect<void, AgentLifecycleFailed>;
   localSkillTools?: (() => LocalSkillTools) | undefined;
   e2bTools?: E2bDesktopTools | undefined;
+  colabTools?: ColabTools | undefined;
   apiChannelTools?: ApiChannelTools | undefined;
   /** Built after the service, so read when a tool call needs it. */
   routineFlowTools?: () => RoutineFlowTools;
@@ -433,6 +436,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
   readonly channels: ChannelService;
   readonly messaging: MessagingThreads;
   readonly #profileSave: ProfileSave;
+  readonly #changingWorkspaces = new Set<string>();
   readonly #profileClients = new ProfileClients();
   readonly #warmGenerations = new WarmGenerations({
     ownerFor: (provider) => this.#providers.currentClient(provider),
@@ -1313,7 +1317,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       conversation: this.#conversation,
       providers: this.#providers,
       duplication: this.#duplication,
-      profileSave: this.#profileSave,
+      profileSave: { mayDrain: (id) => this.#profileSave.mayDrain(id) && !this.#changingWorkspaces.has(id) },
       compaction: this.#compaction,
       routines: this.#routines,
       threads: this.#threads,
@@ -1540,6 +1544,7 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
       ...(options.screenCapture === undefined ? {} : { screenCapture: options.screenCapture }),
       mcpServers: mcpServersFromGateway(this.#mcp, options.prepareMcpTest),
       e2bTools: options.e2bTools,
+      colabTools: options.colabTools,
       apiChannelTools: options.apiChannelTools,
       ...(options.marketplaceAppServer === undefined ? {} : { marketplaceAppServer: options.marketplaceAppServer }),
       apiKeys: options.agentApiKeys ?? null,
@@ -2714,6 +2719,47 @@ export class AgentService extends EventEmitter<AgentServiceEvents> {
           (failure) => new AgentLifecycleFailed({ operation: "reset session setting", cause: failure.cause }),
         ),
       );
+  }
+
+  getAgentWorkspace(agentId: string): Effect.Effect<AgentWorkspaceInfo, AgentLifecycleFailed> {
+    return this.#store
+      .workspaceInfo(agentId)
+      .pipe(
+        Effect.mapError((failure) => new AgentLifecycleFailed({ operation: "get workspace", cause: failure.cause })),
+      );
+  }
+
+  setAgentWorkspace(agentId: string, path: string | null): Effect.Effect<AgentWorkspaceInfo, AgentLifecycleFailed> {
+    const idle = () => {
+      if (this.#runsTurn(agentId) || this.#mailbox.hasUnfinishedDelivery(agentId))
+        throw new Error(sourceText("error.agent.workspaceBusy"));
+    };
+    return this.#endpoints.runExclusive(() =>
+      Effect.acquireUseRelease(
+        lifecycleStep("validate workspace change", () => {
+          idle();
+          this.#changingWorkspaces.add(agentId);
+        }),
+        () =>
+          Effect.gen({ self: this }, function* () {
+            const agent = yield* this.#store
+              .setWorkspace(agentId, path, idle)
+              .pipe(
+                Effect.mapError(
+                  (failure) => new AgentLifecycleFailed({ operation: "set workspace", cause: failure.cause }),
+                ),
+              );
+            this.#conversation.unloadAgentThreads(agent.id);
+            this.#emit({ type: "agents-changed", agents: this.listAgents() });
+            return yield* this.getAgentWorkspace(agent.id);
+          }),
+        () =>
+          Effect.sync(() => {
+            this.#changingWorkspaces.delete(agentId);
+            this.#drain.scheduleDrain(agentId);
+          }),
+      ).pipe(Effect.uninterruptible),
+    );
   }
 
   /**

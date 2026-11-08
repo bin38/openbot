@@ -43,6 +43,33 @@ and [independent plugins](docs/independent-plugins.md).
 - Local data and redacted diagnostics exports.
 - Optional operator-owned account, Signal, and TURN services; the local desktop does not require them.
 
+## Independent workspace and Google tools
+
+Each assistant has its own managed working folder. On this computer, open the assistant settings
+and use **工作区** to select an existing project or restore its managed folder. Switching keeps
+the original files and conversation; it is available only when the assistant has no active or
+queued work. Selected project folders are not deleted when the assistant is removed. Group
+channels can combine several assistants while each keeps its own workspace; use Shared for
+deliverables that members need to exchange.
+
+**服务器设置 → Colab** uses the installed `google-colab-cli`. Sign in through its official Google
+authorization page, then enter the one-time code in OpenBot. The integration lists named CLI
+runtimes, creates CPU sessions on request, runs Python, lists files, and opens the corresponding
+Colab page. Assistants can also transfer approved workspace files, run a private copy of a local
+`.ipynb`, and return downloaded results as attachments. This is a compute-session integration,
+not a Google Drive notebook library or a remote VNC desktop. Google account access and compute
+quota still apply; status and login do not allocate a runtime.
+
+**服务器设置 → 服务商 → Gemini → Gemini 专用代理** accepts an HTTP/HTTPS address or SOCKS5.
+SOCKS5 username and password use separate write-only fields and are encrypted together on this
+computer. OpenBot converts SOCKS5 to a private authenticated loopback HTTP proxy for Gemini and
+the Colab CLI. Existing HTTP settings still work. Local callbacks stay direct, and no TUN or
+system proxy change is needed. External browser authorization pages and provider downloads keep
+their existing network settings.
+
+See the [upstream integration audit](docs/independent-upstream-update.md) for selected fixes,
+version checks, deferred changes and verification limits.
+
 OpenBot is local-first, not offline-only. Codex connects to OpenAI, Claude connects to Anthropic,
 Grok connects to xAI, Gemini connects to Google, Cursor connects to Cursor, Cline connects to Cline,
 Kimi connects to Moonshot AI, Hermes connects to Nous Portal and to the providers you set up in Hermes,
@@ -673,8 +700,9 @@ boundaries. See [cloud computers and files](docs/cloud-computers-and-files.md).
   session history. OpenBot reads only the change time of `auth.json`, `.env` and `config.yaml`, to
   see a sign-in.
 
-Deleting an agent removes its workspace, owned generated attachments, and deliveries addressed only
-to that agent. A transfer remains when another agent still uses the same message.
+Deleting an agent removes its OpenBot-managed workspace, owned generated attachments, and
+deliveries addressed only to that agent. A selected external project stays in place. A transfer
+remains when another agent still uses the same message.
 
 OpenBot keeps one stable local conversation when an agent changes between Codex, Grok, and Claude. Native
 provider session identifiers stay private and are used only to resume provider runtime state.

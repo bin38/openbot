@@ -2,6 +2,8 @@ import type { PartialTranslation } from "../../../message";
 import type { messages as source } from "../../en/status/agent";
 
 export const messages = {
+  "status.agent.colabApproval":
+    "允许执行 Colab 操作 {tool}？这可能向 Google 发送代码和文件、修改运行时文件并消耗计算额度。",
   "status.agent.apiChannelApproval":
     "允许此助手执行 API 渠道操作 {tool}？这可能向已配置的服务发送数据和文件，并消耗其额度。",
   "status.agent.cloudComputerApproval":

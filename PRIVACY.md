@@ -453,6 +453,10 @@ server can change it.
 
 - `~/OpenBot/Agents` contains one workspace per agent. A profile written by a release before the
   bot-to-agent rename holds them under `~/OpenBot/Bots`; the application moves them on first launch.
+  A local owner can select an existing project as an agent's working folder. OpenBot keeps the
+  original managed folder and stores the binding in local agent metadata. It does not move or
+  delete that project when the binding changes or the agent is removed. Groups keep member
+  workspaces separate; workspace selection itself is not an operating-system sandbox.
 - `~/OpenBot/Shared` contains managed transfers shared between agents, and
   `~/OpenBot/Shared/Data/agent-data.db` holds the records the agents keep for themselves between tasks.
   Every agent on this computer can read and write every table in that file, and the user can delete any
@@ -1118,17 +1122,48 @@ account that you add after the first keeps them in a folder of its own in OpenBo
 Remove deletes that folder. OpenBot does not read, copy, or upload these files. Google's terms apply: <https://antigravity.google/terms>.
 Gemini agents stay on this computer: OpenBot does not show them to team members.
 
-The local Gemini settings can route the provider's HTTP clients through an HTTP or HTTPS proxy.
-The proxy address is stored in `openbot-gemini-proxy-v1.json` in the app data folder; credentials
-in that address are not accepted. Only Gemini child processes and their sign-in processes receive
-these proxy settings. Local callback and harness connections remain direct. Other providers, the
-system proxy, the external browser sign-in page and runtime downloads keep their existing routes.
-The selected proxy controls its own forwarding rules. OpenBot does not disable TLS validation.
+The local Gemini settings accept an unauthenticated HTTP/HTTPS proxy or SOCKS5. The address is
+stored in `openbot-gemini-proxy-v1.json` in the app data folder. SOCKS5 username and password are
+encrypted together with the existing operating-system secure storage; neither value is returned
+to the renderer after saving. The page receives saved-state flags only. Credentials are not
+accepted inside the address. An address change requires the credentials again or explicit removal.
+
+For SOCKS5, main owns a loopback-only HTTP/CONNECT bridge. Its random local credential selects an
+upstream configuration; only that local credential reaches Gemini or Colab process environments.
+The bridge sends upstream authentication to the selected SOCKS5 server and streams the tunnel.
+Existing turns can finish on their old configuration. New clients are blocked if bridge
+preparation fails; there is no direct fallback. Shutdown closes connections and discards local
+tokens. Known credentials are registered for diagnostic redaction. Instance transfer does not
+include this proxy preference or its encrypted credential blob.
+
+Gemini and the Colab CLI use this application proxy. Their local callback and harness connections
+remain direct. Other chat providers, the system proxy, external browser authorization pages and
+runtime downloads keep their existing routes. OpenBot does not disable Google's TLS validation.
 
 To show the remaining Gemini quota in Usage, OpenBot sends the server's `/usage` command in a
 session that no agent uses. The server asks Google for the quota of the signed-in account; the
 command contains no conversation, file, or model data. The server keeps that session with its other
 session files in `~/.gemini`. OpenBot does not send that usage to its maintainer.
+
+### Google Colab CLI
+
+OpenBot invokes the installed official `google-colab-cli` as local child processes. In-app sign-in
+opens an allowlisted Google authorization page in the external browser. The one-time code enters
+the CLI through stdin; it is not a chat message or process argument. The CLI keeps its own login
+and session data under `~/.config/colab-cli`. OpenBot registers known OAuth and runtime tokens for
+redaction and disables the CLI's debug logging when it invokes the Python entrypoint. The renderer
+receives readiness and named-runtime metadata, not bearer tokens or runtime-token URLs.
+
+Listing sessions and signing in do not allocate compute. Creating a CPU runtime, executing code
+or notebooks, and uploading files send the requested content to Google and use the user's Colab
+quota. The app does not purchase compute units or select a paid accelerator. Upload sources use
+the calling assistant's existing workspace/Shared/allowed-folder checks. A local notebook runs
+from a private staging copy; downloads return through managed attachments. Temporary staging is
+removed after the command. Stopping a runtime can discard files that exist only on that VM.
+
+This integration manages named CLI runtimes. It does not enumerate the user's Google Drive
+notebook library or provide a VNC desktop. Google authorization, service availability and quota
+remain separate from the local OpenBot account.
 
 ### Cursor
 

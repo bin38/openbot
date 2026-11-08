@@ -1,6 +1,12 @@
 import { defineMessages } from "../../../message";
 
 export const messages = defineMessages("error.agent", {
+  "error.agent.workspaceUnavailable":
+    "The workspace folder is unavailable. Select another folder or restore the default.",
+  "error.agent.workspaceInvalid": "Select an existing absolute workspace folder.",
+  "error.agent.workspaceReserved": "Use a project folder outside OpenBot's managed, shared and application folders.",
+  "error.agent.workspaceInUse": "Another agent uses an overlapping workspace. Select a separate folder.",
+  "error.agent.workspaceBusy": "Wait until this agent finishes its work before changing the workspace.",
   "error.agent.historyUnavailable":
     "History is unavailable for this request. Read recent history again, or use channel_history for channel work.",
   "error.agent.toolRequestInvalid":

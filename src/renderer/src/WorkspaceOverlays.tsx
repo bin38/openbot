@@ -763,6 +763,7 @@ function ServerSettings() {
               : undefined
           }
           apiChannels={server().kind === "local" ? { api: appPort().apiChannels } : undefined}
+          colab={server().kind === "local"}
           mcpServers={serverSettingsMcp()}
           // Only for the computer whose runtimes this window holds: another host starts its servers
           // with its own runtime, which this window has not read.

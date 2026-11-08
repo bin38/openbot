@@ -14,6 +14,7 @@ import pluginCatalog from "../../resources/plugin-catalog/catalog.json";
 import { advertisedJsonSchema } from "./agent/advertised-json-schema";
 import { interruptAgentToolSchema } from "./agent/agent-interrupt-tool";
 import { API_CHANNEL_TOOL_DEFINITIONS } from "./agent/api-channel-tools";
+import { COLAB_TOOL_DEFINITIONS } from "./agent/colab-tools";
 import { DATA_TOOL_DEFINITIONS } from "./agent/data-tools";
 import { E2B_TOOL_DEFINITIONS } from "./agent/e2b-tools";
 import { HISTORY_TOOL_DEFINITIONS } from "./agent/history-tools";
@@ -298,6 +299,7 @@ const ALL_OPENBOT_TOOL_DEFINITIONS: readonly OpenBotToolDefinition[] = [
   ...ROUTINE_FLOW_TOOL_DEFINITIONS,
   ...MCP_SERVER_TOOL_DEFINITIONS,
   ...E2B_TOOL_DEFINITIONS,
+  ...COLAB_TOOL_DEFINITIONS,
   ...API_CHANNEL_TOOL_DEFINITIONS,
   {
     name: "list_sites",

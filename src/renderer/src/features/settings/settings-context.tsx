@@ -30,6 +30,19 @@ function sameExternalLinkTarget(left: ExternalLinkTarget, right: ExternalLinkTar
   return left.kind === right.kind && (left.kind !== "app" || right.kind !== "app" || left.path === right.path);
 }
 
+/** Settings hold JSON data. Equal writes must not rebuild every Select on the page. */
+function samePlainValue(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (typeof left !== "object" || typeof right !== "object" || left === null || right === null) return false;
+  if (Array.isArray(left) !== Array.isArray(right)) return false;
+  const entries = Object.entries(left);
+  const other = new Map(Object.entries(right));
+  return (
+    entries.length === other.size &&
+    entries.every(([key, value]) => other.has(key) && samePlainValue(value, other.get(key)))
+  );
+}
+
 /** Tells the user why a switch went back to its previous value. */
 function showSaveFailure(error: unknown): void {
   const { t, errorMessage } = currentText();
@@ -115,14 +128,17 @@ const Settings = createSimpleContext({
       nonce: number;
     } | null>(null);
     let hostedServerDeleteNonce = 0;
-    const [generalSettings, setGeneralSettings] = createSignal<GeneralSettingsValue>({
-      ...DEFAULT_GENERAL_SETTINGS,
-      taskSound: readTaskSound(),
-      sendShortcut: readSendShortcutMode(),
-      showAgentSteps: readShowAgentSteps(),
-      soundFeedback: isActionSoundEnabled(),
-      soundTheme: readActionSoundTheme(),
-    });
+    const [generalSettings, setGeneralSettings] = createSignal<GeneralSettingsValue>(
+      {
+        ...DEFAULT_GENERAL_SETTINGS,
+        taskSound: readTaskSound(),
+        sendShortcut: readSendShortcutMode(),
+        showAgentSteps: readShowAgentSteps(),
+        soundFeedback: isActionSoundEnabled(),
+        soundTheme: readActionSoundTheme(),
+      },
+      { equals: samePlainValue },
+    );
     // The mode also changes outside this dialog: another window, or the web Preferences tab on
     // the same page. The shared signal carries those changes into the displayed settings value.
     // Two-arg form: compute tracks the signal, apply writes the store outside tracking.

@@ -40,6 +40,7 @@ import type { AgentWaits } from "../agent-waits/agent-waits";
 import { attachmentFailure } from "../attachment-effects";
 import { OPENBOT_BROWSER_NAMESPACE } from "../browser-tools";
 import type { ChannelService } from "../channel-service";
+import { colabFailure } from "../colab-errors";
 import type { ProviderSession } from "../database/provider-sessions";
 import type { MailboxStore } from "../mailbox-store";
 import { agentMcpServers } from "../mcp-provider-shapes";
@@ -78,6 +79,7 @@ import type { AttentionRegistry } from "./attention-registry";
 import { loadAvatarFile } from "./avatar-file";
 import type { BrowserUploads } from "./browser-uploads";
 import type { ChatVisualPreviewHost } from "./chat-visual-preview";
+import { type ColabTools, handleColabTool, isColabTool, parseColabToolRequest, withColabSource } from "./colab-tools";
 import type { ConversationRuntime } from "./conversation-runtime";
 import { handleDataTool } from "./data-tools";
 import { responseAttachmentMessageId, visualReplyFileName, visualReplyMessageId } from "./delivery-content";
@@ -228,6 +230,7 @@ export interface OpenBotToolRouterOptions {
   /** The MCP servers of this OpenBot server, for the MCP tools; null where nothing holds them. */
   mcpServers?: AgentMcpServers | null | undefined;
   e2bTools?: E2bDesktopTools | undefined;
+  colabTools?: ColabTools | undefined;
   apiChannelTools?: ApiChannelTools | undefined;
   /** The saved server that a Marketplace app installs, or null when it is not installed. */
   marketplaceAppServer?: ((appId: string) => MarketplaceAppServer | null) | undefined;
@@ -270,6 +273,7 @@ export class OpenBotToolRouter {
   readonly #screenCapture: ScreenCaptureHost | null;
   readonly #mcpServers: AgentMcpServers | null;
   readonly #e2bTools: E2bDesktopTools | undefined;
+  readonly #colabTools: ColabTools | undefined;
   readonly #apiChannelTools: ApiChannelTools | undefined;
   readonly #marketplaceAppServer: (appId: string) => MarketplaceAppServer | null;
   readonly #apiKeys: AgentApiKeys | null;
@@ -307,6 +311,7 @@ export class OpenBotToolRouter {
     this.#screenCapture = options.screenCapture ?? null;
     this.#mcpServers = options.mcpServers ?? null;
     this.#e2bTools = options.e2bTools;
+    this.#colabTools = options.colabTools;
     this.#apiChannelTools = options.apiChannelTools;
     this.#marketplaceAppServer = options.marketplaceAppServer ?? (() => null);
     this.#apiKeys = options.apiKeys ?? null;
@@ -544,6 +549,14 @@ export class OpenBotToolRouter {
             if (isE2bTool(toolRequest.params.tool)) {
               const result = yield* withE2bRequestCancellation(
                 this.#cloudComputerTool(client, toolRequest, toolRequest.params),
+                toolRequest.signal,
+              );
+              if (!toolRequest.signal?.aborted && client.running) client.respond(toolRequest.id, result);
+              return;
+            }
+            if (isColabTool(toolRequest.params.tool)) {
+              const result = yield* withE2bRequestCancellation(
+                this.#colabTool(client, toolRequest, toolRequest.params),
                 toolRequest.signal,
               );
               if (!toolRequest.signal?.aborted && client.running) client.respond(toolRequest.id, result);
@@ -1360,6 +1373,55 @@ export class OpenBotToolRouter {
         )
         .pipe(Effect.mapError(() => ({ message: sourceText("error.e2b.downloadFailed") }))),
     );
+  });
+
+  readonly #colabTool = Effect.fn("OpenBotToolRouter.colabTool")(function* (
+    this: OpenBotToolRouter,
+    client: AgentClient,
+    request: AppServerRequest,
+    params: DynamicToolCallParams,
+  ) {
+    const agentId = this.#conversation.agentForThread(params.threadId);
+    const tools = this.#colabTools;
+    const operation = parseColabToolRequest(params.tool, params.arguments);
+    if (!agentId || !tools || !operation) return openBotToolFailure(sourceText("error.agent.toolRequestInvalid"));
+    if (!["colab_status", "list_colab_sessions", "list_colab_files"].includes(operation.tool)) {
+      const decision = yield* this.#attention
+        .awaitToolApproval(client, request, {
+          requestId: request.id,
+          agentId,
+          threadId: this.#conversation.publicThreadId(agentId, params.threadId),
+          turnId: params.turnId,
+          kind: "permissions",
+          command: operation.tool === "execute_colab_code" ? operation.code : null,
+          cwd: null,
+          reason: sourceText("status.agent.colabApproval", { tool: operation.tool }),
+          grantRoot: null,
+          permissions: null,
+        })
+        .pipe(toToolOperationFailed);
+      if (decision !== "accept") return openBotToolFailure(sourceText("error.colab.cancelled"));
+    }
+    return yield* handleColabTool(operation, tools, {
+      upload: (session, localPath, remotePath) =>
+        withColabSource(agentId, localPath, this.#attachments, (source) =>
+          tools.uploadSource(session, remotePath, source),
+        ),
+      notebook: (session, localPath, timeout) =>
+        withColabSource(agentId, localPath, this.#attachments, (source) =>
+          tools.executeNotebookSource(session, source, timeout),
+        ),
+      download: (session, remotePath, fileName) =>
+        this.#attachments
+          .attachProducedFile(
+            agentId,
+            params,
+            responseAttachmentMessageId(params.threadId, params.turnId, params.callId),
+            (consume) =>
+              tools.download(session, remotePath, fileName, consume).pipe(Effect.mapError(attachmentFailure)),
+          )
+          .pipe(Effect.mapError(() => colabFailure("file"))),
+    });
   });
 
   readonly #apiChannelTool = Effect.fn("OpenBotToolRouter.apiChannelTool")(function* (

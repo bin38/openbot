@@ -2,6 +2,11 @@ import type { PartialTranslation } from "../../../message";
 import type { messages as source } from "../../en/error/agent";
 
 export const messages = {
+  "error.agent.workspaceUnavailable": "工作区文件夹不可用，请重新选择或恢复默认目录。",
+  "error.agent.workspaceInvalid": "请选择一个已存在的绝对路径文件夹。",
+  "error.agent.workspaceReserved": "请选择 OpenBot 默认目录、共享目录和应用目录之外的项目文件夹。",
+  "error.agent.workspaceInUse": "其他助手正在使用重叠的工作区，请选择独立文件夹。",
+  "error.agent.workspaceBusy": "请等待此助手的工作结束后，再更改工作区。",
   "error.agent.historyUnavailable":
     "该请求的历史记录不可用，请重新读取最近的历史，或在频道工作中使用 channel_history。",
   "error.agent.toolRequestInvalid": "工具发现参数无效。请使用声明的 schema 和原始的完整工具名。",

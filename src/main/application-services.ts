@@ -184,6 +184,7 @@ import {
   readMobileConnectApiUrl,
 } from "./central-auth-manager";
 import { ChatVisualPreviewer } from "./chat-visual-preview";
+import { ColabService } from "./colab-service";
 import { ComputerUseHighlightController } from "./computer-use-highlight-window";
 import { applicationBundlePath, applicationIconName } from "./computer-use-permission-app";
 import { ComputerUsePermissionHelpWindowController } from "./computer-use-permission-help-window";
@@ -216,6 +217,7 @@ import {
   ExternalLinkOpener,
   type ExternalLinkPreferenceStore,
 } from "./external-link-opener";
+import { GeminiProxyBridge, GeminiProxyBridgeFailure } from "./gemini-proxy-bridge";
 import { GEMINI_PROXY_SETTINGS_FILE, GeminiProxySettingsStore } from "./gemini-proxy-settings-store";
 import { githubAppConfig, githubAppStorageFile } from "./github-connector-config";
 import { GitHubConnectorService } from "./github-connector-service";
@@ -512,9 +514,11 @@ const TEARDOWN_ORDER = {
   automation: 108,
   storageUsage: 109,
   service: 110,
+  colab: 110.25,
   e2b: 110.5,
   attachmentUploads: 110.75,
   mcpOAuth: 111,
+  geminiProxy: 111.5,
   analytics: 112,
   // After all account consumers have stopped.
   centralAuth: 115,
@@ -677,6 +681,8 @@ export interface ApplicationServices {
   providerDetection: ProviderDetection;
   providerDetectionSettings: ProviderDetectionSettingsStore;
   geminiProxySettings: GeminiProxySettingsStore;
+  geminiProxyBridge: GeminiProxyBridge;
+  colab: ColabService;
   marketplaceAgents: AgentMarketplaceService;
   agentTemplates: AgentTemplateService;
   agentImport: AgentImportService;
@@ -1465,8 +1471,37 @@ export async function createApplicationServices({
   );
   performance.mark("openbot:services.preferences");
   await runCauseEffect(providerDetectionSettings.load());
-  const geminiProxySettings = new GeminiProxySettingsStore(join(app.getPath("userData"), GEMINI_PROXY_SETTINGS_FILE));
+  const geminiProxySettings = new GeminiProxySettingsStore(
+    join(app.getPath("userData"), GEMINI_PROXY_SETTINGS_FILE),
+    secretCipher,
+  );
   await runCauseEffect(geminiProxySettings.load());
+  const geminiProxyBridge = new GeminiProxyBridge();
+  await Effect.runPromise(
+    Effect.try({
+      try: () => geminiProxySettings.runtimeConfig(),
+      catch: () => new GeminiProxyBridgeFailure({ message: "The saved Gemini proxy is unavailable." }),
+    }).pipe(
+      Effect.flatMap((settings) => geminiProxyBridge.prepare(settings)),
+      Effect.catch(() =>
+        Effect.sync(() => {
+          logger.warn("The saved Gemini proxy could not be prepared. Gemini remains blocked.");
+        }),
+      ),
+    ),
+  );
+  const googleProxySettings = () => {
+    geminiProxySettings.get();
+    return geminiProxyBridge.runtimeSettings();
+  };
+  teardown.push(TEARDOWN_ORDER.geminiProxy, "Gemini application proxy", () =>
+    Effect.runPromise(geminiProxyBridge.close()),
+  );
+  const colab = new ColabService({
+    artifactsDirectory: join(app.getPath("userData"), "colab-artifacts"),
+    proxySettings: googleProxySettings,
+  });
+  teardown.push(TEARDOWN_ORDER.colab, "Colab notebook sessions", () => Effect.runPromise(colab.close()));
   const providerDetection = await Effect.runPromise(
     createProviderDetection({
       settings: providerDetectionSettings,
@@ -1825,6 +1860,7 @@ export async function createApplicationServices({
   const service: AgentService = new AgentService({
     store,
     e2bTools: e2b,
+    colabTools: colab,
     apiChannelTools: apiChannels,
     mailbox,
     browser,
@@ -1885,7 +1921,7 @@ export async function createApplicationServices({
     developmentDefaults: appVariant === "dev",
     credentials: {
       apiKey: (provider) => providerCredentials.get(provider),
-      geminiProxySettings: () => geminiProxySettings.get(),
+      geminiProxySettings: googleProxySettings,
       // Read at each Claude spawn, so a change from Server settings applies to the next process.
       promptCacheTtl: () => promptCacheTtl.get().ttl,
       // `configs()`, not `list()`: this is the one path the API keys travel, and it ends at the
@@ -3677,6 +3713,8 @@ export async function createApplicationServices({
     providerDetection,
     providerDetectionSettings,
     geminiProxySettings,
+    geminiProxyBridge,
+    colab,
     marketplaceAgents,
     agentTemplates,
     agentImport,

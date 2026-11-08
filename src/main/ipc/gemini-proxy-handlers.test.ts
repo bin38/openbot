@@ -1,4 +1,5 @@
 import type { GeminiProxySettings } from "@openbot/contracts/ipc";
+import { sourceText } from "@openbot/i18n/source";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import { registerIpcGroup } from "./define-ipc-group";
@@ -66,7 +67,6 @@ describe("Gemini proxy IPC boundary", () => {
     expect(invoke).toBeDefined();
     const sender = { senderFrame: { url: "openbot-app://app/index.html" } };
     for (const proxyUrl of [
-      "socks5://127.0.0.1:7897",
       "http://user:fixture-secret@proxy.example",
       "https://proxy.example/path",
       "https://proxy.example/?key=fixture-secret",
@@ -75,7 +75,7 @@ describe("Gemini proxy IPC boundary", () => {
       "x".repeat(2049),
     ]) {
       expect(() => invoke?.(sender, { enabled: true, proxyUrl })).toThrow(
-        "Enter an HTTP or HTTPS proxy address without credentials, a path or a query.",
+        sourceText(proxyUrl.startsWith("http") ? "error.provider.geminiProxyUrl" : "error.provider.geminiProxyAddress"),
       );
     }
     expect(() => invoke?.(sender, { enabled: "true", proxyUrl: "http://127.0.0.1:7897" })).toThrow();

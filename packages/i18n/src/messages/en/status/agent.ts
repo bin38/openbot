@@ -1,6 +1,8 @@
 import { defineMessages } from "../../../message";
 
 export const messages = defineMessages("status.agent", {
+  "status.agent.colabApproval":
+    "Allow {tool} in Colab? This can send code and files to Google, change runtime files and use compute quota.",
   "status.agent.apiChannelApproval":
     "Allow {tool} for this agent's API channels? This can send data and files to the configured service and use its quota.",
   "status.agent.cloudComputerApproval":

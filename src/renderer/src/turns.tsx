@@ -19,6 +19,7 @@ import {
 import { useAgents } from "./features/agents/agents-context";
 import { agentConversationKey, promptRequestKey } from "./features/conversation/conversation-keys";
 import type { PromptAnswerOptions } from "./features/conversation/conversation-types";
+import { stopAndSendQueuedMessage } from "./features/conversation/send-queued-message-now";
 import type { TurnStepLines } from "./features/conversation/turn-step-lines";
 import { useDynamicIsland } from "./features/dynamic-island/dynamic-island-context";
 import { useServers } from "./features/servers/servers-context";
@@ -425,6 +426,33 @@ const Turns = createSimpleContext({
         });
     }
 
+    /** Non-steering providers take the chosen message as a new turn after stopping this one. */
+    function sendQueuedMessageNow(deliveryId: string) {
+      const agent = activeAgent();
+      const turnId = agent ? activeTurns()[agent.id] : null;
+      const serverId = activeServerId();
+      if (!agent || !turnId || !serverId) return;
+      const port = turnsPort().agent;
+      void stopAndSendQueuedMessage({
+        agentId: agent.id,
+        deliveryId,
+        turnId,
+        serverId,
+        current: () => scopeIsCurrent() && activeServerId() === serverId,
+        activeTurnId: () => activeTurns()[agent.id],
+        readQueue: (id, scope) => port.listQueue(id, scope),
+        reorder: (input, scope) => port.reorderQueue(input, scope),
+        interrupt: (input, scope) => port.interrupt(input, scope),
+        onFailure: (error, stage) =>
+          appendUiError(
+            agent.id,
+            error,
+            currentText().t(stage === "reorder" ? "app.errorStatus.reorder" : "app.errorStatus.stop"),
+            serverId,
+          ),
+      });
+    }
+
     async function updateQueuedMessage(
       deliveryId: string,
       text: string,
@@ -561,6 +589,7 @@ const Turns = createSimpleContext({
       cancelQueuedMessage,
       cancelWait,
       steerQueuedMessage,
+      sendQueuedMessageNow,
       updateQueuedMessage,
       reorderQueue,
       stopActiveTurn,

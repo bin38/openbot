@@ -16,9 +16,9 @@ const MESSAGE_CHARACTERS = INPUT_LIMITS.sideQuestionEarlierText;
 const CHAT_CHARACTERS = 60_000;
 const EARLIER_CHARACTERS = 60_000;
 
-/** Indented JSON for a prompt block, with `<` escaped as `tagSafe` does. */
+/** Compact JSON preserves values and the tag escaping without spending tokens on indents. */
 export function promptJson(value: unknown): string {
-  return tagSafe(JSON.stringify(value, null, 2));
+  return tagSafe(JSON.stringify(value));
 }
 
 /** A message that a person or the agent wrote in the chat, not a tool step or a status line. */

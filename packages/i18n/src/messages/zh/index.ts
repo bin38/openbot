@@ -11,6 +11,7 @@ import { messages as billing } from "./billing";
 import { messages as browser } from "./browser";
 import { messages as channel } from "./channel";
 import { messages as chat } from "./chat";
+import { messages as colab } from "./colab";
 import { messages as composer } from "./composer";
 import { messages as computerUse } from "./computerUse";
 import { messages as connector } from "./connector";
@@ -77,6 +78,7 @@ export const zh = {
   ...provider,
   ...app,
   ...composer,
+  ...colab,
   ...attachment,
   ...chat,
   ...queue,

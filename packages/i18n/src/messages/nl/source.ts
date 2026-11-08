@@ -5,6 +5,7 @@ import { messages as errorAttachment } from "./error/attachment";
 import { messages as errorAuth } from "./error/auth";
 import { messages as errorBackend } from "./error/backend";
 import { messages as errorBilling } from "./error/billing";
+import { messages as errorColab } from "./error/colab";
 import { messages as errorComputerUse } from "./error/computerUse";
 import { messages as errorConnector } from "./error/connector";
 import { messages as errorE2b } from "./error/e2b";
@@ -46,6 +47,7 @@ export const source = {
   ...errorAgent,
   ...errorProvider,
   ...errorComputerUse,
+  ...errorColab,
   ...errorE2b,
   ...errorVoice,
   ...errorWorkflow,

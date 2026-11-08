@@ -10,6 +10,7 @@ import type {
   ResetAgentSessionSettingInput,
   SetAgentSessionSettingInput,
 } from "./ipc-agent-session-settings";
+import type { AgentWorkspaceInfo, OpenAgentWorkspaceInput } from "./ipc-agent-workspaces";
 import type {
   ApiChannelDefinition,
   ApiChannelIdInput,
@@ -24,6 +25,15 @@ import type {
   ValidateApiChannelInput,
 } from "./ipc-api-channels";
 import type {
+  ColabCommandResult,
+  ColabCreateInput,
+  ColabExecuteInput,
+  ColabFilesInput,
+  ColabLoginCodeInput,
+  ColabSessionInput,
+  ColabSnapshot,
+} from "./ipc-colab";
+import type {
   CustomProviderModelSyncState,
   RefreshCustomProviderModelsInput,
   SetCustomProviderModelSyncInput,
@@ -37,7 +47,7 @@ import type {
   E2bViewerBoundsInput,
   SaveE2bSettingsInput,
 } from "./ipc-e2b";
-import type { GeminiProxySettings } from "./ipc-gemini-proxy";
+import type { GeminiProxySettings, SetGeminiProxySettingsInput } from "./ipc-gemini-proxy";
 import type { McpRegistryPage, McpRegistryQuery } from "./ipc-mcp-registry";
 import type { ServerAuditLog } from "./ipc-server-audit";
 import type {
@@ -1026,7 +1036,27 @@ export const IPC_ENDPOINTS = {
   // no key. A joined host is never scanned.
   geminiProxy: {
     getSettings: request<undefined, GeminiProxySettings>()("gemini-proxy:get-settings"),
-    setSettings: request<GeminiProxySettings, GeminiProxySettings>()("gemini-proxy:set-settings"),
+    setSettings: request<SetGeminiProxySettingsInput, GeminiProxySettings>()("gemini-proxy:set-settings"),
+  },
+  agentWorkspaces: {
+    get: request<string, AgentWorkspaceInfo>()("agent-workspaces:get"),
+    choose: request<string, AgentWorkspaceInfo | null>()("agent-workspaces:choose"),
+    reset: request<string, AgentWorkspaceInfo>()("agent-workspaces:reset"),
+    open: request<OpenAgentWorkspaceInput, void>()("agent-workspaces:open"),
+  },
+  colab: {
+    getStatus: request<undefined, ColabSnapshot>()("colab:get-status"),
+    refresh: request<undefined, ColabSnapshot>()("colab:refresh"),
+    startLogin: request<undefined, ColabSnapshot>()("colab:start-login"),
+    openAuthorization: request<undefined, void>()("colab:open-authorization"),
+    openHome: request<undefined, void>()("colab:open-home"),
+    submitLoginCode: request<ColabLoginCodeInput, ColabSnapshot>()("colab:submit-login-code"),
+    cancelLogin: request<undefined, ColabSnapshot>()("colab:cancel-login"),
+    createCpu: request<ColabCreateInput, ColabSnapshot>()("colab:create-cpu"),
+    stop: request<ColabSessionInput, ColabSnapshot>()("colab:stop"),
+    openSession: request<ColabSessionInput, void>()("colab:open-session"),
+    execute: request<ColabExecuteInput, ColabCommandResult>()("colab:execute"),
+    listFiles: request<ColabFilesInput, ColabCommandResult>()("colab:list-files"),
   },
   providerDetection: {
     scanModelServers: request<undefined, DetectedModelServer[]>()("provider-detection:scan-model-servers"),
@@ -2069,6 +2099,8 @@ export const IPC_GROUP_PATHS = {
   customProviderModelSync: "customProviderModelSync",
   providerDetection: "providerDetection",
   geminiProxy: "geminiProxy",
+  agentWorkspaces: "agentWorkspaces",
+  colab: "colab",
   customAgents: "customAgents",
   acpRegistry: "acpRegistry",
   providerAdmin: "providerAdmin",

@@ -70,6 +70,7 @@ import { sourceText } from "@openbot/i18n/source";
 import { createOpenBotLogger, toLogValue } from "@openbot/logging";
 import { Effect, Result, Semaphore, Stream } from "effect";
 import { ProfileCreationRecovery } from "./agent/profile-creation-recovery";
+import { type AgentWorkspaceBinding, AgentWorkspacePaths, isAgentWorkspaceBinding } from "./agent-workspaces";
 import { isEmptyStoredFile, parseStoredJson, writeFileAtomically } from "./atomic-json-file";
 import { automationRoot } from "./automation-command";
 import type { AgentModelChange } from "./database/agent-roster";
@@ -78,7 +79,11 @@ import { isPathInside } from "./path-containment";
 import { isRecord } from "./protocol";
 import { StoredStateFailure, storedIO, storedSync } from "./stored-state-effects";
 
-type StoredAgent = AgentSummary & { access: AgentAccess; computerUse: boolean };
+type StoredAgent = AgentSummary & {
+  access: AgentAccess;
+  computerUse: boolean;
+  workspaceBinding?: AgentWorkspaceBinding;
+};
 type PersistedStoredAgent = Omit<StoredAgent, "avatarUrl" | "provider" | "access" | "computerUse"> & {
   avatarUrl?: string | null;
   provider?: AgentProviderId;
@@ -191,6 +196,7 @@ export class AgentStore {
   readonly #duplicationsRoot: string;
   readonly #automationRoot: string;
   readonly #profileCreationRecovery: ProfileCreationRecovery;
+  readonly #workspaces: AgentWorkspacePaths;
   readonly #database: OpenBotDatabase;
   #state: StoredState = { version: 2, examplesInitialized: false, agents: [] };
   readonly #avatarUpdateQueue = Semaphore.makeUnsafe(1);
@@ -214,6 +220,13 @@ export class AgentStore {
     this.#avatarsRoot = join(userDataPath, "avatars", "agents");
     this.#duplicationsRoot = join(userDataPath, "agent-duplications");
     this.#automationRoot = automationRoot(userDataPath);
+    this.#workspaces = new AgentWorkspacePaths({
+      managed: this.#agentsRoot,
+      legacy: this.#legacyAgentsRoot,
+      shared: this.#sharedRoot,
+      downloads: this.#downloadsRoot,
+      data: userDataPath,
+    });
     this.#database = database;
     this.#agentDefaults = agentDefaults;
     this.#profileCreationRecovery = new ProfileCreationRecovery(
@@ -335,7 +348,46 @@ export class AgentStore {
   }, Effect.uninterruptible).bind(this);
 
   list(): AgentSummary[] {
-    return this.#state.agents.map((agent) => ({ ...agent }));
+    return this.#state.agents.map(publicAgent);
+  }
+
+  readonly workspaceInfo = Effect.fn("AgentStore.workspaceInfo")(function* (this: AgentStore, agentId: string) {
+    const agent = yield* storedSync(() => this.#requireAgent(agentId));
+    return yield* this.#workspaces.info(agent);
+  }).bind(this);
+
+  /** A local owner changes the working folder; existing files and the public thread stay where they are. */
+  setWorkspace(agentId: string, directory: string | null, beforeCommit?: () => void) {
+    return this.#creationQueue.withPermit(
+      Effect.gen({ self: this }, function* () {
+        const agent = yield* storedSync(() => this.#requireAgent(agentId));
+        yield* storedSync(() => beforeCommit?.());
+        const selected = yield* this.#workspaces.select(agent, this.#state.agents, directory);
+        yield* storedSync(() => {
+          this.#requireAgent(agentId);
+          beforeCommit?.();
+        });
+        const previous = {
+          workspacePath: agent.workspacePath,
+          workspaceBinding: agent.workspaceBinding,
+          updatedAt: agent.updatedAt,
+        };
+        agent.workspacePath = selected.path;
+        if (selected.binding) agent.workspaceBinding = selected.binding;
+        else delete agent.workspaceBinding;
+        agent.updatedAt = new Date().toISOString();
+        try {
+          this.#persist("agent.workspace-changed");
+        } catch (cause) {
+          agent.workspacePath = previous.workspacePath;
+          agent.updatedAt = previous.updatedAt;
+          if (previous.workspaceBinding) agent.workspaceBinding = previous.workspaceBinding;
+          else delete agent.workspaceBinding;
+          return yield* new StoredStateFailure({ cause });
+        }
+        return publicAgent(agent);
+      }),
+    );
   }
 
   createAgent(input: Omit<CreateAgentInput, "initialMessage">, profileOperationId?: string) {
@@ -368,7 +420,7 @@ export class AgentStore {
         yield* storedIO(() => rm(record.workspacePath, { recursive: true, force: true }));
         throw error;
       }
-      return { ...record };
+      return publicAgent(record);
     } catch (cause) {
       return yield* new StoredStateFailure({ cause });
     }
@@ -393,7 +445,8 @@ export class AgentStore {
       }
       const source = this.#requireAgent(sourceId);
       const sourceProfileSignature = duplicationProfileSignature(source);
-      const sourceWorkspaceManifest = yield* workspaceMetadataFingerprintEffect(source.workspacePath);
+      const sourceWorkspace = this.#workspaces.original(source);
+      const sourceWorkspaceManifest = yield* workspaceMetadataFingerprintEffect(sourceWorkspace);
       const sourceAvatar = this.resolveAvatar(source.id);
       const sourceAvatarSignature = sourceAvatar ? yield* fileFingerprintEffect(sourceAvatar.path) : null;
       const id = `agent-${randomUUID()}`;
@@ -414,11 +467,16 @@ export class AgentStore {
       // An exclusion in the source workspace applies to the same folder in the copied workspace.
       if (source.excludedFolders)
         record.excludedFolders = source.excludedFolders.map((folder) =>
-          isPathInside(source.workspacePath, folder)
-            ? join(record.workspacePath, relative(source.workspacePath, folder))
+          isPathInside(sourceWorkspace, folder)
+            ? join(record.workspacePath, relative(sourceWorkspace, folder))
             : folder,
         );
       record.computerUse = source.computerUse;
+      // A named profile carries over; an own session still gives the copy a fresh browser.
+      if (source.browserProfileId !== undefined) {
+        record.browserProfileId = source.browserProfileId;
+        record.ownBrowserSession = true;
+      }
       if (source.busyMessageMode) record.busyMessageMode = source.busyMessageMode;
       if (source.taskLimit !== undefined) record.taskLimit = source.taskLimit;
       if (source.backupModels) record.backupModels = structuredClone(source.backupModels);
@@ -442,7 +500,7 @@ export class AgentStore {
                 }),
               );
               yield* storedIO(() =>
-                cp(source.workspacePath, stagedWorkspace, {
+                cp(sourceWorkspace, stagedWorkspace, {
                   recursive: true,
                   dereference: false,
                   errorOnExist: true,
@@ -460,17 +518,13 @@ export class AgentStore {
               }
               if (
                 duplicationProfileSignature(source) !== sourceProfileSignature ||
-                (yield* workspaceMetadataFingerprintEffect(source.workspacePath)) !== sourceWorkspaceManifest ||
+                (yield* workspaceMetadataFingerprintEffect(sourceWorkspace)) !== sourceWorkspaceManifest ||
                 (stagedAvatarPath ? yield* fileFingerprintEffect(stagedAvatarPath) : null) !== sourceAvatarSignature ||
                 (sourceAvatar ? yield* fileFingerprintEffect(sourceAvatar.path) : null) !== sourceAvatarSignature
               ) {
                 throw new Error(sourceText("error.agent.changedWhileDuplicating"));
               }
-              yield* rewriteInternalWorkspaceSymlinksEffect(
-                source.workspacePath,
-                stagedWorkspace,
-                record.workspacePath,
-              );
+              yield* rewriteInternalWorkspaceSymlinksEffect(sourceWorkspace, stagedWorkspace, record.workspacePath);
               if (this.#state.agents.length >= INPUT_LIMITS.agents) {
                 throw new Error(sourceText("error.agent.hostLimit", { limit: INPUT_LIMITS.agents }));
               }
@@ -484,7 +538,7 @@ export class AgentStore {
                 this.#state.agents = this.#state.agents.filter((candidate) => candidate.id !== record.id);
                 throw error;
               }
-              return { ...record };
+              return publicAgent(record);
             } catch (cause) {
               return yield* new StoredStateFailure({ cause });
             }
@@ -537,7 +591,7 @@ export class AgentStore {
     const agent = this.#state.agents.find((candidate) => candidate.id === resultAgent.id);
     if (!agent) throw new Error(sourceText("error.agent.duplicatedAgentGone"));
     return {
-      agent: { ...agent },
+      agent: publicAgent(agent),
       layout: structuredClone(resultLayout),
     };
   }
@@ -555,7 +609,7 @@ export class AgentStore {
       if (!marker || marker.operationId !== operationId || marker.sourceAgentId !== sourceAgentId) {
         throw new Error("This agent duplication marker is invalid.");
       }
-      const result = { agent: { ...agent }, layout: structuredClone(layout) };
+      const result = { agent: publicAgent(agent), layout: structuredClone(layout) };
       const receipt = this.#database.dispatch(
         duplicationCommandId(operationId),
         [
@@ -605,7 +659,7 @@ export class AgentStore {
       Object.assign(agent, previous);
       throw error;
     }
-    return { ...agent };
+    return publicAgent(agent);
   }
 
   commitReviewedProfile(
@@ -658,7 +712,7 @@ export class AgentStore {
       else agent.sessionSettingResets = previousResets;
       throw error;
     }
-    return { ...agent };
+    return publicAgent(agent);
   }
 
   clearSessionSettingReset(agentId: string, identity: string): void {
@@ -876,7 +930,7 @@ export class AgentStore {
         if (previous.quickAcknowledgement === undefined) delete agent.quickAcknowledgement;
         throw error;
       }
-      return { ...agent };
+      return publicAgent(agent);
     } catch (cause) {
       return yield* new StoredStateFailure({ cause });
     }
@@ -890,7 +944,7 @@ export class AgentStore {
     const agent = this.#requireAgent(agentId);
     const previous = agent.hiddenAt;
     if ((hiddenAt === null && previous === undefined) || (hiddenAt !== null && previous !== undefined))
-      return { ...agent };
+      return publicAgent(agent);
     if (hiddenAt !== null && !isHiddenAt(hiddenAt)) throw new Error("Invalid hidden agent time.");
     if (hiddenAt === null) delete agent.hiddenAt;
     else agent.hiddenAt = hiddenAt;
@@ -901,7 +955,7 @@ export class AgentStore {
       else agent.hiddenAt = previous;
       throw error;
     }
-    return { ...agent };
+    return publicAgent(agent);
   }
 
   /** Whether a user hid the agent. An unknown agent is not hidden. */
@@ -914,7 +968,7 @@ export class AgentStore {
     agent.marketplaceSource = structuredClone(source);
     agent.updatedAt = new Date().toISOString();
     this.#persist("agent.marketplace-source-updated");
-    return { ...agent, marketplaceSource: structuredClone(source) };
+    return { ...publicAgent(agent), marketplaceSource: structuredClone(source) };
   }
 
   setAvatar(agentId: string, image: AvatarImageInput | null) {
@@ -942,7 +996,7 @@ export class AgentStore {
           throw error;
         }
         if (previous) yield* storedIO(() => rm(previous.path, { force: true }).catch(() => undefined));
-        return { ...agent };
+        return publicAgent(agent);
       }
       if (!isValidAvatarImage(image.mimeType, image.bytes)) {
         throw new Error(sourceText("error.team.logoInvalid"));
@@ -966,7 +1020,7 @@ export class AgentStore {
         throw error;
       }
       if (previous) yield* storedIO(() => rm(previous.path, { force: true }).catch(() => undefined));
-      return { ...agent };
+      return publicAgent(agent);
     } catch (cause) {
       return yield* new StoredStateFailure({ cause });
     }
@@ -1021,7 +1075,7 @@ export class AgentStore {
       const remaining = this.#state.agents.filter((candidate) => candidate.id !== id);
       this.#database.hardDeleteAgent(`agents:hard-delete:${randomUUID()}`, id, agent?.threadId ?? null, remaining);
       this.#state.agents = remaining;
-      return agent ? { ...agent } : null;
+      return agent ? publicAgent(agent) : null;
     } catch (cause) {
       return yield* new StoredStateFailure({ cause });
     }
@@ -1037,8 +1091,8 @@ export class AgentStore {
     id: string,
   ): Effect.fn.Return<AgentSummary, StoredStateFailure> {
     const agent = yield* storedSync(() => this.#requireAgent(id));
-    yield* storedIO(() => mkdir(agent.workspacePath, { recursive: true, mode: 0o700 }));
-    return { ...agent };
+    yield* this.#workspaces.ensure(agent);
+    return publicAgent(agent);
   }).bind(this);
 
   getOrCreate = Effect.fn("AgentStore.getOrCreate")(function* (
@@ -1050,8 +1104,8 @@ export class AgentStore {
     yield* storedSync(() => validateAgentId(id));
     const existing = this.#state.agents.find((agent) => agent.id === id);
     if (existing) {
-      yield* storedIO(() => mkdir(existing.workspacePath, { recursive: true, mode: 0o700 }));
-      return { ...existing };
+      yield* this.#workspaces.ensure(existing);
+      return publicAgent(existing);
     }
     return yield* this.#creationQueue.withPermit(this.#getOrCreate(id, name, title));
   }).bind(this);
@@ -1066,8 +1120,8 @@ export class AgentStore {
       validateAgentId(id);
       const existing = this.#state.agents.find((agent) => agent.id === id);
       if (existing) {
-        yield* storedIO(() => mkdir(existing.workspacePath, { recursive: true, mode: 0o700 }));
-        return { ...existing };
+        yield* this.#workspaces.ensure(existing);
+        return publicAgent(existing);
       }
       if (this.#state.agents.length >= INPUT_LIMITS.agents) {
         throw new Error(sourceText("error.agent.hostLimit", { limit: INPUT_LIMITS.agents }));
@@ -1077,7 +1131,7 @@ export class AgentStore {
       this.#state.agents.push(record);
       yield* storedIO(() => mkdir(record.workspacePath, { recursive: true, mode: 0o700 }));
       this.#persist("agent.created");
-      return { ...record };
+      return publicAgent(record);
     } catch (cause) {
       return yield* new StoredStateFailure({ cause });
     }
@@ -1144,6 +1198,7 @@ export class AgentStore {
     agent: StoredAgent,
   ): Effect.fn.Return<boolean, StoredStateFailure> {
     try {
+      if (agent.workspaceBinding) return false;
       const legacyId = this.#unclaimedLegacyId(agent.id);
       if (legacyId === null) return false;
       const targetPath = join(this.#agentsRoot, agent.id);
@@ -1871,6 +1926,7 @@ function isStoredAgent(value: unknown): value is PersistedStoredAgent {
   if (!isRecord(value) || !isStoredAgentBase(value)) return false;
   const record = value;
   return (
+    (record.workspaceBinding === undefined || isAgentWorkspaceBinding(record.workspaceBinding)) &&
     (record.provider === undefined || isOneOf(AGENT_PROVIDERS, record.provider)) &&
     (record.sessionSettingOverrides === undefined || isAgentSessionSettingOverrides(record.sessionSettingOverrides)) &&
     (record.sessionSettingResets === undefined || isAgentSessionSettingResets(record.sessionSettingResets)) &&
@@ -1927,6 +1983,8 @@ function readStoredAgent(value: unknown): ReadStoredAgent | UnreadableStoredAgen
   const id = value.id;
   if (!isString(id) || !isValidAgentId(id)) return { unreadable: "id", id: null };
   if (!isString(value.workspacePath)) return { unreadable: "workspacePath", id };
+  if (value.workspaceBinding !== undefined && !isAgentWorkspaceBinding(value.workspaceBinding))
+    return { unreadable: "workspaceBinding", id };
   if (value.threadId !== null && !isString(value.threadId)) return { unreadable: "threadId", id };
 
   const repaired: string[] = [];
@@ -2040,6 +2098,9 @@ function readStoredAgent(value: unknown): ReadStoredAgent | UnreadableStoredAgen
       : reset("reasoningEffort", DEFAULT_REASONING_EFFORT),
     threadId: value.threadId,
     workspacePath: value.workspacePath,
+    ...(value.workspaceBinding === undefined
+      ? {}
+      : { workspaceBinding: { originalPath: value.workspaceBinding.originalPath } }),
     preview: isString(value.preview) ? value.preview : reset("preview", NEW_AGENT_PREVIEW),
     updatedAt: isString(value.updatedAt) || value.updatedAt === null ? value.updatedAt : reset("updatedAt", null),
     avatarSeed: isAvatarSeed(value.avatarSeed) ? value.avatarSeed : reset("avatarSeed", id),
@@ -2209,4 +2270,11 @@ function parseAgentAvatarUrl(
   } catch {
     return null;
   }
+}
+
+/** Keep local workspace ownership metadata inside the roster JSON. */
+function publicAgent(agent: StoredAgent): AgentSummary {
+  const summary = { ...agent };
+  delete summary.workspaceBinding;
+  return summary;
 }

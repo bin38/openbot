@@ -2,6 +2,14 @@ import type { PartialTranslation } from "../../../message";
 import type { messages as source } from "../../en/error/provider";
 
 export const messages = {
+  "error.provider.geminiProxyAddress":
+    "请填写 HTTP、HTTPS 或 SOCKS5 代理地址，不要在地址中包含账号密码、路径或查询参数。",
+  "error.provider.geminiProxyNewAddress": "代理地址或用户名已改变，请重新填写对应密码，或移除已保存的密码。",
+  "error.provider.geminiProxyCredentials": "请同时填写 SOCKS5 用户名和密码，或将两项都移除。",
+  "error.provider.geminiProxySocksCredentials": "此处认证信息用于 SOCKS5。切换到 HTTP 代理前，请先移除用户名和密码。",
+  "error.provider.geminiProxySecureStorage": "安全存储不可用，OpenBot 无法保存代理密码。",
+  "error.provider.geminiProxyUnavailable": "Gemini 本地代理不可用，请重启 OpenBot 后重试。",
+  "error.provider.geminiProxyRestartRequired": "请重启 OpenBot 后再修改代理；已有连接会保留到应用关闭。",
   "error.provider.geminiProxyUrl": "请填写 HTTP 或 HTTPS 代理地址，不要包含账号密码、路径或查询参数。",
   "error.provider.geminiProxySettingsReadOnly":
     "无法读取已保存的 Gemini 代理设置。恢复配置文件前，Gemini 将暂停连接，不会改用直连。",

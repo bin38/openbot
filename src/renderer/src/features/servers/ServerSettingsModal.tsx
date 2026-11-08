@@ -55,6 +55,7 @@ import { createEffect, createSignal, onCleanup, Show, untrack } from "solid-js";
 import { actionToast } from "../../action-toast";
 import { type ServerBrowserProfilesOptions, ServerBrowserProfilesPanel } from "../browser/ServerBrowserProfilesPanel";
 import { type ServerStorageOptions, ServerStoragePanel } from "../files/ServerStoragePanel";
+import { ColabSettingsSection } from "../settings/ColabSettingsSection";
 import { type HostProviderSettings, HostProviderSettingsPanel } from "../settings/ProviderSettingsSection";
 import type { HostPromptCacheTtlOptions, ProviderPromptCacheSource } from "../settings/provider-prompt-cache";
 import { type ServerVaultOptions, ServerVaultPanel } from "../vault/ServerVaultPanel";
@@ -86,6 +87,8 @@ export interface ServerSettingsModalProps {
   cloudComputer?: ServerCloudComputerOptions | undefined;
   /** Arbitrary HTTP endpoint credentials are local-only; they never use a released Team API route. */
   apiChannels?: ServerApiChannelsOptions | undefined;
+  /** Official local Colab CLI. Remote hosts keep their released protocol. */
+  colab?: boolean | undefined;
   server: ServerSummary;
   hostStatus?: HostStatus | null;
   members: TeamPresenceMember[];
@@ -261,6 +264,7 @@ export type ServerSettingsSection =
   | "audit"
   | "desktop"
   | "cloud-computer"
+  | "colab"
   | "api-channels"
   | "mcp"
   | "storage"
@@ -281,6 +285,7 @@ const sections = {
   audit: { title: "server.settings.auditTitle", description: "server.settings.auditDescription" },
   desktop: { title: "server.settings.desktopTitle", description: "server.settings.desktopDescription" },
   "cloud-computer": { title: "server.cloudComputer.title", description: "server.cloudComputer.description" },
+  colab: { title: "colab.title", description: "colab.description" },
   "api-channels": { title: "apiChannels.title", description: "apiChannels.description" },
   mcp: { title: "server.settings.mcpTitle", description: "server.settings.mcpDescription" },
   storage: { title: "server.settings.storageTitle", description: "server.settings.storageDescription" },
@@ -338,6 +343,7 @@ export function ServerSettingsModal(props: ServerSettingsModalProps) {
     if (
       (!membersEnabled() && props.initialSection === "members") ||
       (!props.apiChannels && props.initialSection === "api-channels") ||
+      (!props.colab && props.initialSection === "colab") ||
       (INDEPENDENT_EDITION && props.initialSection === "sites")
     )
       return "general";
@@ -527,6 +533,7 @@ export function ServerSettingsModal(props: ServerSettingsModalProps) {
         value === "audit" ||
         value === "desktop" ||
         value === "cloud-computer" ||
+        value === "colab" ||
         value === "api-channels" ||
         value === "mcp" ||
         value === "storage" ||
@@ -722,6 +729,12 @@ export function ServerSettingsModal(props: ServerSettingsModalProps) {
                 <span>{t(sections["cloud-computer"].title)}</span>
               </Tabs.Trigger>
             </Show>
+            <Show when={props.colab}>
+              <Tabs.Trigger class="settings-modal-nav-item" value="colab">
+                <Globe2 aria-hidden="true" />
+                <span>{t(sections.colab.title)}</span>
+              </Tabs.Trigger>
+            </Show>
             <Show when={props.mcpServers}>
               <Tabs.Trigger class="settings-modal-nav-item" value="mcp">
                 <Blocks aria-hidden="true" />
@@ -827,6 +840,13 @@ export function ServerSettingsModal(props: ServerSettingsModalProps) {
               </Show>
             </Tabs.Content>
           )}
+        </Show>
+        <Show when={props.colab}>
+          <Tabs.Content value="colab" class="settings-modal-tab-panel server-settings-panel" data-tab="colab">
+            <Show when={section() === "colab" && props.open}>
+              <ColabSettingsSection />
+            </Show>
+          </Tabs.Content>
         </Show>
         <Show when={props.apiChannels}>
           {(options) => (

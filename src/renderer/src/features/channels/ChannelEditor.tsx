@@ -341,12 +341,16 @@ export function ChannelEditor(props: ChannelEditorProps) {
       </SettingsLinkGroup>
       <section class="channel-members" aria-label={t("channel.members.title")}>
         <h3 class="channel-members-title">{t("channel.members.title")}</h3>
+        <p class="channel-members-note">{t("channel.members.workspacesSeparate")}</p>
         <ItemGroup class="channel-member-list">
           <For each={members()}>
             {(entry) => (
               <ChannelMemberRow
                 agent={entry.agent}
                 fallbackName={t("channel.members.unavailable", { id: entry.agentId })}
+                description={
+                  entry.agent?.workspacePath ? t("channel.members.workspace", { path: entry.agent.workspacePath }) : ""
+                }
                 actions={
                   <ItemActions>
                     <Show when={entry.agent}>

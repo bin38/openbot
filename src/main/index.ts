@@ -60,6 +60,7 @@ import { agentIpcHandlers } from "./ipc/agent-handlers";
 import { agentImportIpcHandlers } from "./ipc/agent-import-handlers";
 import { agentInstructionsIpcHandlers } from "./ipc/agent-instructions-handlers";
 import { agentTemplateIpcHandlers } from "./ipc/agent-template-handlers";
+import { agentWorkspacesIpcHandlers } from "./ipc/agent-workspaces-handlers";
 import { apiChannelIpcHandlers } from "./ipc/api-channel-handlers";
 import { appIpcHandlers } from "./ipc/app-handlers";
 import { attachmentIpcHandlers } from "./ipc/attachment-handlers";
@@ -70,6 +71,7 @@ import { browserDockIpcHandlers } from "./ipc/browser-dock-handlers";
 import { browserIpcHandlers } from "./ipc/browser-handlers";
 import { channelMemoryIpcHandlers } from "./ipc/channel-memory-handlers";
 import { channelRoutineIpcHandlers } from "./ipc/channel-routine-handlers";
+import { colabIpcHandlers } from "./ipc/colab-handlers";
 import { computerUseIpcHandlers } from "./ipc/computer-use-handlers";
 import { customAgentIpcHandlers } from "./ipc/custom-agent-handlers";
 import { customProviderIpcHandlers } from "./ipc/custom-provider-handlers";
@@ -688,6 +690,8 @@ function registerIpcHandlers({
   providerDetection,
   providerDetectionSettings,
   geminiProxySettings,
+  geminiProxyBridge,
+  colab,
   marketplaceAgents,
   agentTemplates,
   agentImport,
@@ -809,8 +813,27 @@ function registerIpcHandlers({
     ...providerDetectionIpcHandlers({ detection: providerDetection, settings: providerDetectionSettings }),
     ...geminiProxyIpcHandlers({
       settings: geminiProxySettings,
+      prepareProxy: () => geminiProxyBridge.prepare(geminiProxySettings.runtimeConfig()),
       restartGemini: () => service.restartProvider("antigravity").pipe(Effect.asVoid),
     }),
+    ...agentWorkspacesIpcHandlers({
+      service,
+      chooseDirectory: async (current) => {
+        const options = {
+          title: language.translate("agentSettings.workspace.choose"),
+          defaultPath: current,
+          properties: ["openDirectory" as const],
+        };
+        const parent = getDialogParent();
+        const result = parent ? await dialog.showOpenDialog(parent, options) : await dialog.showOpenDialog(options);
+        return result.canceled ? null : (result.filePaths[0] ?? null);
+      },
+      openDirectory: async (path) => {
+        const error = await shell.openPath(path);
+        if (error) throw new Error(language.translate("error.agent.workspaceUnavailable"));
+      },
+    }),
+    ...colabIpcHandlers({ colab, openLink }),
     ...marketplaceAgentIpcHandlers({ marketplaceAgents }),
     ...agentTemplateIpcHandlers({
       agentTemplates,
