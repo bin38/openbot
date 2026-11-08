@@ -4,7 +4,10 @@ import { createMemo, For, Show } from "solid-js";
 import { useText } from "../../text";
 
 /** File detection is descriptive. It does not enable a skill or change a project. */
-export function ProjectWorkspaceDetails(props: { context: ProjectWorkspaceContext; sharedWith?: readonly string[] }) {
+export function ProjectWorkspaceDetails(props: {
+  context: ProjectWorkspaceContext;
+  sharedWith?: readonly string[] | undefined;
+}) {
   const { t } = useText();
   const repository = createMemo(() => {
     const git = props.context.git;
